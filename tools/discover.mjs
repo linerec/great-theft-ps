@@ -4,7 +4,7 @@
 //   node tools/discover.mjs                      broadcast on every network interface
 //   node tools/discover.mjs --host 192.168.0.20  ask one console directly (works across subnets and some VPNs)
 //   node tools/discover.mjs --wake <registKeyHex> --host <ip> [--ps4]   wake a console that is in rest mode
-// Options: --timeout <ms> (default 3000), --json
+// Options: --timeout <ms> (default 3000), --json, --raw (also print each answer exactly as received, escaped)
 //
 // This is the first step of talking to a real console and it has only been tested against a simulator.
 // Please copy the whole output when you report what happened.
@@ -33,7 +33,13 @@ if (value('wake')) {
 console.log('Network interfaces used for broadcast:');
 for (const b of localBroadcastAddresses()) console.log(`  ${b.iface.padEnd(24)} ${b.address.padEnd(16)} broadcast ${b.broadcast}`);
 
-const result = await discover({ hosts: host ? [host] : undefined, timeoutMs, log: (l) => logs.push(l) });
+const raws = [];
+const result = await discover({
+  hosts: host ? [host] : undefined,
+  timeoutMs,
+  log: (l) => logs.push(l),
+  onRaw: (data, from) => raws.push({ from, text: JSON.stringify(data.toString('latin1')) }),
+});
 
 if (flag('json')) {
   console.log(JSON.stringify(result, null, 2));
@@ -62,5 +68,9 @@ for (const h of result.hosts) {
   console.log(`  system version:  ${h.systemVersion ?? '-'}  (treated as ${h.target})`);
   console.log(`  protocol:        ${h.protocolVersion ?? '-'}   request port: ${h.hostRequestPort ?? '-'}`);
   if (h.runningAppName) console.log(`  running:         ${h.runningAppName} (${h.runningAppTitleId ?? '-'})`);
+}
+if (flag('raw')) {
+  console.log('\nRaw answers (escaped; the host id, name and address identify your console, remove them before sharing publicly):');
+  for (const r of raws) console.log(`  from ${r.from}: ${r.text}`);
 }
 if (logs.length) console.log(`\nNotes:\n${logs.map((l) => `  ${l}`).join('\n')}`);

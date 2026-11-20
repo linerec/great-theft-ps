@@ -28,7 +28,7 @@ from and for trademark notes.
 | Mapping engine + test beds (pad-only FPS, GTA V style third-person) | **working** (75 tests, browser self-test) |
 | Bridge: WebSocket server, auth, safety, simulated console, gtp-core contract (fake core) | **working** (25 tests) |
 | Browser client: video player (PNG and real H.264 via WebCodecs), pad sending, latency, quality presets | **working** (real-Chrome end-to-end check) |
-| Console link for a real PlayStation: TypeScript port of the Remote Play protocol (`src/console/`) | **Phase 0 done** (discovery, wake-up; tested against a simulator only). Phases 1 to 7 not started: `docs/ts-protocol-port.md` |
+| Console link for a real PlayStation: TypeScript port of the Remote Play protocol (`src/console/`) | **Phase 0 done**: discovery confirmed on a real PS5 in rest mode (from macOS); wake-up not yet tried on hardware. Phases 1 to 7 not started: `docs/ts-protocol-port.md` |
 | gtp-core (C, libchiaki), the alternative link | specified, not built (`docs/gtp-core-contract.md`) |
 | Profile sharing registry, WebRTC, desktop and mobile shells | not started |
 

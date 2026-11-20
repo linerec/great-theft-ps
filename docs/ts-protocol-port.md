@@ -5,9 +5,9 @@ implementation of the Remote Play protocol (`src/console/`), so a machine only n
 ported from [chiaki-ng](https://github.com/chiaki-ng/chiaki-ng) (AGPL-3.0-only with an OpenSSL exception, which this
 project's AGPL-3.0 licence is compatible with). Every ported file says which source files and commit it derives from.
 
-**Honest state: only Phase 0 exists, and it has only been tested against a simulated console.**
-Nothing here has talked to a real PlayStation yet. Each phase ends with something you can run at home that either
-works or prints a precise reason, so the port is validated against real hardware one small step at a time.
+**Honest state: only Phase 0 exists.** It has been checked against a real PS5 (see the table); nothing beyond discovery
+has talked to a real PlayStation yet. Each phase ends with something you can run at home that either works or prints a
+precise reason, so the port is validated against real hardware one small step at a time.
 
 ## How each phase is checked
 
@@ -22,7 +22,7 @@ Do not share packet captures that contain registration keys or tokens.
 
 | Phase | What | Source it derives from | Check at home |
 |---|---|---|---|
-| **0 (done)** | Find consoles, read their state, wake one | `discovery.c`, `http.c` | `npm run discover` lists your console (name, state, system version) |
+| **0 (done)** | Find consoles, read their state, wake one | `discovery.c`, `http.c` | `npm run discover` lists your console (name, state, system version). **Confirmed on a real PS5 in rest mode, run from macOS (2026-11-20):** the SRCH probe, port 9302, the `00030010` protocol version and the response parser all matched. **Not yet verified:** WAKEUP (needs a registration key), PS4, Windows and Linux hosts. |
 | 1 | Registration material, session init request, crypto for the init exchange, version negotiation (`RP-Version`) | `regist.c`, `session.c`, `rpcrypt.c`, `ecdh.c` | a tool prints "session request accepted" or the console's reason for refusing |
 | 2 | Control channel (TCP 9295): encrypted exchange that sets up the stream | `ctrl.c` | tool reaches "ready to stream" and prints the negotiated parameters |
 | 3 | Takion transport over UDP (handshake, acknowledgements, retransmission) | `takion.c`, `takionsendbuffer.c`, `reorderqueue.c` | tool shows a completed Takion handshake |

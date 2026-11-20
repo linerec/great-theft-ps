@@ -134,11 +134,19 @@ export function broadcastOf(address: string, netmask: string): string {
   return a.map((octet, i) => (octet | (~m[i]! & 0xff)) & 0xff).join('.');
 }
 
-export function localBroadcastAddresses(): { iface: string; address: string; broadcast: string }[] {
+/**
+ * Interfaces that can carry a broadcast. Point-to-point links such as VPN tunnels (/32) are skipped: their
+ * "broadcast" address is their own address, so probing it would only talk to ourselves.
+ */
+export function localBroadcastAddresses(
+  interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]> = os.networkInterfaces(),
+): { iface: string; address: string; broadcast: string }[] {
   const out: { iface: string; address: string; broadcast: string }[] = [];
-  for (const [iface, addrs] of Object.entries(os.networkInterfaces())) {
+  for (const [iface, addrs] of Object.entries(interfaces)) {
     for (const a of addrs ?? []) {
-      if (a.family === 'IPv4' && !a.internal) out.push({ iface, address: a.address, broadcast: broadcastOf(a.address, a.netmask) });
+      if (a.family !== 'IPv4' || a.internal) continue;
+      const broadcast = broadcastOf(a.address, a.netmask);
+      if (broadcast !== a.address) out.push({ iface, address: a.address, broadcast });
     }
   }
   return out;
@@ -157,6 +165,8 @@ export interface DiscoverOptions {
   /** How many times to send each probe (UDP can lose packets). */
   repeat?: number;
   log?: (line: string) => void;
+  /** Called with every datagram received, before it is parsed. For capturing real responses. */
+  onRaw?: (data: Buffer, from: string) => void;
 }
 
 export interface DiscoverResult {
@@ -200,6 +210,7 @@ export async function discover(opts: DiscoverOptions = {}): Promise<DiscoverResu
 
   const socket = dgram.createSocket('udp4');
   socket.on('message', (msg, rinfo) => {
+    opts.onRaw?.(msg, rinfo.address);
     const host = parseSrchResponse(msg, rinfo.address);
     if (!host) return log(`ignored an unrecognised answer from ${rinfo.address}`);
     found.set(host.hostId ?? host.address, host);

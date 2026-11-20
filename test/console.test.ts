@@ -8,7 +8,8 @@ import dgram from 'node:dgram';
 import { describe, it } from 'node:test';
 
 import {
-  broadcastOf, credentialFromRegistKey, discover, formatSrch, formatWakeup, parseSrchResponse, targetFromSystemVersion, wakeup,
+  broadcastOf, credentialFromRegistKey, discover, formatSrch, formatWakeup, localBroadcastAddresses, parseSrchResponse,
+  targetFromSystemVersion, wakeup,
 } from '../src/console/discovery.ts';
 
 const PS5_READY =
@@ -126,6 +127,18 @@ describe('parsing answers', () => {
     for (const [v, ps5, want] of cases) assert.equal(targetFromSystemVersion(v, ps5), want, `${v} ${ps5}`);
   });
 
+  it('skips point-to-point interfaces, loopback and non-IPv4 when choosing broadcast targets', () => {
+    const iface = (address: string, netmask: string, extra: object = {}): never =>
+      ({ address, netmask, family: 'IPv4', internal: false, mac: '00:00:00:00:00:00', cidr: null, ...extra }) as never;
+    const found = localBroadcastAddresses({
+      en0: [iface('192.168.1.12', '255.255.255.0')],
+      utun0: [iface('100.79.111.60', '255.255.255.255')], // VPN tunnel: broadcast would be itself
+      lo0: [iface('127.0.0.1', '255.0.0.0', { internal: true })],
+      en1: [iface('fe80::1', 'ffff:ffff:ffff:ffff::', { family: 'IPv6' })],
+    });
+    assert.deepEqual(found, [{ iface: 'en0', address: '192.168.1.12', broadcast: '192.168.1.255' }]);
+  });
+
   it('computes directed broadcast addresses', () => {
     assert.equal(broadcastOf('192.168.0.20', '255.255.255.0'), '192.168.0.255');
     assert.equal(broadcastOf('10.1.2.3', '255.255.0.0'), '10.1.255.255');
@@ -137,7 +150,12 @@ describe('discovery against a simulated console', () => {
   it('finds a console, sends the right probe, and dedupes repeated answers', async () => {
     const ps5 = await sim((t) => (t.startsWith('SRCH * HTTP/1.1\ndevice-discovery-protocol-version:00030010') ? PS5_READY : null));
     try {
-      const result = await discover({ hosts: ['127.0.0.1'], ps4: false, ports: { ps4: 1, ps5: ps5.port }, timeoutMs: 400, repeat: 3 });
+      const raw: string[] = [];
+      const result = await discover({
+        hosts: ['127.0.0.1'], ps4: false, ports: { ps4: 1, ps5: ps5.port }, timeoutMs: 400, repeat: 3, onRaw: (d) => raw.push(d.toString('latin1')),
+      });
+      assert.equal(raw.length, 3);
+      assert.equal(raw[0], PS5_READY, 'onRaw sees the datagram exactly as received');
       assert.equal(result.hosts.length, 1, 'three probes, three answers, one host');
       assert.equal(result.hosts[0]!.hostName, 'PS5-LIVINGROOM');
       assert.equal(result.hosts[0]!.address, '127.0.0.1');
