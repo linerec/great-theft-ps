@@ -50,6 +50,9 @@ const bridge = await startBridge({
   log,
   createLink: () =>
     linkKind === 'mock' ? new MockConsole() : new CoreLink({ command: first('core', ''), args: args['core-arg'] ?? [], log }),
+}).catch((error: Error) => {
+  console.error(`Could not start the bridge: ${error.message}`);
+  process.exit(1);
 });
 
 console.log(`\nGreat Theft P.S bridge (${linkKind === 'mock' ? 'SIMULATED console' : 'gtp-core'})`);

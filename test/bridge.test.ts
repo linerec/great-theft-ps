@@ -364,6 +364,36 @@ describe('bridge with a simulated console', () => {
   });
 });
 
+describe('starting on a port', () => {
+  const listenOnLoopback = (server: net.Server): Promise<number> =>
+    new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve((server.address() as net.AddressInfo).port)));
+
+  it('refuses a port that something already answers on, with a message that says what to do', async () => {
+    const other = net.createServer((s) => s.end());
+    const port = await listenOnLoopback(other);
+    try {
+      await assert.rejects(
+        startBridge({ host: '127.0.0.1', port, token: TOKEN, root, createLink: () => new MockConsole() }),
+        /already in use.*--port/,
+      );
+    } finally {
+      other.close();
+    }
+  });
+
+  it('starts on an explicit free port', async () => {
+    const probe = net.createServer();
+    const port = await listenOnLoopback(probe);
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+    const b = await startBridge({ host: '127.0.0.1', port, token: TOKEN, root, createLink: () => new MockConsole() });
+    try {
+      assert.equal(b.port, port);
+    } finally {
+      await b.close();
+    }
+  });
+});
+
 describe('H.264 helpers', () => {
   const sps = [0x67, 0x42, 0xc0, 0x1f, 0xda, 0x01, 0x40];
   it('finds the codec string in the SPS, with 3 and 4 byte start codes', () => {

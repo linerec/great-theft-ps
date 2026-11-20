@@ -56,7 +56,8 @@ input-to-picture latency. With a real console you will see the PlayStation once 
 It can press buttons on a console, so: it listens on loopback only unless you pass `--host`; a token is always required
 (random unless `--token`); the WebSocket must be same-origin (another web page cannot drive it); one client at a time; the pad
 is released when the client disconnects or goes silent for 2 s; messages are size and rate limited; video is dropped, not queued,
-when the client cannot keep up.
+when the client cannot keep up. It also refuses to start if another program already answers on the port (default 8787),
+because on some systems two programs can otherwise share a port and split traffic by address; pick another with `--port`.
 
 ## The test bed
 

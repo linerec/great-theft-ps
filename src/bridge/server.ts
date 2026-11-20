@@ -17,6 +17,7 @@ import { emptyPadState, type VirtualPadState } from '../engine/types.ts';
 import type { ConsoleLink } from './console-link.ts';
 import { decodePad, decodePing, encodePong, encodeVideo, isNeutral, MSG, type ClientControl } from './protocol.ts';
 import { DEFAULT_QUALITY, parseQuality, type QualityRequest } from './quality.ts';
+import { portInUse } from './ports.ts';
 import { handleStatic, isLoopbackHost, send } from './static.ts';
 import { acceptUpgrade, type WsConnection } from './ws.ts';
 
@@ -241,6 +242,12 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
     };
   }
 
+  if (opts.port !== 0) {
+    const probeHost = opts.host === '0.0.0.0' || opts.host === '::' ? '127.0.0.1' : opts.host;
+    if (await portInUse(probeHost, opts.port)) {
+      throw new Error(`port ${opts.port} on ${probeHost} is already in use by another program. Choose another one with --port.`);
+    }
+  }
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(opts.port, opts.host, resolve);
