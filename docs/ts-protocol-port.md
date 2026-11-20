@@ -34,6 +34,19 @@ Do not share packet captures that contain registration keys or tokens.
 The sizes of the source files involved (about 400 KB of C in total, of which `rpcrypt.c` is mostly constant tables)
 mean this is a long port. It is done in this order so that every step is testable on its own.
 
+## Observed on real hardware
+
+Facts seen on a PS5 in rest mode (2026-11-20, macOS, home network). Identifiers are left out on purpose.
+
+- The answer to SRCH is `HTTP/1.1 620 Server Standby` with LF line ends and the headers `host-id`, `host-type`,
+  `host-name`, `host-request-port` (997), `device-discovery-protocol-version` (`00030010`), `system-version`
+  (an 8 digit number; `14230000` here). A console in rest mode sends no `running-app-*` headers. This exact shape is a
+  regression test.
+- The PS5 answered the PS5 probe and did **not** answer the PS4 probe (987 and version `00020020`).
+- A broadcast reaches the console once per interface path, so with two interfaces on the same subnet each probe is
+  answered twice. Results are de-duplicated by host id.
+- The same answer comes back whether the probe is broadcast or sent to the console's address.
+
 ## Risks to keep in mind
 
 - **Sony can change the protocol.** chiaki-ng follows those changes in its C code; the port has to follow them too.

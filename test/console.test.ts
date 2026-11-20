@@ -82,6 +82,28 @@ describe('parsing answers', () => {
     assert.equal(h.runningAppName, undefined);
   });
 
+  it('parses an answer captured from a real PS5 in rest mode (host id and name replaced)', () => {
+    // Exact bytes and header order as received on 2026-11-20, from macOS, on a home network.
+    const real =
+      'HTTP/1.1 620 Server Standby\n' +
+      'host-id:00112233AABB\n' +
+      'host-type:PS5\n' +
+      'host-name:PS5-000\n' +
+      'host-request-port:997\n' +
+      'device-discovery-protocol-version:00030010\n' +
+      'system-version:14230000\n';
+    const h = parseSrchResponse(real, '192.168.1.50')!;
+    assert.equal(h.state, 'standby');
+    assert.equal(h.statusCode, 620);
+    assert.equal(h.isPs5, true);
+    assert.equal(h.hostType, 'PS5');
+    assert.equal(h.hostRequestPort, 997);
+    assert.equal(h.protocolVersion, '00030010');
+    assert.equal(h.systemVersion, '14230000');
+    assert.equal(h.target, 'ps5-1');
+    assert.equal(h.runningAppTitleId, undefined, 'a console in rest mode reports no running app');
+  });
+
   it('reads a PS4 in rest mode with CRLF line ends and a running app', () => {
     const h = parseSrchResponse(PS4_STANDBY, '192.168.0.21')!;
     assert.equal(h.state, 'standby');
