@@ -1,0 +1,29 @@
+# Notices
+
+## Licence
+
+Great Theft P.S is licensed under the GNU Affero General Public License, version 3 only (`LICENSE`).
+Copyright (C) 2026 the Great Theft P.S contributors.
+
+## Derived from chiaki-ng
+
+The console-facing protocol code is a TypeScript port of parts of [chiaki-ng](https://github.com/chiaki-ng/chiaki-ng)
+(and, through it, the original Chiaki project), which is licensed under the GNU Affero General Public License version 3
+with an additional permission concerning OpenSSL. That is why this project is AGPL-3.0 too.
+
+| File here | Derived from (chiaki-ng, commit `43728af`) |
+|---|---|
+| `src/console/discovery.ts` | `lib/src/discovery.c`, `lib/include/chiaki/discovery.h`, `lib/src/http.c` |
+| `src/engine/types.ts` (button bit positions, gyro limit) | `lib/include/chiaki/controller.h`, `lib/src/feedback.c` |
+
+Further files will be listed here as the protocol port proceeds (see `docs/ts-protocol-port.md`).
+Other parts of chiaki-ng were read to understand the protocol structure; no code from other Remote Play clients is copied.
+
+## Not affiliated
+
+- "PlayStation", "PS", "PS4" and "PS5" are trademarks or registered trademarks of Sony Interactive Entertainment Inc.
+  This project is not affiliated with, endorsed by or sponsored by Sony. It is meant to be used with your own console and
+  your own account.
+- "Grand Theft Auto" and "GTA" are trademarks of Take-Two Interactive Software, Inc. The project name is a parody-style play
+  on that title and the "GTA V style" test game only imitates the shape of its pad controls from public descriptions; this
+  project is not affiliated with, endorsed by or sponsored by Take-Two or Rockstar Games. No game assets or code are used.

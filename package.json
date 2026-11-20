@@ -1,0 +1,16 @@
+{
+  "name": "great-theft-ps",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Great Theft P.S (GTP): a PlayStation Remote Play client with precise keyboard and mouse mapping, shareable per-game profiles and bandwidth control.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "test": "node --test test/",
+    "dev": "node src/dev-server.mjs",
+    "bridge": "node src/bridge/main.ts",
+    "e2e": "node tools/e2e-browser.mjs",
+    "discover": "node tools/discover.mjs"
+  }
+}
