@@ -11,7 +11,7 @@ import path from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { MockConsole } from '../src/bridge/mock-console.ts';
+import { FakeLink } from './support/fake-link.ts';
 import { startBridge, type Bridge } from '../src/bridge/server.ts';
 import type { DiscoveredHost } from '../src/console/discovery.ts';
 import { PsnAccountError } from '../src/console/psn-account.ts';
@@ -119,7 +119,7 @@ async function apiBridge(o: { token?: string; register?: (r: RegisterOptions) =>
   const calls: RegisterOptions[] = [];
   const lines: string[] = [];
   const bridge = await startBridge({
-    host: '127.0.0.1', port: 0, root, store, createLink: () => new MockConsole(), log: (l) => lines.push(l),
+    host: '127.0.0.1', port: 0, root, store, createLink: () => new FakeLink(), log: (l) => lines.push(l),
     ...(o.token !== undefined ? { token: o.token } : {}),
     api: {
       ...(o.psn ? { psn: o.psn } : {}),
@@ -294,7 +294,7 @@ describe('/api/ endpoints', () => {
       const bridgeAndStore = await (async () => {
         const store = new ConsoleStore(path.join(tmp(), 'consoles.json'));
         const lines: string[] = [];
-        const bridge = await startBridge({ host: '127.0.0.1', port: 0, root, store, createLink: () => new MockConsole(), log: (l) => lines.push(l), api: { session: okSession as never } });
+        const bridge = await startBridge({ host: '127.0.0.1', port: 0, root, store, createLink: () => new FakeLink(), log: (l) => lines.push(l), api: { session: okSession as never } });
         bridges.push(bridge);
         return { bridge, store, lines };
       })();
@@ -321,7 +321,7 @@ describe('/api/ endpoints', () => {
       const store = new ConsoleStore(path.join(tmp(), 'consoles.json'));
       const { SessionError } = await import('../src/console/session.ts');
       const bridge = await startBridge({
-        host: '127.0.0.1', port: 0, root, store, createLink: () => new MockConsole(),
+        host: '127.0.0.1', port: 0, root, store, createLink: () => new FakeLink(),
         api: {
           session: async () => {
             throw new SessionError('rejected', 'The console answered 403: The console does not accept this PSN account id (0x80108b02)', { reason: 0x80108b02 });
@@ -343,7 +343,7 @@ describe('/api/ endpoints', () => {
     it('lists this computer\'s network addresses', async () => {
       const store = new ConsoleStore(path.join(tmp(), 'consoles.json'));
       const bridge = await startBridge({
-        host: '127.0.0.1', port: 0, root, store, createLink: () => new MockConsole(),
+        host: '127.0.0.1', port: 0, root, store, createLink: () => new FakeLink(),
         api: { network: () => [{ iface: 'en0', address: '192.168.1.12', netmask: '255.255.255.0' }] },
       });
       bridges.push(bridge);
@@ -353,7 +353,7 @@ describe('/api/ endpoints', () => {
   });
 
   it('is simply absent when no store is given', async () => {
-    const b = await startBridge({ host: '127.0.0.1', port: 0, root, createLink: () => new MockConsole() });
+    const b = await startBridge({ host: '127.0.0.1', port: 0, root, createLink: () => new FakeLink() });
     bridges.push(b);
     assert.equal((await call(b.port, 'GET', '/api/consoles')).status, 404);
   });

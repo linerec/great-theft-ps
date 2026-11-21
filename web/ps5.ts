@@ -3,7 +3,7 @@
 // The PS5 page: which console, is it ready, the route to it, and the one button that moves things forward.
 // Talks to the bridge's /api/ only. Never sees a key: the bridge keeps them.
 
-import { getBridgeToken, whyNoApi } from './tester.ts';
+import { getBridgeToken, setConsoleMac, whyNoApi } from './tester.ts';
 import { detectRoute, PATHS, pathById, STEPS, VERDICTS, type PathId, type RoutePath, type StepId } from './routes.ts';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -115,7 +115,14 @@ function cta(): Cta {
       },
     };
   }
-  return { label: '연결', kind: 'primary', note: '영상은 지금 시뮬레이터로 나옵니다. 실제 PS5 영상은 개발 중입니다.', run: () => $<HTMLButtonElement>('bridgeConnect').click() };
+  return {
+    label: '연결', kind: 'primary',
+    note: 'PS5에 연결합니다. 영상 수신은 개발 중이라, 지금은 연결이 어느 단계까지 되는지 화면에 그대로 보여 줍니다.',
+    run: () => {
+      setConsoleMac(c.mac);
+      $<HTMLButtonElement>('bridgeConnect').click();
+    },
+  };
 }
 
 function describeSessionError(d: Record<string, any>): string {
@@ -244,7 +251,7 @@ function renderStage(): void {
   $<HTMLElement>('ps5Overlay').hidden = live;
   $<HTMLElement>('ps5OverlayText').textContent =
     S.link.state === 'connecting' ? '연결하는 중…' : S.link.state === 'closed' ? `끊어짐${S.link.detail ? ` · ${S.link.detail}` : ''}` : '연결하면 여기에 화면이 나옵니다';
-  $<HTMLElement>('ps5Badge').textContent = S.link.name === 'core' ? 'gtp-core' : S.link.name === 'mock' || !S.link.name ? '시뮬레이터 영상' : S.link.name;
+  $<HTMLElement>('ps5Badge').textContent = S.link.name === 'core' ? 'gtp-core' : '실제 PS5';
 }
 
 function render(): void {

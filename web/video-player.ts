@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Draws the frames a bridge sends onto a canvas. Handles PNG (the simulated console) and H.264 Annex B
+// Draws the frames a bridge sends onto a canvas. Handles PNG (test frames) and H.264 Annex B
 // through WebCodecs (a real console). HEVC is not handled: ask the console for H.264 when using a browser.
 
 import { findSpsCodec } from '../src/bridge/h264.ts';

@@ -76,7 +76,7 @@ export const PATHS: RoutePath[] = [
       wake: { v: 'likely', proto: '브리지 → UDP 9302 WAKEUP', labels: ['(버튼 예정)', 'WAKEUP'], note: '깨우기 함수는 있고 화면 버튼은 아직 없습니다.' },
       register: { v: 'likely', proto: 'HTTP /api/register → TCP 9295', labels: ['코드 · 계정 ID 입력', '등록 요청'], note: '키는 브리지가 있는 컴퓨터에만 저장되고 브라우저로 오지 않습니다.' },
       session: { v: 'likely', proto: 'HTTP /api/session-check → TCP 9295', labels: ['연결 확인', '세션 요청'], note: '브리지가 저장된 키로 세션을 요청합니다. 연결 단계와 이어 붙이는 일은 아직입니다.' },
-      stream: { v: 'plan', proto: 'WebSocket(TCP) ↔ UDP 9296', labels: ['영상 · 입력(TCP)', 'Takion UDP'], note: '아직 시뮬레이터 영상만 흐릅니다. WebSocket은 TCP라 손실 시 지연이 커서, 나중에 WebRTC를 계획합니다.' },
+      stream: { v: 'plan', proto: 'WebSocket(TCP) ↔ UDP 9296', labels: ['영상 · 입력(TCP)', 'Takion UDP'], note: '영상 수신은 아직 구현 중입니다. WebSocket은 TCP라 손실 시 지연이 커서, 나중에 WebRTC를 계획합니다.' },
     },
     needs: '집의 컴퓨터에서 npm run bridge. 같은 컴퓨터의 브라우저는 토큰 없이, 다른 기기는 --host와 토큰.',
     watch: '브라우저와 브리지 사이는 TCP입니다. 지연은 화면의 “입력→화면 지연”으로 잽니다.',

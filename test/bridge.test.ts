@@ -13,7 +13,7 @@ import { BUTTON, emptyPadState } from '../src/engine/types.ts';
 import { CoreLink, FrameReader, writeFrame } from '../src/bridge/core-link.ts';
 import type { ConsoleLink } from '../src/bridge/console-link.ts';
 import { findSpsCodec, hasIdr } from '../src/bridge/h264.ts';
-import { MockConsole } from '../src/bridge/mock-console.ts';
+import { FakeLink } from './support/fake-link.ts';
 import {
   CODEC, decodePad, decodePing, decodePong, decodeVideo, encodePad, encodePing, encodePong, encodeVideo, isNeutral, MSG,
 } from '../src/bridge/protocol.ts';
@@ -93,10 +93,10 @@ async function bridgeWith(createLink: () => ConsoleLink): Promise<Bridge> {
   return b;
 }
 
-function mockBridge(): Promise<{ bridge: Bridge; mocks: MockConsole[] }> {
-  const mocks: MockConsole[] = [];
+function mockBridge(): Promise<{ bridge: Bridge; mocks: FakeLink[] }> {
+  const mocks: FakeLink[] = [];
   return bridgeWith(() => {
-    const m = new MockConsole();
+    const m = new FakeLink();
     mocks.push(m);
     return m;
   }).then((bridge) => ({ bridge, mocks }));
@@ -248,11 +248,11 @@ describe('websocket server', () => {
 
 describe('bridge without a token (the default on this computer)', () => {
   it('lets a client in with a plain hello, and still ignores input sent before it', async () => {
-    const mocks: MockConsole[] = [];
+    const mocks: FakeLink[] = [];
     const b = await startBridge({
       host: '127.0.0.1', port: 0, root,
       createLink: () => {
-        const m = new MockConsole();
+        const m = new FakeLink();
         mocks.push(m);
         return m;
       },
@@ -272,7 +272,7 @@ describe('bridge without a token (the default on this computer)', () => {
   });
 
   it('still refuses another web page (cross-origin) and a wrong Host, token or not', async () => {
-    const b = await startBridge({ host: '127.0.0.1', port: 0, root, createLink: () => new MockConsole() });
+    const b = await startBridge({ host: '127.0.0.1', port: 0, root, createLink: () => new FakeLink() });
     bridges.push(b);
     const status = (headers: Record<string, string>): Promise<number> =>
       new Promise((resolve) => {
@@ -293,11 +293,11 @@ describe('bridge without a token (the default on this computer)', () => {
   });
 
   it('refuses to listen beyond this computer without a token (before opening any port)', async () => {
-    await assert.rejects(startBridge({ host: '0.0.0.0', port: 0, root, createLink: () => new MockConsole() }), /requires a token/);
+    await assert.rejects(startBridge({ host: '0.0.0.0', port: 0, root, createLink: () => new FakeLink() }), /requires a token/);
   });
 
   it('with a token set, a hello that has none is refused', async () => {
-    const b = await startBridge({ host: '127.0.0.1', port: 0, token: 'abc', root, createLink: () => new MockConsole() });
+    const b = await startBridge({ host: '127.0.0.1', port: 0, token: 'abc', root, createLink: () => new FakeLink() });
     bridges.push(b);
     const c = await Client.open(b.port, false);
     c.ws.send(JSON.stringify({ type: 'hello', client: 'test' }));
@@ -433,7 +433,7 @@ describe('starting on a port', () => {
     const port = await listenOnLoopback(other);
     try {
       await assert.rejects(
-        startBridge({ host: '127.0.0.1', port, token: TOKEN, root, createLink: () => new MockConsole() }),
+        startBridge({ host: '127.0.0.1', port, token: TOKEN, root, createLink: () => new FakeLink() }),
         /already in use.*--port/,
       );
     } finally {
@@ -445,7 +445,7 @@ describe('starting on a port', () => {
     const probe = net.createServer();
     const port = await listenOnLoopback(probe);
     await new Promise<void>((resolve) => probe.close(() => resolve()));
-    const b = await startBridge({ host: '127.0.0.1', port, token: TOKEN, root, createLink: () => new MockConsole() });
+    const b = await startBridge({ host: '127.0.0.1', port, token: TOKEN, root, createLink: () => new FakeLink() });
     try {
       assert.equal(b.port, port);
     } finally {

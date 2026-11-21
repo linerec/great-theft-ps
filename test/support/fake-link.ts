@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// MockConsole: a simulated console for developing and testing the client and bridge without a PlayStation.
+// FakeLink: a TEST DOUBLE for a console link. It is not part of the app and is never offered to a user: it exists so the bridge's\n// relay logic (authentication, pad handling, backpressure, quality changes) can be tested without a PlayStation.
 // It streams real PNG frames that draw the pad state it RECEIVED (sticks, triggers, buttons), the frame number
 // and the last input sequence it applied. So you can see, and measure, the whole path: keyboard and mouse ->
 // mapping -> bridge -> console -> picture -> browser.
@@ -8,11 +8,11 @@
 // It honours resolution (capped to 960x540) and frame rate from a quality request. It ignores the bitrate
 // (PNG frames have no rate control), so it cannot show the data savings of a real H.264 stream.
 
-import { BUTTON_NAMES, BUTTON, emptyPadState, type VirtualPadState } from '../engine/types.ts';
-import type { ConsoleLink, LinkHandlers } from './console-link.ts';
+import { BUTTON_NAMES, BUTTON, emptyPadState, type VirtualPadState } from '../../src/engine/types.ts';
+import type { ConsoleLink, LinkHandlers } from '../../src/bridge/console-link.ts';
 import { encodePng } from './png.ts';
-import { CODEC } from './protocol.ts';
-import type { QualityRequest } from './quality.ts';
+import { CODEC } from '../../src/bridge/protocol.ts';
+import type { QualityRequest } from '../../src/bridge/quality.ts';
 
 // 3x5 digits, one row per 3-bit number.
 const GLYPHS: Record<string, number[]> = {
@@ -65,7 +65,7 @@ class Canvas {
   }
 }
 
-export class MockConsole implements ConsoleLink {
+export class FakeLink implements ConsoleLink {
   readonly name = 'mock';
 
   #handlers: LinkHandlers | null = null;
@@ -94,7 +94,7 @@ export class MockConsole implements ConsoleLink {
     this.#handlers = handlers;
     this.#quality = quality;
     this.#startedAt = Date.now();
-    handlers.onStatus({ state: 'streaming', detail: 'mock console (simulated)' });
+    handlers.onStatus({ state: 'streaming', detail: 'fake link (test double)' });
     this.#schedule();
   }
 

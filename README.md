@@ -39,7 +39,7 @@ Requires Node.js 24 or newer. No dependencies to install.
 ```sh
 npm test         # unit and integration tests (node --test): 158 tests
 npm run dev      # test beds (FPS, GTA style) at http://127.0.0.1:5173/, no console needed
-npm run bridge   # bridge with a SIMULATED console; open the printed URL (no token needed on this computer)
+npm run bridge   # the bridge to your PS5; open the printed URL (no token needed on this computer)
 npm run e2e      # real-browser end-to-end check (headless Chrome <-> bridge <-> simulated console)
 npm run discover # look for PlayStation consoles on the local network (run it where the console is)
 npm run register -- --host <console IP>   # register with your console (see below); the page can do it too
@@ -62,8 +62,7 @@ This part has been checked against chiaki-ng's test vectors and a simulated cons
 The page has three places. **PS5** is the main one: your consoles, one button that moves you forward (register, check, connect), the
 route to the console (and a map of every route, inside the home and outside), and the picture. **연습장** holds the two test games that
 show what the keyboard and mouse do to a pad: click the game to lock the mouse (Esc releases it), W A S D move, the mouse looks, left
-click shoots, right click aims, Shift sprints. **설정** has the input mapping, console management and advanced items. Until the real
-console link exists, the picture on the PS5 page comes from the simulated console, which draws the pad state it received; the page says so.
+click shoots, right click aims, Shift sprints. **설정** has the input mapping, console management and advanced items. The PS5 page talks to a real console only: there is no simulated picture. Until video receiving is built, connecting shows how far the connection gets and says where it stops.
 
 ### Move a registration to another computer (never register twice)
 

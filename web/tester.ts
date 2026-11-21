@@ -213,6 +213,11 @@ bridgeUrl.value = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location
 let bridgeToken = '';
 /** For the other modules of the page (ps5.ts) that call the bridge's /api/. Empty on a bridge that needs no token. */
 export const getBridgeToken = (): string => bridgeToken;
+/** Which registered console the next connection is for (set by the PS5 page). */
+let consoleMac = '';
+export const setConsoleMac = (mac: string): void => {
+  consoleMac = mac;
+};
 {
   const fromHash = new URLSearchParams(location.hash.slice(1)).get('token');
   if (fromHash) {
@@ -402,7 +407,7 @@ void refreshRegistered();
 
 $<HTMLButtonElement>('bridgeConnect').addEventListener('click', () => {
   player.close();
-  client.connect(bridgeUrl.value, bridgeToken);
+  client.connect(bridgeUrl.value, bridgeToken, consoleMac);
 });
 $<HTMLButtonElement>('bridgeDisconnect').addEventListener('click', () => client.disconnect());
 $<HTMLSelectElement>('consoleProfile').addEventListener('change', (e) => {
@@ -938,7 +943,7 @@ async function runE2e(): Promise<void> {
   };
   try {
     setMode('console', false);
-    client.connect(bridgeUrl.value, bridgeToken);
+    client.connect(bridgeUrl.value, bridgeToken, consoleMac);
     await until(() => client.state === 'ready', 5000);
     check('connected and authenticated', client.state === 'ready', client.detail);
 
@@ -956,7 +961,7 @@ async function runE2e(): Promise<void> {
     const last = client.serverStats.lastPad as { ly: number; r2: number; rx: number } | undefined;
     check('bridge saw W as stick up, left click as R2, mouse as right stick', !!last && last.ly < -30000 && last.r2 === 255 && last.rx !== 0, JSON.stringify(last));
     check('round trip time measured', client.rttMs > 0, `${client.rttMs.toFixed(1)} ms`);
-    // Keep one frame the simulated console drew from the pad it received, so it can be looked at.
+    // Keep one frame the test double drew from the pad it received, so it can be looked at.
     frame = view.toDataURL('image/png');
 
     client.sendJson({ type: 'quality', preset: 'saver', fps: 15 });
@@ -997,4 +1002,4 @@ async function runE2e(): Promise<void> {
 }
 
 if (params.has('e2e')) void runE2e();
-if (params.has('autoconnect') && mode === 'console') client.connect(bridgeUrl.value, bridgeToken);
+if (params.has('autoconnect') && mode === 'console') client.connect(bridgeUrl.value, bridgeToken, consoleMac);

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// End-to-end check in a REAL browser: starts the bridge with a simulated console, opens headless Chrome on the
+// End-to-end check in a REAL browser: starts the bridge with a test double for the console (test/support/fake-link.ts), opens headless Chrome on the
 // console page, lets the page drive keyboard/mouse input, and waits for the page's report. Also checks what the
 // simulated console itself received (the server-side truth). Needs Chrome or Edge; run with `npm run e2e`.
 import { spawn } from 'node:child_process';
@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { MockConsole } from '../src/bridge/mock-console.ts';
+import { FakeLink } from '../test/support/fake-link.ts';
 import { startBridge } from '../src/bridge/server.ts';
 import { ConsoleStore } from '../src/console/store.ts';
 
@@ -60,7 +60,7 @@ const bridge = await startBridge({
     },
   },
   createLink: () => {
-    mock = new MockConsole();
+    mock = new FakeLink();
     const original = mock.sendPad.bind(mock);
     mock.sendPad = (seq, state) => {
       maxRightX = Math.max(maxRightX, Math.abs(state.rightX));
@@ -81,12 +81,12 @@ try {
   console.log(report.lines.join('\n'));
   if (process.env.E2E_FRAME_OUT && typeof report.frame === 'string' && report.frame.startsWith('data:image/png;base64,')) {
     writeFileSync(process.env.E2E_FRAME_OUT, Buffer.from(report.frame.slice(22), 'base64'));
-    console.log(`saved the last simulated-console frame to ${process.env.E2E_FRAME_OUT}`);
+    console.log(`saved the last test-double frame to ${process.env.E2E_FRAME_OUT}`);
   }
-  // Server-side truth: what the simulated console actually received.
+  // Server-side truth: what the test double actually received.
   const serverOk = mock && mock.padCount > 20 && mock.lastPad.leftY < -0.99 && mock.lastPad.r2 === 255 && maxRightX > 0.05;
   console.log(
-    `${serverOk ? 'ok  ' : 'FAIL'} the simulated console received the pad (pads ${mock?.padCount}, leftY ${mock?.lastPad.leftY.toFixed(2)}, r2 ${mock?.lastPad.r2}, largest right stick seen ${maxRightX.toFixed(2)})`,
+    `${serverOk ? 'ok  ' : 'FAIL'} the test double received the pad (pads ${mock?.padCount}, leftY ${mock?.lastPad.leftY.toFixed(2)}, r2 ${mock?.lastPad.r2}, largest right stick seen ${maxRightX.toFixed(2)})`,
   );
   // The account id came from the PSN step of the page (stubbed), not typed into the registration form.
   const registerOk =
