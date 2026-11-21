@@ -36,12 +36,17 @@ const reported = new Promise((r) => (resolveReport = r));
 const storeDir = mkdtempSync(path.join(tmpdir(), 'gtp-e2e-store-'));
 const store = new ConsoleStore(path.join(storeDir, 'consoles.json'));
 let registerCall;
+let psnCode;
 const bridge = await startBridge({
   host: '127.0.0.1',
   port: 0,
   root,
   store,
   api: {
+    psn: async (code) => {
+      psnCode = code;
+      return 'AgEAAAAAAAA=';
+    },
     // The form sends only an address, so the bridge asks the network what is there first; answer like a PS5 would.
     discover: async () => ({
       hosts: [{ address: '192.168.1.50', state: 'ready', statusCode: 200, hostId: '0123456789AB', hostName: 'E2E', hostType: 'PS5', isPs5: true, target: 'ps5-1' }],
@@ -83,8 +88,11 @@ try {
   console.log(
     `${serverOk ? 'ok  ' : 'FAIL'} the simulated console received the pad (pads ${mock?.padCount}, leftY ${mock?.lastPad.leftY.toFixed(2)}, r2 ${mock?.lastPad.r2}, largest right stick seen ${maxRightX.toFixed(2)})`,
   );
-  const registerOk = registerCall?.host === '192.168.1.50' && String(registerCall?.pin) === '24680135' && !!store.get('0123456789ab') && store.accountId === 'AgEAAAAAAAA=';
-  console.log(`${registerOk ? 'ok  ' : 'FAIL'} the bridge received the form's registration and stored the console (target ${registerCall?.target})`);
+  // The account id came from the PSN step of the page (stubbed), not typed into the registration form.
+  const registerOk =
+    psnCode === 'E2ELoginCode-123' && registerCall?.host === '192.168.1.50' && String(registerCall?.pin) === '24680135' && registerCall?.accountId === 'AgEAAAAAAAA=' &&
+    !!store.get('0123456789ab') && store.accountId === 'AgEAAAAAAAA=';
+  console.log(`${registerOk ? 'ok  ' : 'FAIL'} the bridge got the login code from the page, fetched the account id, and used it for the registration (target ${registerCall?.target})`);
   exitCode = report.pass && serverOk && registerOk ? 0 : 1;
   console.log(exitCode === 0 ? '\nE2E PASS' : '\nE2E FAIL');
 } catch (e) {

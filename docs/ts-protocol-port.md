@@ -57,11 +57,16 @@ Facts seen on a PS5 in rest mode (2026-11-20, macOS, home network). Identifiers 
   Play clients use), so the registration key never has to be copied out of another program. The result is kept in
   `~/.gtp/consoles.json` (or `$GTP_HOME`), written with owner-only permissions where the system supports it, and is never
   sent to the browser. Treat that file like a password for your console.
-- **The PSN account id.** The console wants the numeric id of your PSN account during registration. This project takes it
-  as an input (a decimal number, or its 8 bytes in base64) and does **not** log in to PSN for you. chiaki-ng obtains it by
-  exchanging a login code at Sony's token endpoint with the client id and secret of Sony's own Remote Play app; that is
-  deliberately not ported, because it means presenting Sony's application credentials and holding a token for your
-  account. How to get the number without that is an open decision for the project owner.
+- **The PSN account id.** The console wants the numeric id of your PSN account during registration. It can be typed in
+  (a decimal number, or its 8 bytes in base64), or fetched by the page ("PSN 계정 ID를 모르면 여기서 가져오기").
+  Fetching is the flow chiaki-ng uses: the user logs in on Sony's own page, a one-time code in the redirect address is
+  exchanged at Sony's token endpoint, and the id is read from the token info. **That exchange is authenticated with the
+  client id and secret of Sony's own Remote Play application** (published by chiaki-ng), which makes it a grey area: an
+  unofficial client presenting an official application's credentials. It was added only because the project owner asked
+  for it, it is opt-in (the page shows a notice that must be accepted), runs on the bridge only (the secret never reaches
+  a browser), and keeps as little as possible: the access and refresh tokens are never stored, logged or returned, only the
+  account id is kept, and the code is cleared from the page after use. Rate limited to 6 exchanges a minute. Anyone who
+  prefers not to use it can leave it alone and type the number in. Not yet run against Sony's servers.
 - **LAN only first.** Connecting from outside the home network needs a PSN login and NAT traversal (`lib/src/remote/`).
 
 ## Browser-only later

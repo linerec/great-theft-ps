@@ -90,6 +90,18 @@
         <label>8자리 코드
           <input id="regPin" type="text" inputmode="numeric" maxlength="9" spellcheck="false" autocomplete="off" aria-label="콘솔에 표시된 8자리 코드">
         </label>
+        <details id="psnBox">
+          <summary>PSN 계정 ID를 모르면 여기서 가져오기</summary>
+          <p class="hint">Sony 로그인 페이지에 직접 로그인한 뒤, 나온 주소의 일회용 코드로 <b>계정 ID 숫자만</b> 가져와 이 컴퓨터에 저장합니다.
+            이 방식은 <b>Sony 공식 Remote Play 앱의 인증 정보</b>(chiaki-ng 공개 소스의 값)로 코드를 교환합니다. 비공식 클라이언트가 그 정보를 쓰는 것이라 Sony 약관상 회색지대이니 본인 계정에만 쓰세요.
+            받은 접근 토큰은 저장하지도 기록하지도 않고 바로 버립니다. 주소의 <code>code=</code> 는 일회용 로그인 코드이므로 이 칸 밖에는 붙여 넣지 마세요.</p>
+          <label><input id="psnAck" type="checkbox"> 위 내용을 이해했고, 내 계정으로 진행합니다</label>
+          <p><a id="psnLogin" href="#" target="_blank" rel="noopener noreferrer">1. Sony 로그인 열기 (새 탭)</a></p>
+          <label>2. 로그인 후 “redirect”라고 뜬 페이지의 <b>주소창 주소 전체</b>를 붙여넣기
+            <input id="psnUrl" type="password" spellcheck="false" autocomplete="off" aria-label="로그인 후 주소">
+          </label>
+          <div class="row"><button id="psnGo" type="button" disabled>3. 계정 ID 가져오기</button></div>
+        </details>
         <label>PSN 계정 ID <span class="note" id="regAccountNote">(숫자 또는 Base64. 처음 한 번만 필요)</span>
           <input id="regAccount" type="password" spellcheck="false" autocomplete="off" aria-label="PSN 계정 ID">
         </label>

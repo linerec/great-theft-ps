@@ -51,7 +51,10 @@ Run this on a computer on the same network as the console. The console must be *
 System > Remote Play > Link Device** open; it shows an 8 digit code. Either use the "콘솔 등록" part of the page that
 `npm run bridge` prints, or the command line above (it asks for the code and the account id, and says exactly why it failed
 when it does). The first registration also needs your PSN account id (a decimal number, or its 8 bytes in base64); it is
-remembered afterwards. The result is saved in `~/.gtp/consoles.json` (set `GTP_HOME` to move it) and is never sent to the
+remembered afterwards. If you do not know it, the page can fetch it: "PSN 계정 ID를 모르면 여기서 가져오기" opens Sony's own
+login page in your browser and reads the id from the address it redirects to. **Read the notice there:** this uses the client
+credentials of Sony's own Remote Play app (as chiaki-ng does), which is a grey area under Sony's terms; tokens are not kept.
+It is optional: typing the number in works without it. The result is saved in `~/.gtp/consoles.json` (set `GTP_HOME` to move it) and is never sent to the
 browser. That file lets a program control your console: keep it private and do not commit or share it.
 This part has been checked against chiaki-ng's test vectors and a simulated console only, **not yet against a real console**.
 

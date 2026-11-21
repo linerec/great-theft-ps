@@ -40,7 +40,7 @@ export interface BridgeOptions {
   /** Where registered consoles are kept. Without it the /api/ endpoints are off. */
   store?: ConsoleStore;
   /** Replaces network discovery and registration. For tests. */
-  api?: Pick<ApiOptions, 'discover' | 'register'>;
+  api?: Pick<ApiOptions, 'discover' | 'register' | 'psn'>;
   log?: (line: string) => void;
   /** Test hook: when set, a client message {type:'e2e', ...} is passed to it. Off in normal use. */
   onE2eReport?: (report: unknown) => void;

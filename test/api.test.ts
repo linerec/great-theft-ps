@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { MockConsole } from '../src/bridge/mock-console.ts';
 import { startBridge, type Bridge } from '../src/bridge/server.ts';
 import type { DiscoveredHost } from '../src/console/discovery.ts';
+import { PsnAccountError } from '../src/console/psn-account.ts';
 import { RegistError, type RegisterOptions, type RegisteredConsole } from '../src/console/regist.ts';
 import { ConsoleStore } from '../src/console/store.ts';
 
@@ -113,7 +114,7 @@ const host = (over: Partial<DiscoveredHost> = {}): DiscoveredHost => ({
   address: '192.168.1.50', state: 'ready', statusCode: 200, hostName: 'PS5-TEST', hostType: 'PS5', hostId: '0123456789AB', isPs5: true, target: 'ps5-1', ...over,
 });
 
-async function apiBridge(o: { token?: string; register?: (r: RegisterOptions) => Promise<RegisteredConsole>; hosts?: DiscoveredHost[] } = {}) {
+async function apiBridge(o: { token?: string; register?: (r: RegisterOptions) => Promise<RegisteredConsole>; hosts?: DiscoveredHost[]; psn?: (code: string) => Promise<string> } = {}) {
   const store = new ConsoleStore(path.join(tmp(), 'consoles.json'));
   const calls: RegisterOptions[] = [];
   const lines: string[] = [];
@@ -121,6 +122,7 @@ async function apiBridge(o: { token?: string; register?: (r: RegisterOptions) =>
     host: '127.0.0.1', port: 0, root, store, createLink: () => new MockConsole(), log: (l) => lines.push(l),
     ...(o.token !== undefined ? { token: o.token } : {}),
     api: {
+      ...(o.psn ? { psn: o.psn } : {}),
       discover: async () => ({ hosts: o.hosts ?? [host()] }),
       register: async (r) => {
         calls.push(r);
@@ -212,6 +214,76 @@ describe('/api/ endpoints', () => {
     assert.equal((await call(bridge.port, 'GET', '/api/consoles')).status, 401);
     assert.equal((await call(bridge.port, 'GET', '/api/consoles', { headers: { Authorization: 'Bearer wrong' } })).status, 401);
     assert.equal((await call(bridge.port, 'GET', '/api/consoles', { headers: { Authorization: 'Bearer secret-token' } })).status, 200);
+  });
+
+  describe('PSN account id', () => {
+    const USER_ID = 1234567890123456789n;
+    const idBytes = Buffer.alloc(8);
+    idBytes.writeBigUInt64LE(USER_ID);
+    const ACCOUNT_B64 = idBytes.toString('base64');
+    const CODE = 'v3.OneTimeLoginCode-9876';
+    const redirect = `https://remoteplay.dl.playstation.net/remoteplay/redirect?code=${CODE}&cid=x`;
+
+    it('hands out Sony\'s login address, never the client secret', async () => {
+      const { bridge } = await apiBridge();
+      const r = await call(bridge.port, 'GET', '/api/psn/login-url');
+      assert.equal(r.status, 200);
+      assert.match(r.json().url, /^https:\/\/auth\.api\.sonyentertainmentnetwork\.com\/2\.0\/oauth\/authorize\?/);
+      assert.ok(!r.text.includes('mvaiZ'));
+    });
+
+    it('needs the notice to be accepted before anything is sent to Sony', async () => {
+      const seen: string[] = [];
+      const { bridge } = await apiBridge({ psn: async (c) => (seen.push(c), ACCOUNT_B64) });
+      const r = await call(bridge.port, 'POST', '/api/psn/account-id', { body: { redirectUrl: redirect } });
+      assert.equal(r.status, 400);
+      assert.equal(r.json().error, 'acknowledge-needed');
+      const r2 = await call(bridge.port, 'POST', '/api/psn/account-id', { body: { redirectUrl: redirect, acknowledge: 'yes' } });
+      assert.equal(r2.status, 400, 'only true counts');
+      assert.deepEqual(seen, []);
+    });
+
+    it('saves the account id here and answers with its last digits only', async () => {
+      const seen: string[] = [];
+      const { bridge, store, lines } = await apiBridge({ psn: async (c) => (seen.push(c), ACCOUNT_B64) });
+      const r = await call(bridge.port, 'POST', '/api/psn/account-id', { body: { redirectUrl: redirect, acknowledge: true } });
+      assert.equal(r.status, 200);
+      assert.deepEqual(r.json(), { accountIdSaved: true, hint: '6789' });
+      assert.deepEqual(seen, [CODE], 'the bridge extracted the code and passed only that on');
+      assert.equal(store.accountId, ACCOUNT_B64);
+      for (const secret of [ACCOUNT_B64, USER_ID.toString(), CODE]) {
+        assert.ok(!r.text.includes(secret), 'not in the answer');
+        assert.ok(!lines.join('\n').includes(secret), 'not in the log');
+      }
+      assert.equal((await call(bridge.port, 'GET', '/api/consoles')).json().accountIdSaved, true);
+    });
+
+    it('refuses what is not a Sony redirect address, and reports Sony refusing, saving nothing', async () => {
+      const { bridge, store } = await apiBridge({
+        psn: async () => {
+          throw new PsnAccountError('login-rejected', 'Sony did not accept the login code (HTTP 400, invalid_grant)');
+        },
+      });
+      const wrong = await call(bridge.port, 'POST', '/api/psn/account-id', { body: { redirectUrl: 'https://example.com/?code=abcd1234', acknowledge: true } });
+      assert.equal(wrong.status, 400);
+      assert.equal(wrong.json().error, 'invalid-input');
+      const rejected = await call(bridge.port, 'POST', '/api/psn/account-id', { body: { redirectUrl: redirect, acknowledge: true } });
+      assert.equal(rejected.status, 403);
+      assert.equal(rejected.json().error, 'login-rejected');
+      assert.equal(store.accountId, undefined);
+    });
+
+    it('limits how often it asks Sony', async () => {
+      let asked = 0;
+      const { bridge } = await apiBridge({ psn: async () => (asked++, ACCOUNT_B64) });
+      let limited = 0;
+      for (let i = 0; i < 12 && !limited; i++) {
+        const r = await call(bridge.port, 'POST', '/api/psn/account-id', { body: { redirectUrl: redirect, acknowledge: true } });
+        if (r.status === 429) limited = i + 1;
+      }
+      assert.ok(limited > 0, 'the limit kicked in');
+      assert.ok(asked <= 6, `at most 6 requests reached Sony in a minute (${asked})`);
+    });
   });
 
   it('is simply absent when no store is given', async () => {

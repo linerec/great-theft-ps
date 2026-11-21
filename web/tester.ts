@@ -313,6 +313,45 @@ $<HTMLSelectElement>('regHost').addEventListener('change', (e) => {
   if (v) $<HTMLInputElement>('regAddr').value = v;
 });
 
+// Getting the account id from Sony. The page only shows Sony's login link and takes the pasted address; the exchange
+// happens in the bridge, and nothing but the last four digits of the id ever comes back.
+void api('GET', '/api/psn/login-url')
+  .then((r) => {
+    if (r.ok && typeof r.data.url === 'string') $<HTMLAnchorElement>('psnLogin').href = r.data.url;
+  })
+  .catch(() => {});
+$<HTMLInputElement>('psnAck').addEventListener('change', (e) => {
+  $<HTMLButtonElement>('psnGo').disabled = !(e.target as HTMLInputElement).checked;
+});
+const PSN_HINT: Record<string, string> = {
+  'acknowledge-needed': '안내를 확인하고 체크해야 합니다.',
+  'invalid-input': '붙여넣은 값이 맞지 않습니다. 로그인 후 “redirect”라고 뜬 페이지의 주소창 주소 전체를 복사하세요.',
+  'login-rejected': 'Sony가 로그인 코드를 받아들이지 않았습니다. 코드는 한 번만 쓸 수 있고 금방 만료됩니다. 다시 로그인해서 새 주소를 붙여넣으세요.',
+  network: 'Sony에 연결하지 못했습니다. 인터넷 연결을 확인하세요.',
+  'too-many': '시도가 너무 많습니다. 1분 뒤에 다시 하세요.',
+};
+$<HTMLButtonElement>('psnGo').addEventListener('click', async () => {
+  const urlInput = $<HTMLInputElement>('psnUrl');
+  const button = $<HTMLButtonElement>('psnGo');
+  if (!urlInput.value.trim()) return say('로그인 후 나온 페이지의 주소를 붙여넣으세요.', 'err');
+  button.disabled = true;
+  say('Sony에서 계정 ID를 가져오는 중…');
+  try {
+    const r = await api('POST', '/api/psn/account-id', { redirectUrl: urlInput.value, acknowledge: $<HTMLInputElement>('psnAck').checked });
+    if (r.ok) {
+      say(`계정 ID를 가져와 저장했습니다 (끝 4자리 ${String(r.data.hint ?? '')}). 이제 코드만 입력하고 등록하세요.`, 'ok');
+      await refreshRegistered();
+    } else {
+      say(`${PSN_HINT[String(r.data.error ?? '')] ?? '가져오지 못했습니다.'}${r.data.message ? ` (${r.data.message})` : ''}`, 'err');
+    }
+  } catch {
+    say('브리지에 연결하지 못했습니다.', 'err');
+  } finally {
+    urlInput.value = ''; // a one-time login code does not belong on the page any longer
+    button.disabled = !$<HTMLInputElement>('psnAck').checked;
+  }
+});
+
 $<HTMLButtonElement>('regGo').addEventListener('click', async () => {
   const pinInput = $<HTMLInputElement>('regPin');
   const accountInput = $<HTMLInputElement>('regAccount');
@@ -906,10 +945,20 @@ async function runE2e(): Promise<void> {
     await sleep(2600);
     check('quality change takes effect (frame rate follows)', client.fpsIn >= 8 && client.fpsIn <= 20, `${client.fpsIn} fps received`);
 
-    // The registration form: fill it in like a person would and press the button.
+    // Getting the PSN account id: the button stays off until the notice is accepted, then the pasted address is sent.
+    const psnGo = $<HTMLButtonElement>('psnGo');
+    check('the account id button is off until the notice is accepted', psnGo.disabled);
+    $<HTMLInputElement>('psnAck').click();
+    check('accepting the notice turns the button on', !psnGo.disabled);
+    $<HTMLInputElement>('psnUrl').value = 'https://remoteplay.dl.playstation.net/remoteplay/redirect?code=E2ELoginCode-123&cid=x';
+    psnGo.click();
+    await until(() => (regMsg.textContent ?? '').includes('저장했습니다'), 4000);
+    check('the account id is fetched and saved through the page', (regMsg.textContent ?? '').includes('저장했습니다'), regMsg.textContent ?? '');
+    check('the one-time login code is cleared from the page afterwards', $<HTMLInputElement>('psnUrl').value === '');
+
+    // The registration form: fill it in like a person would and press the button (no account id typed: the saved one is used).
     $<HTMLInputElement>('regAddr').value = '192.168.1.50';
     $<HTMLInputElement>('regPin').value = '2468 0135';
-    $<HTMLInputElement>('regAccount').value = '258';
     $<HTMLButtonElement>('regGo').click();
     await until(() => ($<HTMLElement>('regList').textContent ?? '').includes('E2E console'), 4000);
     check('registration form registers a console and lists it', ($<HTMLElement>('regList').textContent ?? '').includes('E2E console'), regMsg.textContent ?? '');

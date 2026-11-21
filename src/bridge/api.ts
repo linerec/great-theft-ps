@@ -6,6 +6,9 @@
 //   GET    /api/consoles          registered consoles (public fields) and whether an account id is saved
 //   GET    /api/discover[?host=]  consoles answering on the network, each marked registered or not
 //   POST   /api/register          { host, pin, accountId?, target? }  registers and stores the result
+//   GET    /api/psn/login-url     Sony's login page address (opened by the user in their own browser)
+//   POST   /api/psn/account-id    { redirectUrl, acknowledge: true }  gets the PSN account id and saves it here. The answer
+//                                 holds only its last four digits; tokens are never kept, logged or returned.
 //   DELETE /api/consoles/<mac>    forgets a registration on this computer (the console keeps its own list)
 //
 // Same rules as the WebSocket: loopback Host, same-origin Origin when the browser sends one, and the token when one is
@@ -16,6 +19,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import { discover as realDiscover, type DiscoveredHost } from '../console/discovery.ts';
 import { parseAccountId, register as realRegister, RegistError, type RegisterOptions, type RegisteredConsole } from '../console/regist.ts';
+import { extractLoginCode, fetchAccountId, PSN_LOGIN_URL, PsnAccountError } from '../console/psn-account.ts';
 import { isKnownTarget } from '../console/rpcrypt.ts';
 import type { ConsoleStore } from '../console/store.ts';
 
@@ -25,8 +29,14 @@ export interface ApiOptions {
   /** Replaced by tests. */
   discover?: (opts: { hosts?: string[]; timeoutMs?: number }) => Promise<{ hosts: DiscoveredHost[] }>;
   register?: (opts: RegisterOptions) => Promise<RegisteredConsole>;
+  /** Exchanges a PSN login code for the account id (base64 of its 8 bytes). Replaced by tests. */
+  psn?: (code: string) => Promise<string>;
   log?: (line: string) => void;
 }
+
+/** At most this many PSN exchanges per minute: a mistyped paste should not turn into a stream of requests to Sony. */
+const PSN_PER_MINUTE = 6;
+const psnAttempts: number[] = [];
 
 const MAX_BODY = 4096;
 const sha = (s: string): Buffer => createHash('sha256').update(s).digest();
@@ -130,6 +140,22 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
       const result = await register({ host: body.host, target: target as never, pin: body.pin as string | number, accountId: accountText, log });
       store.setAccountId(Buffer.from(parseAccountId(accountText)).toString('base64'));
       json(res, 200, { console: store.put(result, body.host) });
+    } else if (req.method === 'GET' && url.pathname === '/api/psn/login-url') {
+      json(res, 200, { url: PSN_LOGIN_URL });
+    } else if (req.method === 'POST' && url.pathname === '/api/psn/account-id') {
+      const body = (await readBody(req)) as { redirectUrl?: unknown; acknowledge?: unknown };
+      if (body.acknowledge !== true) return json(res, 400, { error: 'acknowledge-needed', message: 'The notice about using Sony application credentials must be accepted first' }), true;
+      if (typeof body.redirectUrl !== 'string') return json(res, 400, { error: 'invalid-input', message: 'Paste the address of the page shown after the Sony login' }), true;
+      const code = extractLoginCode(body.redirectUrl);
+      const now = Date.now();
+      while (psnAttempts.length && now - psnAttempts[0]! > 60_000) psnAttempts.shift();
+      if (psnAttempts.length >= PSN_PER_MINUTE) return json(res, 429, { error: 'too-many', message: 'Too many attempts. Wait a minute' }), true;
+      psnAttempts.push(now);
+      log('exchanging a PSN login code for the account id'); // never the code, the tokens or the id
+      const accountId = await (opts.psn ?? ((c: string) => fetchAccountId(c)))(code);
+      store.setAccountId(accountId);
+      // Only the last digits go back, enough to recognise the account. The full value stays in the store.
+      json(res, 200, { accountIdSaved: true, hint: Buffer.from(accountId, 'base64').readBigUInt64LE().toString().slice(-4) });
     } else if (req.method === 'DELETE' && url.pathname.startsWith('/api/consoles/')) {
       const mac = decodeURIComponent(url.pathname.slice('/api/consoles/'.length));
       const removed = store.remove(mac);
@@ -138,7 +164,9 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
       json(res, 404, { error: 'unknown endpoint' });
     }
   } catch (e) {
-    if (e instanceof RegistError) {
+    if (e instanceof PsnAccountError) {
+      json(res, e.code === 'invalid-input' ? 400 : e.code === 'login-rejected' ? 403 : 502, { error: e.code, message: e.message });
+    } else if (e instanceof RegistError) {
       const status = e.code === 'invalid-input' || e.code === 'unsupported-target' ? 400 : e.code === 'rejected' ? 403 : 502;
       json(res, status, { error: e.code, message: e.message, ...(e.reason !== undefined ? { reason: e.reason } : {}) });
     } else {
