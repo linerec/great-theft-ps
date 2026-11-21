@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 import { ConsoleStore, defaultStorePath } from '../console/store.ts';
 import { CoreLink } from './core-link.ts';
-import { Ps5Link } from './ps5-link.ts';
+import { Ps5Link, StreamResearch } from './ps5-link.ts';
 import { startBridge } from './server.ts';
 
 function parseArgs(argv: string[]): Record<string, string[]> {
@@ -46,15 +46,17 @@ if (linkKind === 'core' && !args.core) {
 }
 
 const store = new ConsoleStore(defaultStorePath());
+const research = new StreamResearch();
 const bridge = await startBridge({
   host,
   port,
   ...(token !== undefined ? { token } : {}),
   root,
   store,
+  research,
   log,
   createLink: () =>
-    linkKind === 'ps5' ? new Ps5Link({ store, log }) : new CoreLink({ command: first('core', ''), args: args['core-arg'] ?? [], log }),
+    linkKind === 'ps5' ? new Ps5Link({ store, research, log }) : new CoreLink({ command: first('core', ''), args: args['core-arg'] ?? [], log }),
 }).catch((error: Error) => {
   console.error(`Could not start the bridge: ${error.message}`);
   process.exit(1);

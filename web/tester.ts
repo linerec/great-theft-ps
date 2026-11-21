@@ -1001,5 +1001,32 @@ async function runE2e(): Promise<void> {
   client.sendJson({ type: 'e2e', pass, lines, frame: frame.length < 60000 ? frame : '' });
 }
 
+/**
+ * Connect to the console, wait for decoded frames, and send a small picture of the canvas back to the bridge
+ * (driven by tools/snap-console.mjs). It sends no input. For checking the real picture path in a real browser.
+ */
+async function runSnap(): Promise<void> {
+  const lines: string[] = [];
+  let frame = '';
+  try {
+    setMode('console', false);
+    client.connect(bridgeUrl.value, bridgeToken, consoleMac);
+    await until(() => client.state === 'ready' || client.state === 'closed', 25000);
+    lines.push(`link state: ${client.state}${client.detail ? ` (${client.detail})` : ''}`);
+    await until(() => player.decoded >= 45, 15000);
+    lines.push(`frames decoded ${player.decoded}, dropped ${player.dropped}, received ${client.fpsIn} fps / ${client.kbpsIn} kbit/s`);
+    lines.push(`canvas ${view.width}x${view.height}`);
+    const small = document.createElement('canvas');
+    small.width = 640;
+    small.height = 360;
+    small.getContext('2d')!.drawImage(view, 0, 0, small.width, small.height);
+    frame = small.toDataURL('image/jpeg', 0.6);
+  } catch (e) {
+    lines.push(`error: ${String(e)}`);
+  }
+  client.sendJson({ type: 'e2e', pass: player.decoded > 0, lines, frame: frame.length < 60000 ? frame : '' });
+}
+
+if (params.has('snap')) void runSnap();
 if (params.has('e2e')) void runE2e();
 if (params.has('autoconnect') && mode === 'console') client.connect(bridgeUrl.value, bridgeToken, consoleMac);

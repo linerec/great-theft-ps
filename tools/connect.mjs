@@ -4,14 +4,18 @@
 // against real hardware. It sends no controller input and it closes the connection at the end.
 //
 //   npm run connect [-- --mac <id>] [--host <ip>] [--hold <seconds>]
+//   npm run connect -- --stream <seconds> [--video 960x540x30x4000] [--save first-key-frame.h264]
 //
 // Steps: is the console there and on (a direct question to its address) -> session request -> control connection ->
-// session id. Nothing secret is printed: no keys, no device id, no session id (only its length).
+// session id, and with --stream: the stream connection and a few seconds of video, counted and measured.
+// Nothing secret is printed: no keys, no device id, no session id (only its length).
 
 import { discover } from '../src/console/discovery.ts';
 import { Ctrl, CtrlError, CTRL_MESSAGE } from '../src/console/ctrl.ts';
 import { requestSession, SessionError } from '../src/console/session.ts';
 import { ConsoleStore, defaultStorePath } from '../src/console/store.ts';
+import { StreamConnection } from '../src/console/streamconnection.ts';
+import { takionTransport } from '../src/console/takion-transport.ts';
 
 const argv = process.argv.slice(2);
 const opt = (name) => {
@@ -75,7 +79,63 @@ try {
     else bad(`${e.message}`);
   }
 
-  if (holdSeconds > 0) {
+  const streamSeconds = Number(opt('stream') ?? 0);
+  if (exitCode === 0 && streamSeconds > 0) {
+    exitCode = 1;
+    step(5, 'Stream connection (UDP 9296): transport handshake, key exchange, stream info');
+    const [w, h, fps, kbps] = (opt('video') ?? '960x540x30x4000').split('x').map(Number);
+    const transport = takionTransport({ host, protocolVersion: record.target.startsWith('ps5') ? 12 : 9 });
+    let frames = 0;
+    let keyFrames = 0;
+    let bytes = 0;
+    let firstKey = null;
+    let closedReason = '';
+    const stream = new StreamConnection({
+      transport, target: record.target, sessionId: ctrl.sessionId, sessionCrypt: grant.crypt,
+      video: { width: w, height: h, maxFps: fps, bitrateKbps: kbps, codec: 'h264' },
+      onFrame: (f) => {
+        frames++;
+        bytes += f.data.length;
+        if (f.key) {
+          keyFrames++;
+          firstKey ??= Buffer.from(f.data);
+        }
+      },
+      onClosed: (reason) => (closedReason = reason),
+    });
+    try {
+      await stream.start();
+      ok(`stream set up. Profiles the console offers: ${stream.profiles.map((p) => `${p.width}x${p.height} (header ${p.header.length} bytes)`).join(', ') || 'none'}`);
+      step(6, `Receiving video for ${streamSeconds} s (no input is sent)`);
+      await new Promise((r) => setTimeout(r, streamSeconds * 1000));
+      const s = stream.stats.snapshot();
+      if (frames > 0) ok(`${frames} frames, ${keyFrames} key frames, ${(bytes / 1024).toFixed(0)} KiB, about ${(frames / streamSeconds).toFixed(1)} fps and ${((bytes * 8) / streamSeconds / 1000).toFixed(0)} kbit/s`);
+      else bad(`no frame arrived${closedReason ? ` (the stream ended: ${closedReason})` : ''}`);
+      console.log(`    lost frames ${s.totals.framesLost}, rebuilt by FEC ${s.totals.fecRecovered}, corrupt reports ${s.totals.corruptReports}, key frame requests ${s.totals.idrRequests}`);
+      console.log(`    units received ${s.totals.unitsReceived}, lost ${s.totals.unitsLost}; longest gap between frames ${s.totals.maxFrameGapMs} ms, stutters ${s.totals.stutters}`);
+      console.log(`    set-up times (ms since start): ${Object.entries(s.stages).map(([k, v]) => `${k} ${v}`).join(', ')}`);
+      if (firstKey) {
+        // What kinds of NAL units the first key frame holds: 7 = SPS, 8 = PPS, 5 = IDR slice for H.264.
+        const kinds = [];
+        for (let i = 0; i + 4 < firstKey.length && kinds.length < 8; i++) if (firstKey[i] === 0 && firstKey[i + 1] === 0 && firstKey[i + 2] === 0 && firstKey[i + 3] === 1) kinds.push(firstKey[i + 4] & 0x1f);
+        console.log(`    first key frame: ${firstKey.length} bytes, NAL unit types ${kinds.join(', ')} (7 = SPS, 8 = PPS, 5 = IDR)`);
+        if (opt('save')) {
+          const { writeFileSync } = await import('node:fs');
+          writeFileSync(opt('save'), firstKey);
+          console.log(`    saved to ${opt('save')}`);
+        }
+      }
+      if (frames > 0) exitCode = 0;
+    } catch (e) {
+      bad(`${e.message}${e.code ? ` [${e.code}]` : ''}`);
+      const s = stream.stats.snapshot();
+      console.log(`    got as far as: ${Object.keys(s.stages).join(', ') || 'nothing'}`);
+    } finally {
+      stream.stop();
+    }
+  }
+
+  if (holdSeconds > 0 && streamSeconds === 0) {
     console.log(`\n    (keeping the connection open for ${holdSeconds} s to see what else the console sends)`);
     await new Promise((r) => setTimeout(r, holdSeconds * 1000));
   }
@@ -88,5 +148,5 @@ try {
   ctrl?.close();
 }
 
-console.log(exitCode === 0 ? '\nResult: the console accepted the session and the control connection. Next step to build: the stream connection.' : '\nResult: stopped at the step marked FAIL.');
+console.log(exitCode === 0 ? '\nResult: every step that was asked for went through.' : '\nResult: stopped at the step marked FAIL.');
 process.exit(exitCode);

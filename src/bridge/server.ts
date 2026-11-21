@@ -20,6 +20,7 @@ import { decodePad, decodePing, encodePong, encodeVideo, isNeutral, MSG, type Cl
 import { DEFAULT_QUALITY, parseQuality, type QualityRequest } from './quality.ts';
 import type { ConsoleStore } from '../console/store.ts';
 import { handleApi, type ApiOptions } from './api.ts';
+import type { StreamResearch } from './ps5-link.ts';
 import { portInUse } from './ports.ts';
 import { handleStatic, isLoopbackHost, send } from './static.ts';
 import { acceptUpgrade, type WsConnection } from './ws.ts';
@@ -39,6 +40,8 @@ export interface BridgeOptions {
   createLink: () => ConsoleLink;
   /** Where registered consoles are kept. Without it the /api/ endpoints are off. */
   store?: ConsoleStore;
+  /** Measurements and settings of the stream (see /api/stream/). */
+  research?: StreamResearch;
   /** Replaces network discovery and registration. For tests. */
   api?: Pick<ApiOptions, 'discover' | 'register' | 'psn' | 'session' | 'network'>;
   log?: (line: string) => void;
@@ -65,7 +68,7 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
   const server = http.createServer((req, res) => {
     if (loopbackOnly && !isLoopbackHost(req.headers.host, boundPort)) return send(res, 421, { 'Content-Type': 'text/plain' }, 'Misdirected request');
     if (opts.store && (req.url ?? '').startsWith('/api/')) {
-      const api: ApiOptions = { store: opts.store, ...(opts.token !== undefined ? { token: opts.token } : {}), ...opts.api, log };
+      const api: ApiOptions = { store: opts.store, ...(opts.token !== undefined ? { token: opts.token } : {}), ...(opts.research ? { research: opts.research } : {}), ...opts.api, log };
       void handleApi(req, res, api).catch(() => send(res, 500, { 'Content-Type': 'text/plain' }, 'error'));
       return;
     }

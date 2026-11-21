@@ -9,6 +9,9 @@
 //   GET    /api/network           this computer's LAN addresses (the page uses them to tell which kind of route it is on)
 //   POST   /api/session-check     { mac, host? }  asks the console for a session with the stored registration; answers ok
 //                                 or the console's reason. Proves the registration works. Never returns keys or the nonce.
+//   GET    /api/stream/stats      measurements of the running or last stream (totals, one sample per second, events)
+//   GET    /api/stream/tuning     the settings that can be changed to study the stream
+//   POST   /api/stream/tuning     { enableIdrOnFecFailure?, packetLossMax?, congestionIntervalMs?, heartbeatIntervalMs? }  for the next connection
 //   GET    /api/psn/login-url     Sony's login page address (opened by the user in their own browser)
 //   POST   /api/psn/account-id    { redirectUrl, acknowledge: true }  gets the PSN account id and saves it here. The answer
 //                                 holds only its last four digits; tokens are never kept, logged or returned.
@@ -26,6 +29,7 @@ import { extractLoginCode, fetchAccountId, PSN_LOGIN_URL, PsnAccountError } from
 import { isKnownTarget } from '../console/rpcrypt.ts';
 import { requestSession, SessionError, type SessionRequestOptions } from '../console/session.ts';
 import os from 'node:os';
+import type { StreamResearch } from './ps5-link.ts';
 import type { ConsoleStore } from '../console/store.ts';
 
 export interface ApiOptions {
@@ -38,6 +42,8 @@ export interface ApiOptions {
   psn?: (code: string) => Promise<string>;
   /** Asks a console for a session with a stored registration. Replaced by tests. */
   session?: (opts: SessionRequestOptions) => Promise<unknown>;
+  /** Measurements and settings of the stream, for studying its delivery. Without it the /api/stream/ endpoints answer 404. */
+  research?: StreamResearch;
   /** This computer's usable network addresses. Replaced by tests. */
   network?: () => NetworkInterfaceInfo[];
   log?: (line: string) => void;
@@ -166,6 +172,21 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
       const result = await register({ host: body.host, target: target as never, pin: body.pin as string | number, accountId: accountText, log });
       store.setAccountId(Buffer.from(parseAccountId(accountText)).toString('base64'));
       json(res, 200, { console: store.put(result, body.host) });
+    } else if (url.pathname.startsWith('/api/stream/') && !opts.research) {
+      json(res, 404, { error: 'unknown endpoint' });
+    } else if (req.method === 'GET' && url.pathname === '/api/stream/stats') {
+      // Everything measured about the running (or last) stream. ?samples=N limits the per-second series.
+      const n = Number(url.searchParams.get('samples') ?? '');
+      json(res, 200, opts.research!.snapshot(Number.isInteger(n) && n >= 0 ? n : undefined));
+    } else if (req.method === 'GET' && url.pathname === '/api/stream/tuning') {
+      json(res, 200, { tuning: opts.research!.tuning, appliesTo: 'the next connection' });
+    } else if (req.method === 'POST' && url.pathname === '/api/stream/tuning') {
+      const body = await readBody(req);
+      if (typeof body !== 'object' || body === null || Array.isArray(body)) return json(res, 400, { error: 'invalid-input', message: 'send an object of settings' }), true;
+      const problems = opts.research!.setTuning(body as Record<string, unknown>);
+      if (problems.length) return json(res, 400, { error: 'invalid-input', message: problems.join('; '), tuning: opts.research!.tuning }), true;
+      log('stream settings changed for the next connection');
+      json(res, 200, { tuning: opts.research!.tuning, appliesTo: 'the next connection' });
     } else if (req.method === 'GET' && url.pathname === '/api/network') {
       json(res, 200, { interfaces: (opts.network ?? localNetworks)() });
     } else if (req.method === 'POST' && url.pathname === '/api/session-check') {
