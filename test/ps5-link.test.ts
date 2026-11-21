@@ -119,7 +119,7 @@ function rig(o: { store?: ConsoleStore; silentStream?: boolean; ctrlFails?: Erro
   let closed = 0;
   const ctrlEvents: Rig['ctrlEvents'] = {};
   const link = new Ps5Link({
-    store, research, streamTimeoutMs: 200,
+    store, research, streamTimeoutMs: 200, inUseRetryWaitMs: 5,
     session: o.session ?? (async (s) => (asked.push(s), grant(s))),
     createCtrl: () => ({
       events: ctrlEvents,
@@ -222,6 +222,41 @@ describe('the PS5 link', () => {
     assert.equal(r.research.state, 'ended');
     assert.equal(r.research.lastError, error!.message);
     assert.equal(r.store.list()[0]!.verifiedAt, undefined, 'a refusal is not recorded as verified');
+  });
+
+  it('asks again when the console says Remote Play is in use: it says so for a few seconds after a disconnect', async () => {
+    const inUse = (): SessionError => new SessionError('rejected', 'The console answered 403: Remote Play is already in use on the console (0x80108b10)', { reason: 0x80108b10 });
+    let calls = 0;
+    const r = rig({
+      session: async (s) => {
+        if (++calls <= 2) throw inUse();
+        return grant(s);
+      },
+    });
+    const { statuses, error } = await run(r.link);
+    try {
+      assert.equal(error, null);
+      assert.equal(calls, 3);
+      assert.deepEqual(statuses.map((s) => s.state), ['connecting', 'connecting', 'connecting', 'connecting', 'connecting', 'streaming']);
+      assert.match(statuses[1]!.detail!, /정리하는 중입니다. 다시 시도합니다 \(1\/5\)/);
+      assert.match(statuses[2]!.detail!, /\(2\/5\)/);
+      assert.equal(r.research.stats!.events.filter((e) => e.kind === 'session-in-use').length, 2, 'the waiting shows in the measurements');
+    } finally {
+      await r.link.stop();
+    }
+
+    // Still in use after every try: then another device really is connected, and the link says so.
+    let tries = 0;
+    const busy = rig({
+      session: async () => {
+        tries++;
+        throw inUse();
+      },
+    });
+    const refused = await run(busy.link);
+    assert.equal(tries, 6, 'the first request and five more');
+    assert.match(refused.error!.message, /이미 사용 중입니다/);
+    assert.equal(busy.research.state, 'ended');
   });
 
   it('stops at the control connection when that fails, closing what it opened', async () => {

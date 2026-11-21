@@ -17,6 +17,7 @@
 // that can be changed between connections (see StreamResearch).
 
 import { Ctrl, CtrlError } from '../console/ctrl.ts';
+import { APPLICATION_REASON } from '../console/regist.ts';
 import { isPs5Target } from '../console/rpcrypt.ts';
 import { requestSession, SessionError, type SessionGrant, type SessionRequestOptions } from '../console/session.ts';
 import type { ConsoleStore } from '../console/store.ts';
@@ -82,6 +83,9 @@ export interface Ps5LinkOptions {
   createTransport?: (opts: { host: string; protocolVersion: number; log?: (line: string) => void }) => StreamTransport;
   /** How long to wait for each answer while the stream is set up. Default: the reference's 5000 ms. */
   streamTimeoutMs?: number;
+  /** How often to ask again when the console says Remote Play is in use, and how long to wait in between. Default: 5 times, 2000 ms. */
+  inUseRetries?: number;
+  inUseRetryWaitMs?: number;
 }
 
 export class Ps5Link implements ConsoleLink {
@@ -124,12 +128,25 @@ export class Ps5Link implements ConsoleLink {
 
     // 2. session request
     step(`${name}에 세션을 요청하는 중`);
+    // A console holds on to a session for a few seconds after it was closed and answers "in use" meanwhile (seen on a
+    // real PS5: refused 3 s after a disconnect, accepted half a minute later). So that answer is asked again a few
+    // times before it is believed: reconnecting right after disconnecting should simply work.
+    const retries = this.#opts.inUseRetries ?? 5;
+    const retryWaitMs = this.#opts.inUseRetryWaitMs ?? 2000;
     let grant: SessionGrant;
-    try {
-      grant = await (this.#opts.session ?? requestSession)({ host: record.host, target: record.target, registKey, rpKey: Buffer.from(record.rpKey, 'hex'), log });
-    } catch (e) {
-      if (e instanceof SessionError) return fail(`${name}이(가) 세션을 받아들이지 않았습니다. ${e.message}`);
-      throw e;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        grant = await (this.#opts.session ?? requestSession)({ host: record.host, target: record.target, registKey, rpKey: Buffer.from(record.rpKey, 'hex'), log });
+        break;
+      } catch (e) {
+        if (!(e instanceof SessionError)) throw e;
+        if (e.reason !== APPLICATION_REASON.inUse) return fail(`${name}이(가) 세션을 받아들이지 않았습니다. ${e.message}`);
+        if (attempt >= retries) return fail(`${name}에서 원격 플레이가 이미 사용 중입니다. 다른 기기의 연결을 끊은 뒤 다시 시도하세요.`);
+        research.stats.event('session-in-use', `asking again (${attempt + 1} of ${retries})`);
+        step(`${name}이(가) 앞선 원격 플레이 연결을 정리하는 중입니다. 다시 시도합니다 (${attempt + 1}/${retries})`);
+        await new Promise((r) => setTimeout(r, retryWaitMs));
+        if (this.#stopped) return;
+      }
     }
     if (this.#stopped) return;
     store.markVerified(record.mac, record.host);

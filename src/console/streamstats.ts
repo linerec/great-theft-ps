@@ -26,6 +26,8 @@ export interface StreamTotals {
   maxFrameGapMs: number;
   /** Gaps longer than `stutterThresholdMs`. */
   stutters: number;
+  /** The longest time from the first packet of a frame to the complete frame, in ms. */
+  maxAssemblyMs: number;
 }
 
 export interface StreamSample {
@@ -46,6 +48,11 @@ export interface StreamSample {
   frameGapMeanMs: number;
   frameGapJitterMs: number;
   frameGapMaxMs: number;
+  /** From the first packet of a frame to the complete frame: mean and longest in this window, in ms. Spread-out frames add delay before anything can be shown. */
+  assemblyMeanMs: number;
+  assemblyMaxMs: number;
+  /** The longest time this process kept the event loop from running in this window, in ms (approximate). Tells a hitch made here from one that came from the network. */
+  loopDelayMaxMs: number;
 }
 
 export interface StreamEvent {
@@ -55,7 +62,7 @@ export interface StreamEvent {
   detail?: string;
 }
 
-const emptyTotals = (): StreamTotals => ({ frames: 0, keyFrames: 0, bytes: 0, framesLost: 0, fecRecovered: 0, corruptReports: 0, idrRequests: 0, unitsReceived: 0, unitsLost: 0, maxFrameGapMs: 0, stutters: 0 });
+const emptyTotals = (): StreamTotals => ({ frames: 0, keyFrames: 0, bytes: 0, framesLost: 0, fecRecovered: 0, corruptReports: 0, idrRequests: 0, unitsReceived: 0, unitsLost: 0, maxFrameGapMs: 0, stutters: 0, maxAssemblyMs: 0 });
 const SAMPLES_KEPT = 600;
 const EVENTS_KEPT = 500;
 
@@ -68,12 +75,16 @@ export class StreamStats {
   events: StreamEvent[] = [];
   /** A gap between frames longer than this counts as a stutter. Default: 2.5 frame times at 60 fps; the stream connection sets it from the frame rate it asks for. */
   stutterThresholdMs = 42;
+  /** Asked once per window for the longest event loop delay since the last call, in ms. Set by the owner of the stream. */
+  loopDelayProbe: (() => number) | null = null;
 
   #now: () => number;
   #window: StreamSample;
   #gapSum = 0;
   #gapSumSq = 0;
   #gapCount = 0;
+  #assemblySum = 0;
+  #assemblyCount = 0;
   #lastFrameAt = 0;
   #lostReported = 0;
   #totalReported = 0;
@@ -85,7 +96,7 @@ export class StreamStats {
   }
 
   #blank(t: number): StreamSample {
-    return { t, frames: 0, keyFrames: 0, bytes: 0, framesLost: 0, fecRecovered: 0, corruptReports: 0, idrRequests: 0, unitsReceived: 0, unitsLost: 0, lossReported: 0, frameGapMeanMs: 0, frameGapJitterMs: 0, frameGapMaxMs: 0 };
+    return { t, frames: 0, keyFrames: 0, bytes: 0, framesLost: 0, fecRecovered: 0, corruptReports: 0, idrRequests: 0, unitsReceived: 0, unitsLost: 0, lossReported: 0, frameGapMeanMs: 0, frameGapJitterMs: 0, frameGapMaxMs: 0, assemblyMeanMs: 0, assemblyMaxMs: 0, loopDelayMaxMs: 0 };
   }
 
   #elapsed(): number {
@@ -102,11 +113,14 @@ export class StreamStats {
         w.frameGapMeanMs = round(mean);
         w.frameGapJitterMs = round(Math.sqrt(Math.max(0, this.#gapSumSq / this.#gapCount - mean * mean)));
       }
+      if (this.#assemblyCount > 0) w.assemblyMeanMs = round(this.#assemblySum / this.#assemblyCount);
+      if (this.loopDelayProbe) w.loopDelayMaxMs = round(this.loopDelayProbe());
       w.lossReported = this.#totalReported > 0 ? round(this.#lostReported / this.#totalReported, 4) : 0;
       this.samples.push(w);
       if (this.samples.length > SAMPLES_KEPT) this.samples.shift();
       this.#window = this.#blank(w.t + 1);
       this.#gapSum = this.#gapSumSq = this.#gapCount = 0;
+      this.#assemblySum = this.#assemblyCount = 0;
       this.#lostReported = this.#totalReported = 0;
     }
   }
@@ -121,7 +135,7 @@ export class StreamStats {
     if (this.events.length > EVENTS_KEPT) this.events.shift();
   }
 
-  frame(bytes: number, info: { keyFrame: boolean; fecRecovered: boolean; framesLost: number }): void {
+  frame(bytes: number, info: { keyFrame: boolean; fecRecovered: boolean; framesLost: number; assemblyMs?: number }): void {
     this.tick();
     const now = this.#now();
     const w = this.#window;
@@ -139,6 +153,12 @@ export class StreamStats {
       }
     }
     this.#lastFrameAt = now;
+    if (info.assemblyMs !== undefined && info.assemblyMs >= 0) {
+      this.#assemblySum += info.assemblyMs;
+      this.#assemblyCount++;
+      if (info.assemblyMs > w.assemblyMaxMs) w.assemblyMaxMs = round(info.assemblyMs);
+      if (info.assemblyMs > this.totals.maxAssemblyMs) this.totals.maxAssemblyMs = round(info.assemblyMs);
+    }
     for (const t of [this.totals, w]) {
       t.frames++;
       t.bytes += bytes;

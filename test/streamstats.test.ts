@@ -123,6 +123,28 @@ describe('stream measurements', () => {
     assert.equal(s.stages.bang, 140);
   });
 
+  it('records how long frames took to put together, and how long this process held its own event loop', () => {
+    const { stats, at } = clocked();
+    const delays = [12.345, 3];
+    stats.loopDelayProbe = () => delays.shift() ?? 0;
+    at(100);
+    stats.frame(100, { ...plain, assemblyMs: 2 });
+    at(133);
+    stats.frame(100, { ...plain, assemblyMs: 9.5 });
+    at(166);
+    stats.frame(100, plain); // a frame whose first packet was not seen: left out of the mean
+    at(1200);
+    stats.frame(100, { ...plain, assemblyMs: 1 });
+    at(2000);
+    const s = stats.snapshot();
+    assert.equal(s.samples[0]!.assemblyMeanMs, 5.75);
+    assert.equal(s.samples[0]!.assemblyMaxMs, 9.5);
+    assert.equal(s.samples[0]!.loopDelayMaxMs, 12.35, 'asked once per window');
+    assert.equal(s.samples[1]!.assemblyMeanMs, 1);
+    assert.equal(s.samples[1]!.loopDelayMaxMs, 3);
+    assert.equal(s.totals.maxAssemblyMs, 9.5);
+  });
+
   it('limits the series when asked: the last N windows, or none', () => {
     const { stats, at } = clocked();
     at(5000);

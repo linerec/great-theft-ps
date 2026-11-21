@@ -4,7 +4,8 @@
 // against real hardware. It sends no controller input and it closes the connection at the end.
 //
 //   npm run connect [-- --mac <id>] [--host <ip>] [--hold <seconds>]
-//   npm run connect -- --stream <seconds> [--video 960x540x30x4000] [--save first-key-frame.h264]
+//   npm run connect -- --stream <seconds> [--video 960x540x30x4000] [--save first-key-frame.h264] [--stats run.json]
+//                      [--idr-on-fec-failure] [--loss-max 0.05] [--congestion-ms 200]
 //
 // Steps: is the console there and on (a direct question to its address) -> session request -> control connection ->
 // session id, and with --stream: the stream connection and a few seconds of video, counted and measured.
@@ -14,7 +15,7 @@ import { discover } from '../src/console/discovery.ts';
 import { Ctrl, CtrlError, CTRL_MESSAGE } from '../src/console/ctrl.ts';
 import { requestSession, SessionError } from '../src/console/session.ts';
 import { ConsoleStore, defaultStorePath } from '../src/console/store.ts';
-import { StreamConnection } from '../src/console/streamconnection.ts';
+import { DEFAULT_TUNING, StreamConnection } from '../src/console/streamconnection.ts';
 import { takionTransport } from '../src/console/takion-transport.ts';
 
 const argv = process.argv.slice(2);
@@ -93,6 +94,13 @@ try {
     const stream = new StreamConnection({
       transport, target: record.target, sessionId: ctrl.sessionId, sessionCrypt: grant.crypt,
       video: { width: w, height: h, maxFps: fps, bitrateKbps: kbps, codec: 'h264' },
+      // The settings a study varies between runs. Without options: the reference's behaviour.
+      tuning: {
+        ...DEFAULT_TUNING,
+        ...(argv.includes('--idr-on-fec-failure') ? { enableIdrOnFecFailure: true } : {}),
+        ...(opt('loss-max') !== undefined ? { packetLossMax: Number(opt('loss-max')) } : {}),
+        ...(opt('congestion-ms') !== undefined ? { congestionIntervalMs: Number(opt('congestion-ms')) } : {}),
+      },
       onFrame: (f) => {
         frames++;
         bytes += f.data.length;
@@ -124,6 +132,12 @@ try {
           writeFileSync(opt('save'), firstKey);
           console.log(`    saved to ${opt('save')}`);
         }
+      }
+      if (opt('stats')) {
+        // The whole measurement, for comparing runs: totals, one sample per second, the event list, set-up times.
+        const { writeFileSync } = await import('node:fs');
+        writeFileSync(opt('stats'), JSON.stringify({ video: { width: w, height: h, maxFps: fps, bitrateKbps: kbps, codec: 'h264' }, tuning: stream.tuning, seconds: streamSeconds, profiles: stream.profiles.map((p) => ({ width: p.width, height: p.height })), stream: s }, null, 1));
+        console.log(`    measurements saved to ${opt('stats')}`);
       }
       if (frames > 0) exitCode = 0;
     } catch (e) {

@@ -25,6 +25,7 @@
 // Secrets: nothing here logs keys, the session id or the launch spec.
 
 import { randomBytes } from 'node:crypto';
+import { monitorEventLoopDelay, type IntervalHistogram } from 'node:perf_hooks';
 
 import type { VirtualPadState } from '../engine/types.ts';
 import type { TakionAvPacket } from './av-packet.ts';
@@ -40,6 +41,8 @@ import { CONTROLLER_TYPE, decodeTakionMessage, encodeTakionMessage, TAKION_PAYLO
 import { VideoReceiver, type VideoFrameInfo, type VideoProfile } from './videoreceiver.ts';
 
 export const STREAM_PORT = 9296;
+/** How often the event loop delay is sampled, in ms. */
+const LOOP_PROBE_MS = 5;
 const EXPECT_TIMEOUT_MS = 5000;
 const AUDIO_HEADER_SIZE = 0xe;
 /** What the reference sends as its own (microphone) audio header: chiaki_audio_header_set(16, 1, 48000, 480), saved. */
@@ -162,6 +165,9 @@ export class StreamConnection {
   #wait: { resolve: () => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> } | null = null;
   #header: Uint8Array | null = null;
   #profileIndex = -1;
+  /** When the first packet of each frame that is being put together arrived. */
+  #firstUnitAt = new Map<number, number>();
+  #loopDelay: IntervalHistogram | null = null;
 
   constructor(o: StreamConnectionOptions) {
     this.#o = o;
@@ -257,6 +263,27 @@ export class StreamConnection {
     this.#state = 'streaming';
     this.#timers.push(setInterval(() => this.#send(1, { type: TAKION_PAYLOAD_TYPE.HEARTBEAT }), this.tuning.heartbeatIntervalMs));
     this.#timers.push(setInterval(() => this.stats.tick(), 1000));
+    this.#watchLoopDelay();
+  }
+
+  /**
+   * How long this process keeps its own event loop from running. A frame that sits in the socket while the loop is
+   * busy looks exactly like one that was late on the network; this tells the two apart. The timer behind it fires
+   * every LOOP_PROBE_MS, and what is reported is how much later than that it fired, at worst, in each second.
+   */
+  #watchLoopDelay(): void {
+    try {
+      const h = monitorEventLoopDelay({ resolution: LOOP_PROBE_MS });
+      h.enable();
+      this.#loopDelay = h;
+      this.stats.loopDelayProbe = () => {
+        const worst = Math.max(0, h.max / 1e6 - LOOP_PROBE_MS);
+        h.reset();
+        return Number.isFinite(worst) ? worst : 0;
+      };
+    } catch {
+      /* not available: the column stays at zero */
+    }
   }
 
   #checkOpen(): void {
@@ -403,7 +430,13 @@ export class StreamConnection {
   #av(packet: TakionAvPacket): void {
     if (!this.#gkRemote || this.#state === 'closed') return;
     this.#gkRemote.decrypt(packet.keyPos + BigInt(GKCRYPT_BLOCK_SIZE), packet.data);
-    if (packet.isVideo) this.#video.avPacket(packet);
+    if (packet.isVideo) {
+      if (!this.#firstUnitAt.has(packet.frameIndex)) {
+        if (this.#firstUnitAt.size >= 32) this.#firstUnitAt.clear(); // frames that never completed
+        this.#firstUnitAt.set(packet.frameIndex, performance.now());
+      }
+      this.#video.avPacket(packet);
+    }
     // Audio and haptics are not handled yet.
   }
 
@@ -417,7 +450,12 @@ export class StreamConnection {
     const profile = this.profiles[this.#profileIndex >= 0 ? this.#profileIndex : info.profileIndex];
     // A decoder needs the parameter sets with the key frame, so they are put in front of it.
     const data = info.keyFrame && this.#header ? Buffer.concat([this.#header, frame]) : Uint8Array.from(frame);
-    this.stats.frame(data.length, { keyFrame: info.keyFrame, fecRecovered: info.fecRecovered, framesLost: info.framesLost });
+    const firstUnitAt = this.#firstUnitAt.get(info.frameIndex);
+    this.#firstUnitAt.delete(info.frameIndex);
+    this.stats.frame(data.length, {
+      keyFrame: info.keyFrame, fecRecovered: info.fecRecovered, framesLost: info.framesLost,
+      ...(firstUnitAt !== undefined ? { assemblyMs: performance.now() - firstUnitAt } : {}),
+    });
     this.#o.onFrame?.({ data, key: info.keyFrame, frameIndex: info.frameIndex, width: profile?.width ?? 0, height: profile?.height ?? 0, info });
     return true;
   }
@@ -458,6 +496,9 @@ export class StreamConnection {
 
   #stopTimers(): void {
     for (const t of this.#timers.splice(0)) clearInterval(t);
+    this.#loopDelay?.disable();
+    this.#loopDelay = null;
+    this.stats.loopDelayProbe = null;
   }
 
   #ended(e: StreamError): void {
