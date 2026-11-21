@@ -491,8 +491,14 @@ playoutSelect.addEventListener('change', () => {
 
 /** Hitches the viewer saw since connecting. */
 let hitchesSeen = 0;
+// A hidden tab is not being watched: do not decode for it and do not count what the browser does to it as hitches.
+document.addEventListener('visibilitychange', () => {
+  player.setVisible(!document.hidden);
+  if (document.hidden) engine.releaseAll();
+});
 setInterval(() => {
   const sample = player.meter.take();
+  if (document.hidden) return;
   if (mode !== 'console' || client.state !== 'ready') return;
   hitchesSeen += sample.hitches;
   const delay = player.playout.delayMs;

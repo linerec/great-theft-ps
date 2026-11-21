@@ -61,6 +61,7 @@ export class VideoPlayer {
   /** How far apart the screen's refreshes are, learned from the animation callbacks, in ms. */
   #refreshMs = 16.7;
   #lastTick = 0;
+  #visible = true;
 
   constructor(canvas: HTMLCanvasElement) {
     this.#canvas = canvas;
@@ -77,12 +78,28 @@ export class VideoPlayer {
     return this.#playoutOptions;
   }
 
+  /**
+   * Tell the player whether anybody can see the picture. A browser stops a hidden tab from drawing and may hold all of
+   * its work back for seconds at a time; frames decoded or counted then are wasted work and false alarms. While
+   * hidden nothing is decoded; on coming back the stream continues from a fresh key frame, paced afresh.
+   */
+  setVisible(visible: boolean): void {
+    if (visible === this.#visible) return;
+    this.#visible = visible;
+    for (const w of this.#waiting.splice(0)) w.frame.close();
+    this.#waitKey = true;
+    this.playout = new Playout(this.#playoutOptions);
+    this.meter.pause();
+    if (visible) this.onNeedKeyframe();
+  }
+
   /** Decoded frames waiting for their turn. */
   get waiting(): number {
     return this.#waiting.length;
   }
 
   push(header: VideoHeader, data: Uint8Array): void {
+    if (!this.#visible && header.codec !== CODEC.PNG) return; // nobody is looking: see setVisible()
     if (header.codec === CODEC.PNG) void this.#png(header, data);
     else if (header.codec === CODEC.H264) this.#h264(header, data);
     else this.error = `unsupported codec ${header.codec}: request H.264 for a browser`;
