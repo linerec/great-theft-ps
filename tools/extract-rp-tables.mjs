@@ -6,10 +6,11 @@
 //
 //   node tools/extract-rp-tables.mjs <path to chiaki-ng>/lib/src/rpcrypt.c [--out src/console/rp-tables.ts]
 //
-// Only the tables needed for registration are taken:
-//   ps4_keys_0 / ps5_keys_0  inside chiaki_rpcrypt_init_regist()  (the first of the two copies in that file)
-//   ps4_keys_1 / ps5_keys_1  inside chiaki_rpcrypt_aeropause()    (the first copy)
-// Each must come out as exactly 512 bytes. The SHA-256 of every table is written into the header of the output and
+// Only the tables needed so far are taken:
+//   ps4_keys_0 / ps5_keys_0  inside chiaki_rpcrypt_init_regist()  (registration)        512 bytes each
+//   ps4_keys_1 / ps5_keys_1  inside chiaki_rpcrypt_aeropause()    (registration)        512 bytes each
+//   keys_a_* / keys_b_*      inside bright_ambassador()           (session keys)       3584 bytes each
+// Each must come out at exactly its expected size. The SHA-256 of every table is written into the header of the output and
 // every other copy found in the file is compared, so a wrong pick shows up here.
 
 import { createHash } from 'node:crypto';
@@ -47,10 +48,15 @@ function tablesIn(body, name) {
 }
 
 const picks = [
-  { name: 'RP_KEYS_0_PS4', fn: 'CHIAKI_EXPORT ChiakiErrorCode chiaki_rpcrypt_init_regist(', table: 'ps4_keys_0' },
-  { name: 'RP_KEYS_0_PS5', fn: 'CHIAKI_EXPORT ChiakiErrorCode chiaki_rpcrypt_init_regist(', table: 'ps5_keys_0' },
-  { name: 'RP_KEYS_1_PS4', fn: 'CHIAKI_EXPORT ChiakiErrorCode chiaki_rpcrypt_aeropause(', table: 'ps4_keys_1' },
-  { name: 'RP_KEYS_1_PS5', fn: 'CHIAKI_EXPORT ChiakiErrorCode chiaki_rpcrypt_aeropause(', table: 'ps5_keys_1' },
+  { name: 'RP_KEYS_0_PS4', fn: 'CHIAKI_EXPORT ChiakiErrorCode chiaki_rpcrypt_init_regist(', table: 'ps4_keys_0', size: 512 },
+  { name: 'RP_KEYS_0_PS5', fn: 'CHIAKI_EXPORT ChiakiErrorCode chiaki_rpcrypt_init_regist(', table: 'ps5_keys_0', size: 512 },
+  { name: 'RP_KEYS_1_PS4', fn: 'CHIAKI_EXPORT ChiakiErrorCode chiaki_rpcrypt_aeropause(', table: 'ps4_keys_1', size: 512 },
+  { name: 'RP_KEYS_1_PS5', fn: 'CHIAKI_EXPORT ChiakiErrorCode chiaki_rpcrypt_aeropause(', table: 'ps5_keys_1', size: 512 },
+  // The session keys (0x70 rows of 0x20 bytes), used once a console has accepted the registration key.
+  { name: 'RP_KEYS_A_PS4', fn: 'static ChiakiErrorCode bright_ambassador(', table: 'keys_a_ps4', size: 0x70 * 0x20 },
+  { name: 'RP_KEYS_A_PS5', fn: 'static ChiakiErrorCode bright_ambassador(', table: 'keys_a_ps5', size: 0x70 * 0x20 },
+  { name: 'RP_KEYS_B_PS4', fn: 'static ChiakiErrorCode bright_ambassador(', table: 'keys_b_ps4', size: 0x70 * 0x20 },
+  { name: 'RP_KEYS_B_PS5', fn: 'static ChiakiErrorCode bright_ambassador(', table: 'keys_b_ps5', size: 0x70 * 0x20 },
 ];
 
 const lines = [];
@@ -59,12 +65,12 @@ for (const p of picks) {
   const tables = tablesIn(functionBody(p.fn), p.table);
   if (tables.length !== 1) throw new Error(`${p.table} in ${p.fn}: expected one copy, found ${tables.length}`);
   const bytes = tables[0];
-  if (bytes.length !== 512) throw new Error(`${p.table}: expected 512 bytes, got ${bytes.length}`);
+  if (bytes.length !== p.size) throw new Error(`${p.table}: expected ${p.size} bytes, got ${bytes.length}`);
   // Other copies elsewhere in the file (the PSN variants), for information.
   const others = [...text.matchAll(new RegExp(`static const uint8_t ${p.table}\\[[^\\]]*\\]\\s*=\\s*\\{([^}]*)\\}`, 'g'))].map((m) =>
     sha(Buffer.from([...m[1].matchAll(/0x([0-9a-fA-F]{2})\b/g)].map((x) => parseInt(x[1], 16)))),
   );
-  console.log(`${p.table.padEnd(11)} 512 bytes  sha256 ${sha(bytes)}  (${others.length} copies in the file, ${others.filter((h) => h === sha(bytes)).length} identical)`);
+  console.log(`${p.table.padEnd(11)} ${String(p.size).padStart(4)} bytes  sha256 ${sha(bytes)}  (${others.length} copies in the file, ${others.filter((h) => h === sha(bytes)).length} identical)`);
   header.push(` * ${p.name} = ${p.table}  sha256 ${sha(bytes)}`);
   lines.push(`export const ${p.name}: Uint8Array = fromBase64('${bytes.toString('base64')}');`);
 }

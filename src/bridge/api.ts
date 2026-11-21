@@ -6,6 +6,9 @@
 //   GET    /api/consoles          registered consoles (public fields) and whether an account id is saved
 //   GET    /api/discover[?host=]  consoles answering on the network, each marked registered or not
 //   POST   /api/register          { host, pin, accountId?, target? }  registers and stores the result
+//   GET    /api/network           this computer's LAN addresses (the page uses them to tell which kind of route it is on)
+//   POST   /api/session-check     { mac, host? }  asks the console for a session with the stored registration; answers ok
+//                                 or the console's reason. Proves the registration works. Never returns keys or the nonce.
 //   GET    /api/psn/login-url     Sony's login page address (opened by the user in their own browser)
 //   POST   /api/psn/account-id    { redirectUrl, acknowledge: true }  gets the PSN account id and saves it here. The answer
 //                                 holds only its last four digits; tokens are never kept, logged or returned.
@@ -21,6 +24,8 @@ import { discover as realDiscover, type DiscoveredHost } from '../console/discov
 import { parseAccountId, register as realRegister, RegistError, type RegisterOptions, type RegisteredConsole } from '../console/regist.ts';
 import { extractLoginCode, fetchAccountId, PSN_LOGIN_URL, PsnAccountError } from '../console/psn-account.ts';
 import { isKnownTarget } from '../console/rpcrypt.ts';
+import { requestSession, SessionError, type SessionRequestOptions } from '../console/session.ts';
+import os from 'node:os';
 import type { ConsoleStore } from '../console/store.ts';
 
 export interface ApiOptions {
@@ -31,7 +36,28 @@ export interface ApiOptions {
   register?: (opts: RegisterOptions) => Promise<RegisteredConsole>;
   /** Exchanges a PSN login code for the account id (base64 of its 8 bytes). Replaced by tests. */
   psn?: (code: string) => Promise<string>;
+  /** Asks a console for a session with a stored registration. Replaced by tests. */
+  session?: (opts: SessionRequestOptions) => Promise<unknown>;
+  /** This computer's usable network addresses. Replaced by tests. */
+  network?: () => NetworkInterfaceInfo[];
   log?: (line: string) => void;
+}
+
+export interface NetworkInterfaceInfo {
+  iface: string;
+  address: string;
+  netmask: string;
+}
+
+/** IPv4 addresses this computer can reach a LAN with. Point-to-point links (VPN tunnels, /32) are left out. */
+export function localNetworks(): NetworkInterfaceInfo[] {
+  const out: NetworkInterfaceInfo[] = [];
+  for (const [iface, addrs] of Object.entries(os.networkInterfaces())) {
+    for (const a of addrs ?? []) {
+      if (a.family === 'IPv4' && !a.internal && a.netmask !== '255.255.255.255') out.push({ iface, address: a.address, netmask: a.netmask });
+    }
+  }
+  return out;
 }
 
 /** At most this many PSN exchanges per minute: a mistyped paste should not turn into a stream of requests to Sony. */
@@ -140,6 +166,20 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
       const result = await register({ host: body.host, target: target as never, pin: body.pin as string | number, accountId: accountText, log });
       store.setAccountId(Buffer.from(parseAccountId(accountText)).toString('base64'));
       json(res, 200, { console: store.put(result, body.host) });
+    } else if (req.method === 'GET' && url.pathname === '/api/network') {
+      json(res, 200, { interfaces: (opts.network ?? localNetworks)() });
+    } else if (req.method === 'POST' && url.pathname === '/api/session-check') {
+      // Ask the console for a session with the stored registration. Proves the registration works; nothing more is done.
+      const body = (await readBody(req)) as { mac?: unknown; host?: unknown };
+      if (typeof body.mac !== 'string') return json(res, 400, { error: 'invalid-input', message: 'mac is missing' }), true;
+      const rec = store.get(body.mac);
+      if (!rec) return json(res, 404, { error: 'not-registered', message: 'That console is not registered on this computer' }), true;
+      if (body.host !== undefined && (typeof body.host !== 'string' || !isIp(body.host))) return json(res, 400, { error: 'invalid-input', message: 'host must be an IP address' }), true;
+      const host = typeof body.host === 'string' ? body.host : rec.host;
+      log(`checking the registration of ${rec.nickname || rec.mac} at ${host}`);
+      await (opts.session ?? requestSession)({ host, target: rec.target, registKey: Buffer.from(rec.registKey, 'hex'), rpKey: Buffer.from(rec.rpKey, 'hex'), log });
+      store.markVerified(rec.mac, host);
+      json(res, 200, { ok: true, console: store.list().find((c) => c.mac === rec.mac) });
     } else if (req.method === 'GET' && url.pathname === '/api/psn/login-url') {
       json(res, 200, { url: PSN_LOGIN_URL });
     } else if (req.method === 'POST' && url.pathname === '/api/psn/account-id') {
@@ -164,7 +204,10 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
       json(res, 404, { error: 'unknown endpoint' });
     }
   } catch (e) {
-    if (e instanceof PsnAccountError) {
+    if (e instanceof SessionError) {
+      const status = e.code === 'rejected' ? 403 : e.code === 'unsupported-target' ? 400 : e.code === 'version-mismatch' ? 409 : 502;
+      json(res, status, { error: e.code, message: e.message, ...(e.reason !== undefined ? { reason: e.reason } : {}) });
+    } else if (e instanceof PsnAccountError) {
       json(res, e.code === 'invalid-input' ? 400 : e.code === 'login-rejected' ? 403 : 502, { error: e.code, message: e.message });
     } else if (e instanceof RegistError) {
       const status = e.code === 'invalid-input' || e.code === 'unsupported-target' ? 400 : e.code === 'rejected' ? 403 : 502;

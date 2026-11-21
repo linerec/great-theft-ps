@@ -286,6 +286,72 @@ describe('/api/ endpoints', () => {
     });
   });
 
+  describe('session check and network', () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const okSession = async (o: Record<string, unknown>): Promise<unknown> => (seen.push(o), { nonce: 'SECRET-NONCE' });
+
+    it('asks the console for a session with the stored keys, remembers it worked, and returns no secret', async () => {
+      const bridgeAndStore = await (async () => {
+        const store = new ConsoleStore(path.join(tmp(), 'consoles.json'));
+        const lines: string[] = [];
+        const bridge = await startBridge({ host: '127.0.0.1', port: 0, root, store, createLink: () => new MockConsole(), log: (l) => lines.push(l), api: { session: okSession as never } });
+        bridges.push(bridge);
+        return { bridge, store, lines };
+      })();
+      const { bridge, store, lines } = bridgeAndStore;
+      store.put(registered(), '192.168.1.50');
+      const r = await call(bridge.port, 'POST', '/api/session-check', { body: { mac: '0123456789AB' } });
+      assert.equal(r.status, 200);
+      assert.equal(r.json().ok, true);
+      assert.ok(r.json().console.verifiedAt, 'the page learns that it was verified');
+      assert.equal(seen[0]!.host, '192.168.1.50');
+      assert.equal(seen[0]!.target, 'ps5-1');
+      assert.equal(Buffer.from(seen[0]!.rpKey as Uint8Array).toString('hex'), RP_KEY_HEX, 'the stored keys reached the request');
+      for (const secret of [RP_KEY_HEX, REGIST_KEY_HEX, 'SECRET-NONCE']) {
+        assert.ok(!r.text.includes(secret), 'no secret in the answer');
+        assert.ok(!lines.join('\n').includes(secret), 'no secret in the log');
+      }
+      assert.ok(store.list()[0]!.verifiedAt);
+      const moved = await call(bridge.port, 'POST', '/api/session-check', { body: { mac: '0123456789ab', host: '192.168.1.77' } });
+      assert.equal(moved.status, 200);
+      assert.equal(store.get('0123456789ab')?.host, '192.168.1.77', 'a new address is remembered once it works');
+    });
+
+    it('reports what the console said, and unknown consoles and bad input', async () => {
+      const store = new ConsoleStore(path.join(tmp(), 'consoles.json'));
+      const { SessionError } = await import('../src/console/session.ts');
+      const bridge = await startBridge({
+        host: '127.0.0.1', port: 0, root, store, createLink: () => new MockConsole(),
+        api: {
+          session: async () => {
+            throw new SessionError('rejected', 'The console answered 403: The console does not accept this PSN account id (0x80108b02)', { reason: 0x80108b02 });
+          },
+        },
+      });
+      bridges.push(bridge);
+      store.put(registered(), '192.168.1.50');
+      const r = await call(bridge.port, 'POST', '/api/session-check', { body: { mac: '0123456789ab' } });
+      assert.equal(r.status, 403);
+      assert.equal(r.json().error, 'rejected');
+      assert.equal(r.json().reason, 0x80108b02);
+      assert.equal(store.list()[0]!.verifiedAt, undefined, 'a refusal is not recorded as verified');
+      assert.equal((await call(bridge.port, 'POST', '/api/session-check', { body: { mac: 'ffffffffffff' } })).status, 404);
+      assert.equal((await call(bridge.port, 'POST', '/api/session-check', { body: {} })).status, 400);
+      assert.equal((await call(bridge.port, 'POST', '/api/session-check', { body: { mac: '0123456789ab', host: 'example.com' } })).status, 400);
+    });
+
+    it('lists this computer\'s network addresses', async () => {
+      const store = new ConsoleStore(path.join(tmp(), 'consoles.json'));
+      const bridge = await startBridge({
+        host: '127.0.0.1', port: 0, root, store, createLink: () => new MockConsole(),
+        api: { network: () => [{ iface: 'en0', address: '192.168.1.12', netmask: '255.255.255.0' }] },
+      });
+      bridges.push(bridge);
+      const r = await call(bridge.port, 'GET', '/api/network');
+      assert.deepEqual(r.json(), { interfaces: [{ iface: 'en0', address: '192.168.1.12', netmask: '255.255.255.0' }] });
+    });
+  });
+
   it('is simply absent when no store is given', async () => {
     const b = await startBridge({ host: '127.0.0.1', port: 0, root, createLink: () => new MockConsole() });
     bridges.push(b);

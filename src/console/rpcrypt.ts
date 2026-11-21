@@ -15,7 +15,7 @@
 import { createCipheriv, createDecipheriv, createHmac } from 'node:crypto';
 
 import type { ConsoleTarget } from './discovery.ts';
-import { RP_KEYS_0_PS4, RP_KEYS_0_PS5, RP_KEYS_1_PS4, RP_KEYS_1_PS5 } from './rp-tables.ts';
+import { RP_KEYS_0_PS4, RP_KEYS_0_PS5, RP_KEYS_1_PS4, RP_KEYS_1_PS5, RP_KEYS_A_PS4, RP_KEYS_A_PS5, RP_KEYS_B_PS4, RP_KEYS_B_PS5 } from './rp-tables.ts';
 
 export const KEY_SIZE = 16;
 
@@ -113,6 +113,51 @@ export function brightAmbassadorPs4Pre10(nonce: Uint8Array, morning: Uint8Array)
 export function initAuthPs4Pre10(nonce: Uint8Array, morning: Uint8Array): RpCrypt {
   const { bright, ambassador } = brightAmbassadorPs4Pre10(nonce, morning);
   return { target: 'ps4-9', ambassador, bright };
+}
+
+/**
+ * Session keys for PS4 10 and later and PS5, from the console's nonce and the key it handed out at registration
+ * (`morning`, the reference's name for RP-Key). Port of bright_ambassador() in rpcrypt.c.
+ */
+export function brightAmbassador(target: ConsoleTarget, nonce: Uint8Array, morning: Uint8Array): { bright: Uint8Array; ambassador: Uint8Array } {
+  need16('nonce', nonce);
+  need16('morning', morning);
+  if (!isKnownTarget(target) || isPreTen(target)) throw new RangeError(`brightAmbassador does not apply to ${target}`);
+  const ps5 = isPs5Target(target);
+  const keysA = ps5 ? RP_KEYS_A_PS5 : RP_KEYS_A_PS4;
+  const keysB = ps5 ? RP_KEYS_B_PS5 : RP_KEYS_B_PS4;
+  const ambassador = new Uint8Array(KEY_SIZE);
+  const bright = new Uint8Array(KEY_SIZE);
+  const rowA = (nonce[0]! >> 3) * 0x70;
+  for (let i = 0; i < KEY_SIZE; i++) {
+    let v = nonce[i]!;
+    if (ps5) v = (v - 0x2d - i) & 0xff;
+    else v = (v + 0x36 + i) & 0xff;
+    ambassador[i] = (v ^ keysA[rowA + i]!) & 0xff;
+  }
+  const rowB = (nonce[7]! >> 3) * 0x70;
+  for (let i = 0; i < KEY_SIZE; i++) {
+    if (ps5) {
+      let v = (morning[i]! + 0x18 + i) & 0xff;
+      v ^= nonce[i]!;
+      v ^= keysB[rowB + i]!;
+      bright[i] = v & 0xff;
+    } else {
+      let v = (keysB[rowB + i]! ^ morning[i]!) & 0xff;
+      v = (v + 0x21 + i) & 0xff;
+      v ^= nonce[i]!;
+      bright[i] = v & 0xff;
+    }
+  }
+  return { bright, ambassador };
+}
+
+/** The cipher state for the control connection, once the console has answered the session request. */
+export function initAuth(target: ConsoleTarget, nonce: Uint8Array, morning: Uint8Array): RpCrypt {
+  if (!isKnownTarget(target)) throw new RangeError(`initAuth does not apply to ${target}`);
+  if (isPreTen(target)) return initAuthPs4Pre10(nonce, morning);
+  const { bright, ambassador } = brightAmbassador(target, nonce, morning);
+  return { target, ambassador, bright };
 }
 
 /** IV for a message: the first 16 bytes of HMAC-SHA256(key by target, ambassador || counter as 8 bytes big endian). */

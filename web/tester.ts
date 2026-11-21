@@ -28,7 +28,9 @@ const ctx = padCanvas.getContext('2d') as CanvasRenderingContext2D;
 const params = new URLSearchParams(location.search);
 
 const modeParam = params.get('mode');
-let mode: Mode = modeParam === 'tps' || modeParam === 'console' ? modeParam : 'fps';
+// The console is the main thing; the test games live in the "연습장" view and are chosen with ?mode=fps or ?mode=tps.
+let mode: Mode = modeParam === 'tps' || modeParam === 'fps' ? modeParam : 'console';
+export type { Mode };
 const fps = new FpsGame(defaultGameSettings());
 const tps = new TpsGame(defaultTpsSettings());
 /** The test game the readouts refer to. In console mode there is no game, so this is only a placeholder. */
@@ -175,11 +177,11 @@ function message(text: string, kind: '' | 'error' | 'ok'): void {
   el.className = `msg ${kind}`;
 }
 
-function setMode(next: Mode, loadPreset: boolean): void {
+/** Which thing the shared stage and the input engine serve: a test game, or the console. The shell (app.ts) decides what is shown. */
+export function setMode(next: Mode, loadPreset: boolean): void {
   mode = next;
   $<HTMLElement>('fpsSettings').hidden = mode !== 'fps';
   $<HTMLElement>('tpsSettings').hidden = mode !== 'tps';
-  $<HTMLElement>('consolePanel').hidden = mode !== 'console';
   $<HTMLElement>('hintFps').hidden = mode !== 'fps';
   $<HTMLElement>('hintTps').hidden = mode !== 'tps';
   $<HTMLElement>('hintConsole').hidden = mode !== 'console';
@@ -209,6 +211,8 @@ bridgeUrl.value = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location
 // Normally there is no token. Only a bridge that listens beyond its own computer prints a URL ending in #token=...;
 // take it from there and remove it from the address bar.
 let bridgeToken = '';
+/** For the other modules of the page (ps5.ts) that call the bridge's /api/. Empty on a bridge that needs no token. */
+export const getBridgeToken = (): string => bridgeToken;
 {
   const fromHash = new URLSearchParams(location.hash.slice(1)).get('token');
   if (fromHash) {
@@ -283,6 +287,7 @@ async function refreshRegistered(): Promise<void> {
     list.append(li);
   }
   $<HTMLElement>('regAccountNote').textContent = r.data.accountIdSaved ? '(저장된 값을 사용합니다. 바꾸려면 새로 입력)' : '(숫자 또는 Base64. 처음 한 번만 필요)';
+  document.dispatchEvent(new CustomEvent('gtp:consoles'));
 }
 
 $<HTMLButtonElement>('regScan').addEventListener('click', async () => {
@@ -334,10 +339,12 @@ $<HTMLButtonElement>('psnGo').addEventListener('click', async () => {
   const urlInput = $<HTMLInputElement>('psnUrl');
   const button = $<HTMLButtonElement>('psnGo');
   if (!urlInput.value.trim()) return say('로그인 후 나온 페이지의 주소를 붙여넣으세요.', 'err');
+  const pasted = urlInput.value;
+  urlInput.value = ''; // the one-time code leaves the page the moment it is sent, not after the answer
   button.disabled = true;
   say('Sony에서 계정 ID를 가져오는 중…');
   try {
-    const r = await api('POST', '/api/psn/account-id', { redirectUrl: urlInput.value, acknowledge: $<HTMLInputElement>('psnAck').checked });
+    const r = await api('POST', '/api/psn/account-id', { redirectUrl: pasted, acknowledge: $<HTMLInputElement>('psnAck').checked });
     if (r.ok) {
       say(`계정 ID를 가져와 저장했습니다 (끝 4자리 ${String(r.data.hint ?? '')}). 이제 코드만 입력하고 등록하세요.`, 'ok');
       await refreshRegistered();
@@ -360,6 +367,7 @@ $<HTMLButtonElement>('regGo').addEventListener('click', async () => {
   if (!address) return say('콘솔 IP 주소를 입력하거나 “콘솔 찾기”를 누르세요.', 'err');
   if (!/^\d{8}$/.test(pin)) return say('코드는 콘솔에 표시된 8자리 숫자입니다.', 'err');
   const body: Record<string, string> = { host: address, pin };
+  pinInput.value = ''; // a PIN is single use: off the page as soon as it is sent
   if (accountInput.value.trim()) body.accountId = accountInput.value.trim();
   const button = $<HTMLButtonElement>('regGo');
   button.disabled = true;
@@ -405,6 +413,7 @@ client.onChange = () => {
   $<HTMLElement>('cRate').textContent = client.state === 'ready' ? `${client.fpsIn} fps / ${client.kbpsIn} kbps` : '-';
   $<HTMLElement>('cRtt').textContent = client.rttMs > 0 ? `${client.rttMs.toFixed(1)} ms` : '-';
   $<HTMLElement>('cLatency').textContent = client.inputLatencyMs > 0 ? `${client.inputLatencyMs.toFixed(0)} ms (중앙값)` : '-';
+  document.dispatchEvent(new CustomEvent('gtp:link', { detail: { state: client.state, detail: client.detail, link: String(client.serverStats.link ?? '') } }));
 };
 
 $<HTMLSelectElement>('gameMode').addEventListener('change', (e) => setMode((e.target as HTMLSelectElement).value as Mode, true));
@@ -655,7 +664,7 @@ function renderView(): void {
     viewCtx.fillStyle = '#9aa5b8';
     viewCtx.font = '16px system-ui, sans-serif';
     viewCtx.textAlign = 'center';
-    viewCtx.fillText(client.state === 'ready' ? '영상 대기 중…' : '오른쪽 패널에서 브리지에 연결하세요', view.width / 2, view.height / 2);
+    viewCtx.fillText(client.state === 'ready' ? '영상 대기 중…' : '', view.width / 2, view.height / 2);
   }
   // In console mode the video player draws each frame as it arrives.
 }

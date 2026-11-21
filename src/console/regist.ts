@@ -299,7 +299,7 @@ function search(host: string, port: number, ps5: boolean, timeoutMs: number): Pr
 }
 
 /** Send `request`, return the HTTP answer once its Content-Length is complete (or the connection ends). */
-function exchange(host: string, port: number, request: Buffer, timeoutMs: number): Promise<Buffer> {
+export function exchange(host: string, port: number, request: Buffer, timeoutMs: number, what = 'registration request'): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const socket = net.connect({ host, port });
     const chunks: Buffer[] = [];
@@ -312,7 +312,7 @@ function exchange(host: string, port: number, request: Buffer, timeoutMs: number
       socket.destroy();
       fn();
     };
-    const timer = setTimeout(() => done(() => reject(new RegistError('timeout', 'The console did not answer the registration request in time'))), timeoutMs);
+    const timer = setTimeout(() => done(() => reject(new RegistError('timeout', `The console did not answer the ${what} in time`))), timeoutMs);
     const complete = (): boolean => {
       const all = Buffer.concat(chunks);
       const end = all.indexOf('\r\n\r\n');

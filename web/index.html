@@ -3,267 +3,350 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
   <title>Great Theft P.S</title>
-  <link rel="stylesheet" href="/web/tester.css">
+  <link rel="stylesheet" href="/web/app.css">
 </head>
 <body>
-  <header>
-    <h1>Great Theft P.S <span class="note">(GTP)</span></h1>
-    <p class="sub">키보드·마우스로 PlayStation을 정교하게 조작하는 클라이언트. 아래 테스트 게임은 패드 입력만 읽으며, 매핑 엔진이 만든 가상 패드 값만 받습니다. 콘솔은 "콘솔 (브리지 연결)"로 연결합니다.</p>
+  <header class="top">
+    <div class="brand"><span class="logo" aria-hidden="true">GTP</span><span class="brandname">Great Theft P.S</span></div>
+    <nav class="nav" aria-label="메뉴">
+      <button type="button" data-view="ps5" aria-current="page">PS5</button>
+      <button type="button" data-view="lab">연습장</button>
+      <button type="button" data-view="settings">설정</button>
+    </nav>
   </header>
 
   <main>
-    <section class="stage" aria-label="테스트베드 게임">
-      <label class="modeRow">게임
-        <select id="gameMode">
-          <option value="fps">1인칭 FPS (간단한 레이캐스팅)</option>
-          <option value="tps">GTA V 스타일 3인칭 (보행·조준·차량)</option>
-          <option value="console">콘솔 (브리지 연결)</option>
-        </select>
-      </label>
-      <canvas id="game" width="640" height="360" tabindex="0" aria-label="테스트베드 게임 화면. 클릭하면 마우스가 잠깁니다."></canvas>
+    <!-- ============================================================ PS5 (main) -->
+    <section id="consolePanel" class="view" aria-label="PS5">
+      <div class="ps5grid">
+        <div class="col">
+          <section class="card" aria-labelledby="h-console">
+            <div class="card-head">
+              <h2 id="h-console">내 PS5</h2>
+              <button id="ps5Refresh" class="btn ghost small" type="button">새로고침</button>
+            </div>
+            <div id="ps5Consoles" class="consoles"></div>
+            <ol id="ps5Steps" class="steps" aria-label="준비 단계"></ol>
+            <button id="ps5Cta" class="btn primary" type="button">불러오는 중…</button>
+            <p id="ps5CtaNote" class="muted small"></p>
+            <p id="ps5Msg" class="callout" role="status" hidden></p>
+            <button id="addConsole" class="btn ghost small" type="button">+ 콘솔 추가</button>
+          </section>
 
-      <p id="hintFps" class="hint">
-        화면을 클릭하면 마우스가 잠깁니다 (Esc로 해제).
-        <b>W A S D</b> 이동 · <b>마우스</b> 시점 · <b>좌클릭</b> 사격 · <b>우클릭</b> 조준(ADS) · <b>Shift</b> 달리기 · <b>X</b> 천천히 걷기
-      </p>
-      <div id="hintTps" class="hint" hidden>
-        <p>화면을 클릭하면 마우스가 잠깁니다 (Esc로 해제).</p>
-        <p>
-          <b>걸을 때</b>: <b>W A S D</b> 이동(스틱을 얼마나 밀었는지에 따라 걷기·조깅·달리기) · <b>Shift 누르고 있기</b> 스프린트(X 자동 연타) ·
-          <b>X</b> 천천히 걷기 · <b>Space</b> 점프(□) · <b>우클릭</b> 조준(L2) · <b>좌클릭</b> 사격(R2) ·
-          <b>F</b> 차량 탑승/하차(△, 그리고 차량 조작으로 전환)
-        </p>
-        <p>
-          <b>운전할 때</b>: <b>W</b> 가속(R2) · <b>S</b> 브레이크/후진(L2) · <b>A D</b> 조향 · <b>Space</b> 핸드브레이크 · 마우스 시점. 차 근처(3.5m)에서 F.
-        </p>
-        <p class="note">
-          GTA V(PlayStation)에서 확인된 것: 스프린트=X 연타, 점프=□, 조준=L2, 탑승=△, 엄폐=R1, 차량 가속=R2. 그 외(브레이크 L2, 핸드브레이크 □, 모든 속도·카메라 수치, 시점 가속 공식)는
-          <b>테스트베드의 가정</b>이며 실제 게임과 다를 수 있습니다.
-        </p>
+          <section class="card" aria-labelledby="h-route">
+            <div class="card-head">
+              <h2 id="h-route">접속 경로</h2>
+              <button id="routeMore" class="btn ghost small" type="button">모든 경로 보기</button>
+            </div>
+            <p class="route-name"><strong id="routeName"></strong></p>
+            <p id="routeReason" class="muted small"></p>
+            <div id="routeDiagram"></div>
+            <p id="routeStatus" class="muted small"></p>
+          </section>
+        </div>
+
+        <section class="stagecard" aria-label="화면">
+          <div class="stage-toolbar">
+            <span class="chip" id="ps5Badge">시뮬레이터 영상</span>
+            <dl class="stats">
+              <div><dt>상태</dt><dd id="cStatus">끊김</dd></div>
+              <div><dt>수신</dt><dd id="cRate">-</dd></div>
+              <div><dt>RTT</dt><dd id="cRtt">-</dd></div>
+              <div><dt>입력→화면</dt><dd id="cLatency">-</dd></div>
+            </dl>
+            <label class="inline">화질
+              <select id="qualityPreset">
+                <option value="saver">데이터 절약</option>
+                <option value="balanced" selected>균형</option>
+                <option value="low-latency">저지연</option>
+                <option value="quality">고화질</option>
+              </select>
+            </label>
+            <span id="qualityNote" class="muted small"></span>
+          </div>
+          <div class="stage-frame" id="ps5Stage">
+            <div id="stageBox" class="stagebox">
+              <canvas id="game" width="640" height="360" tabindex="0" aria-label="화면. 클릭하면 마우스가 잠깁니다."></canvas>
+              <p id="hintFps" class="hint">
+                화면을 클릭하면 마우스가 잠깁니다 (Esc로 해제).
+                <b>W A S D</b> 이동 · <b>마우스</b> 시점 · <b>좌클릭</b> 사격 · <b>우클릭</b> 조준(ADS) · <b>Shift</b> 달리기 · <b>X</b> 천천히 걷기
+              </p>
+              <div id="hintTps" class="hint" hidden>
+                <p>화면을 클릭하면 마우스가 잠깁니다 (Esc로 해제).</p>
+                <p>
+                  <b>걸을 때</b>: <b>W A S D</b> 이동(스틱을 얼마나 밀었는지에 따라 걷기·조깅·달리기) · <b>Shift 누르고 있기</b> 스프린트(X 자동 연타) ·
+                  <b>X</b> 천천히 걷기 · <b>Space</b> 점프(□) · <b>우클릭</b> 조준(L2) · <b>좌클릭</b> 사격(R2) ·
+                  <b>F</b> 차량 탑승/하차(△, 그리고 차량 조작으로 전환)
+                </p>
+                <p>
+                  <b>운전할 때</b>: <b>W</b> 가속(R2) · <b>S</b> 브레이크/후진(L2) · <b>A D</b> 조향 · <b>Space</b> 핸드브레이크 · 마우스 시점. 차 근처(3.5m)에서 F.
+                </p>
+                <p class="note">
+                  GTA V(PlayStation)에서 확인된 것: 스프린트=X 연타, 점프=□, 조준=L2, 탑승=△, 엄폐=R1, 차량 가속=R2. 그 외(브레이크 L2, 핸드브레이크 □, 모든 속도·카메라 수치, 시점 가속 공식)는
+                  <b>테스트베드의 가정</b>이며 실제 게임과 다를 수 있습니다.
+                </p>
+              </div>
+              <p id="hintConsole" class="hint" hidden>화면을 클릭하면 마우스가 잠기고, 키보드와 마우스가 현재 프로필로 콘솔에 전달됩니다 (Esc로 해제). 브리지가 시뮬레이터면 실제 PS5가 아니라 받은 패드 값을 그려 주는 화면입니다.</p>
+            </div>
+            <div id="ps5Overlay" class="overlay"><p id="ps5OverlayText">연결하면 여기에 화면이 나옵니다</p></div>
+          </div>
+        </section>
       </div>
-
-      <div id="hintConsole" class="hint" hidden>
-        <p>브리지에 연결하면 이 화면에 콘솔 영상이 나오고, 마우스 잠금(클릭)과 키보드가 현재 프로필로 콘솔에 전달됩니다.</p>
-        <p class="note">브리지가 "모의 콘솔"이면 실제 PlayStation이 아니라 받은 패드 값을 그려 주는 시뮬레이터입니다(입력 경로와 지연 확인용). 실제 콘솔은 gtp-core가 필요합니다(docs/gtp-core-contract.md).</p>
-      </div>
-
-      <h2>시점 회전 검증</h2>
-      <dl class="readout" id="readout">
-        <div><dt>마우스 누적 X</dt><dd id="mCounts">0 counts</dd></div>
-        <div><dt>실제 회전</dt><dd id="mTurned">0.0°</dd></div>
-        <div><dt>실측 °/count</dt><dd id="mRatio">-</dd></div>
-        <div><dt>설정 °/count (오차)</dt><dd id="mExpected">-</dd></div>
-        <div><dt>회전 속도</dt><dd id="rRate">0 / 0 °/s</dd></div>
-        <div><dt>속도 상한 사용률</dt><dd id="rUse">0%</dd></div>
-        <div><dt>상한 도달</dt><dd id="rCap"><span class="badge off">아니오</span></dd></div>
-        <div><dt>오른쪽 스틱</dt><dd id="rStick">0.000</dd></div>
-        <div><dt>활성 레이어</dt><dd id="rLayers">default</dd></div>
-        <div><dt>상태</dt><dd id="rState">-</dd></div>
-        <div><dt>자이로 (rad/s)</dt><dd id="rGyro">0 / 0 / 0</dd></div>
-        <div><dt>위치</dt><dd id="rPos">-</dd></div>
-        <div><dt>마우스 잠금</dt><dd id="rLock">해제됨</dd></div>
-      </dl>
-      <div class="row">
-        <button id="resetMeasure" type="button">측정 초기화</button>
-        <button id="resetGame" type="button">게임 처음부터</button>
-        <button id="clearLatch" type="button">차량 레이어 해제</button>
-      </div>
-      <p class="hint">측정 방법: 초기화한 뒤 마우스를 가로로 움직이면 누적 카운트와 실제 회전 각도의 비율이 설정값과 같은지 바로 비교됩니다. 360° 한 바퀴에 필요한 카운트는 360 ÷ 감도입니다.
-        차량에서는 카메라가 차 뒤로 알아서 돌아오므로 측정은 걸어 다니는 상태에서 하세요.</p>
-
-      <h2>가상 패드 (게임에 전달되는 값)</h2>
-      <canvas id="pad" width="760" height="340" aria-label="가상 패드 상태"></canvas>
+      <!-- The connect and disconnect handlers live in the page's script; the one button on the left presses them. -->
+      <span hidden><button id="bridgeConnect" type="button">연결</button><button id="bridgeDisconnect" type="button">끊기</button></span>
     </section>
 
-    <section class="controls" aria-label="설정">
-      <div id="consolePanel" hidden>
-        <h2>콘솔 등록</h2>
-        <p class="hint">처음 한 번만 합니다. 콘솔을 <b>켜 두고</b>, <b>설정 → 시스템 → 원격 플레이 → 기기 연결</b>(PS5) 화면을 연 채로 거기 나온 8자리 코드를 입력하세요. 코드는 몇 분 안에 바뀝니다.</p>
-        <div class="row"><button id="regScan" type="button">콘솔 찾기</button></div>
-        <label>찾은 콘솔
-          <select id="regHost" aria-label="찾은 콘솔"><option value="">(찾기를 누르세요)</option></select>
-        </label>
-        <label>콘솔 IP 주소 <span class="note">(목록에 없으면 직접 입력)</span>
-          <input id="regAddr" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" aria-label="콘솔 IP 주소">
-        </label>
-        <label>8자리 코드
-          <input id="regPin" type="text" inputmode="numeric" maxlength="9" spellcheck="false" autocomplete="off" aria-label="콘솔에 표시된 8자리 코드">
-        </label>
-        <details id="psnBox">
-          <summary>PSN 계정 ID를 모르면 여기서 가져오기</summary>
-          <p class="hint">Sony 로그인 페이지에 직접 로그인한 뒤, 나온 주소의 일회용 코드로 <b>계정 ID 숫자만</b> 가져와 이 컴퓨터에 저장합니다.
-            이 방식은 <b>Sony 공식 Remote Play 앱의 인증 정보</b>(chiaki-ng 공개 소스의 값)로 코드를 교환합니다. 비공식 클라이언트가 그 정보를 쓰는 것이라 Sony 약관상 회색지대이니 본인 계정에만 쓰세요.
-            받은 접근 토큰은 저장하지도 기록하지도 않고 바로 버립니다. 주소의 <code>code=</code> 는 일회용 로그인 코드이므로 이 칸 밖에는 붙여 넣지 마세요.</p>
-          <label><input id="psnAck" type="checkbox"> 위 내용을 이해했고, 내 계정으로 진행합니다</label>
-          <p><a id="psnLogin" href="#" target="_blank" rel="noopener noreferrer">1. Sony 로그인 열기 (새 탭)</a></p>
-          <label>2. 로그인 후 “redirect”라고 뜬 페이지의 <b>주소창 주소 전체</b>를 붙여넣기
-            <input id="psnUrl" type="password" spellcheck="false" autocomplete="off" aria-label="로그인 후 주소">
-          </label>
-          <div class="row"><button id="psnGo" type="button" disabled>3. 계정 ID 가져오기</button></div>
-        </details>
-        <label>PSN 계정 ID <span class="note" id="regAccountNote">(숫자 또는 Base64. 처음 한 번만 필요)</span>
-          <input id="regAccount" type="password" spellcheck="false" autocomplete="off" aria-label="PSN 계정 ID">
-        </label>
-        <div class="row"><button id="regGo" type="button">등록</button></div>
-        <p id="regMsg" class="hint" role="status"></p>
-        <p class="hint">등록한 콘솔 (이 컴퓨터에 저장, 키는 화면으로 보내지 않습니다)</p>
-        <ul id="regList"></ul>
-
-        <h2>콘솔 연결 (브리지)</h2>
-        <label>브리지 주소
-          <input id="bridgeUrl" type="text" spellcheck="false" autocomplete="off" aria-label="브리지 WebSocket 주소">
-        </label>
-        <div class="row">
-          <button id="bridgeConnect" type="button">연결</button>
-          <button id="bridgeDisconnect" type="button">끊기</button>
+    <!-- ============================================================ 연습장 -->
+    <section id="viewLab" class="view" hidden aria-label="연습장">
+      <div class="view-head">
+        <div>
+          <h2>연습장</h2>
+          <p class="muted">키보드와 마우스가 가상 패드로 바뀌는 모습을 눈으로 확인하는 테스트 게임입니다. 게임은 패드 값만 받습니다.</p>
         </div>
-        <dl class="readout">
-          <div><dt>상태</dt><dd id="cStatus">끊김</dd></div>
-          <div><dt>수신 (fps / kbps)</dt><dd id="cRate">-</dd></div>
-          <div><dt>RTT</dt><dd id="cRtt">-</dd></div>
-          <div><dt>입력→화면 지연</dt><dd id="cLatency">-</dd></div>
-        </dl>
-        <label>화질 <span class="note" id="qualityNote"></span>
-          <select id="qualityPreset">
-            <option value="saver">데이터 절약</option>
-            <option value="balanced" selected>균형</option>
-            <option value="low-latency">저지연</option>
-            <option value="quality">고화질</option>
-          </select>
-        </label>
-        <label>프로필
-          <select id="consoleProfile">
-            <option value="keep">현재 프로필 유지</option>
-            <option value="fps">FPS 기본</option>
-            <option value="tps">GTA V 스타일</option>
+        <label class="inline">게임
+          <select id="gameMode">
+            <option value="fps">1인칭 FPS (간단한 레이캐스팅)</option>
+            <option value="tps">GTA V 스타일 3인칭 (보행·조준·차량)</option>
           </select>
         </label>
       </div>
+      <div class="lab-grid">
+        <div class="stage-frame" id="labStage"></div>
+        <div class="lab-side">
+          <h3>시점 회전 검증</h3>
+          <dl class="readout" id="readout">
+            <div><dt>마우스 누적 X</dt><dd id="mCounts">0 counts</dd></div>
+            <div><dt>실제 회전</dt><dd id="mTurned">0.0°</dd></div>
+            <div><dt>실측 °/count</dt><dd id="mRatio">-</dd></div>
+            <div><dt>설정 °/count (오차)</dt><dd id="mExpected">-</dd></div>
+            <div><dt>회전 속도</dt><dd id="rRate">0 / 0 °/s</dd></div>
+            <div><dt>속도 상한 사용률</dt><dd id="rUse">0%</dd></div>
+            <div><dt>상한 도달</dt><dd id="rCap"><span class="badge off">아니오</span></dd></div>
+            <div><dt>오른쪽 스틱</dt><dd id="rStick">0.000</dd></div>
+            <div><dt>활성 레이어</dt><dd id="rLayers">default</dd></div>
+            <div><dt>상태</dt><dd id="rState">-</dd></div>
+            <div><dt>자이로 (rad/s)</dt><dd id="rGyro">0 / 0 / 0</dd></div>
+            <div><dt>위치</dt><dd id="rPos">-</dd></div>
+            <div><dt>마우스 잠금</dt><dd id="rLock">해제됨</dd></div>
+          </dl>
+          <div class="row">
+            <button id="resetMeasure" class="btn small" type="button">측정 초기화</button>
+            <button id="resetGame" class="btn small" type="button">게임 처음부터</button>
+            <button id="clearLatch" class="btn small" type="button">차량 레이어 해제</button>
+          </div>
+          <p class="muted small">초기화한 뒤 마우스를 가로로 움직이면 누적 카운트와 실제 회전 각도의 비율이 설정값과 같은지 바로 비교됩니다. 360° 한 바퀴에 필요한 카운트는 360 ÷ 감도입니다.
+            차량에서는 카메라가 차 뒤로 알아서 돌아오므로 측정은 걸어 다니는 상태에서 하세요.</p>
 
-      <h2>마우스 매핑</h2>
-      <label>대상
-        <select id="mouseTarget">
-          <option value="right_stick">오른쪽 스틱</option>
-          <option value="gyro">가상 자이로 (게임의 자이로 조준을 켜야 함)</option>
-          <option value="off">끔</option>
-        </select>
-      </label>
-      <label>감도 (카운트당 °) <output id="o_degPerCount"></output>
-        <input id="degPerCount" type="range" min="0.005" max="0.3" step="0.005">
-      </label>
-      <label>응답 곡선 (1 = 선형) <output id="o_curve"></output>
-        <input id="curve" type="range" min="0.5" max="3" step="0.05">
-      </label>
-      <label>스무딩 (ms) <output id="o_smoothingMs"></output>
-        <input id="smoothingMs" type="range" min="0" max="100" step="1">
-      </label>
-      <label>속도 상한 (°/s) <output id="o_maxTurnRate"></output>
-        <input id="maxTurnRate" type="range" min="20" max="1500" step="10">
-      </label>
-      <label>스틱 최대 편향 <output id="o_maxDeflection"></output>
-        <input id="maxDeflection" type="range" min="0.1" max="1" step="0.05">
-      </label>
-      <label>세로 배율 <output id="o_verticalScale"></output>
-        <input id="verticalScale" type="range" min="0.2" max="2" step="0.05">
-      </label>
-      <label class="check"><input id="invertY" type="checkbox"> 세로 반전</label>
+          <h3>가상 패드 (게임에 전달되는 값)</h3>
+          <canvas id="pad" width="760" height="340" aria-label="가상 패드 상태"></canvas>
 
-      <h2>프로필에 기록한 게임 내 설정 (내가 안다고 선언한 값)</h2>
-      <label>안쪽 데드존 <output id="o_innerDeadzone"></output>
-        <input id="innerDeadzone" type="range" min="0" max="0.5" step="0.01">
-      </label>
-      <label>최대 편향에서 회전 속도 (°/s) <output id="o_maxTurnRateAtFullStick"></output>
-        <input id="maxTurnRateAtFullStick" type="range" min="60" max="1000" step="10">
-      </label>
-      <label>응답 곡선 <output id="o_responseCurve"></output>
-        <input id="responseCurve" type="range" min="0.5" max="3" step="0.05">
-      </label>
-      <label>세로/가로 회전 비율 <output id="o_verticalRateRatio"></output>
-        <input id="verticalRateRatio" type="range" min="0.2" max="2" step="0.05">
-      </label>
-      <label>조준 중 게임의 시점 배율 (aim 레이어) <output id="o_aimLayerScale"></output>
-        <input id="aimLayerScale" type="range" min="0.2" max="2" step="0.05">
-      </label>
-      <label>데드존 모양
-        <select id="inShape">
-          <option value="radial">원형 (스틱 벡터 기준, 대부분의 게임)</option>
-          <option value="axial">축별</option>
-        </select>
-      </label>
+          <div id="fpsSettings">
+            <h3>테스트 게임 내부 설정 <span class="muted small">(실제 게임에서는 알 수 없는 값)</span></h3>
+            <label>데드존 <output id="o_gInnerDeadzone"></output>
+              <input id="gInnerDeadzone" type="range" min="0" max="0.5" step="0.01">
+            </label>
+            <label>최대 회전 속도 (°/s) <output id="o_gMaxTurnRate"></output>
+              <input id="gMaxTurnRate" type="range" min="60" max="1000" step="10">
+            </label>
+            <label>응답 곡선 <output id="o_gResponseCurve"></output>
+              <input id="gResponseCurve" type="range" min="0.5" max="3" step="0.05">
+            </label>
+            <label>세로/가로 회전 비율 <output id="o_gVerticalRatio"></output>
+              <input id="gVerticalRatio" type="range" min="0.2" max="2" step="0.05">
+            </label>
+            <label>조준(ADS) 시 시점 배율 <output id="o_gAdsLookScale"></output>
+              <input id="gAdsLookScale" type="range" min="0.2" max="1" step="0.05">
+            </label>
+            <label>데드존 모양
+              <select id="gShape">
+                <option value="radial">원형</option>
+                <option value="axial">축별</option>
+              </select>
+            </label>
+            <label class="check"><input id="gGyro" type="checkbox"> 자이로 조준 사용</label>
+          </div>
 
-      <div id="fpsSettings">
-        <h2>테스트베드 게임 내부 설정 <span class="note">(실제 게임에서는 알 수 없는 값)</span></h2>
-        <label>데드존 <output id="o_gInnerDeadzone"></output>
-          <input id="gInnerDeadzone" type="range" min="0" max="0.5" step="0.01">
-        </label>
-        <label>최대 회전 속도 (°/s) <output id="o_gMaxTurnRate"></output>
-          <input id="gMaxTurnRate" type="range" min="60" max="1000" step="10">
-        </label>
-        <label>응답 곡선 <output id="o_gResponseCurve"></output>
-          <input id="gResponseCurve" type="range" min="0.5" max="3" step="0.05">
-        </label>
-        <label>세로/가로 회전 비율 <output id="o_gVerticalRatio"></output>
-          <input id="gVerticalRatio" type="range" min="0.2" max="2" step="0.05">
-        </label>
-        <label>조준(ADS) 시 시점 배율 <output id="o_gAdsLookScale"></output>
-          <input id="gAdsLookScale" type="range" min="0.2" max="1" step="0.05">
-        </label>
-        <label>데드존 모양
-          <select id="gShape">
-            <option value="radial">원형</option>
-            <option value="axial">축별</option>
-          </select>
-        </label>
-        <label class="check"><input id="gGyro" type="checkbox"> 자이로 조준 사용</label>
+          <div id="tpsSettings" hidden>
+            <h3>GTA 스타일 게임 내부 설정 <span class="muted small">(실제 게임에서는 알 수 없는 값)</span></h3>
+            <label>시점 데드존 <output id="o_tInnerDeadzone"></output>
+              <input id="tInnerDeadzone" type="range" min="0" max="0.5" step="0.01">
+            </label>
+            <label>시점 최대 회전 속도 (°/s) <output id="o_tMaxTurnRate"></output>
+              <input id="tMaxTurnRate" type="range" min="60" max="1000" step="10">
+            </label>
+            <label>응답 곡선 <output id="o_tResponseCurve"></output>
+              <input id="tResponseCurve" type="range" min="0.5" max="3" step="0.05">
+            </label>
+            <label>세로/가로 회전 비율 <output id="o_tVerticalRatio"></output>
+              <input id="tVerticalRatio" type="range" min="0.2" max="2" step="0.05">
+            </label>
+            <label>시점 가속 (GTA의 Look Acceleration에 해당) <output id="o_tLookAcceleration"></output>
+              <input id="tLookAcceleration" type="range" min="0" max="1" step="0.05">
+            </label>
+            <label>조준(L2) 중 시점 배율 <output id="o_tAimLookScale"></output>
+              <input id="tAimLookScale" type="range" min="0.2" max="1" step="0.05">
+            </label>
+            <label>데드존 모양
+              <select id="tShape">
+                <option value="radial">원형</option>
+                <option value="axial">축별</option>
+              </select>
+            </label>
+            <label class="check"><input id="tAimAssist" type="checkbox"> 보조 조준 (조준 중 목표 쪽으로 카메라가 살짝 끌림)</label>
+          </div>
+
+          <div class="row"><button id="autoCalibrate" class="btn small" type="button">게임을 측정해 자동 보정</button></div>
+          <p class="muted small">게임 내부 값을 바꾸면 매핑이 모르는 상태가 되어 회전 각도가 어긋납니다. 자동 보정은 게임을 스틱으로 직접 돌려 보며 측정해 표, 세로 비율, 데드존 모양, 조준 시 배율을 프로필에 채웁니다.
+            시점 가속은 시간에 따라 변해서 표로는 보정되지 않습니다(느린 움직임에서는 영향이 없고, 빠르게 오래 쓸어 넘기면 커집니다).</p>
+        </div>
       </div>
+    </section>
 
-      <div id="tpsSettings" hidden>
-        <h2>GTA 스타일 게임 내부 설정 <span class="note">(실제 게임에서는 알 수 없는 값)</span></h2>
-        <label>시점 데드존 <output id="o_tInnerDeadzone"></output>
-          <input id="tInnerDeadzone" type="range" min="0" max="0.5" step="0.01">
-        </label>
-        <label>시점 최대 회전 속도 (°/s) <output id="o_tMaxTurnRate"></output>
-          <input id="tMaxTurnRate" type="range" min="60" max="1000" step="10">
-        </label>
-        <label>응답 곡선 <output id="o_tResponseCurve"></output>
-          <input id="tResponseCurve" type="range" min="0.5" max="3" step="0.05">
-        </label>
-        <label>세로/가로 회전 비율 <output id="o_tVerticalRatio"></output>
-          <input id="tVerticalRatio" type="range" min="0.2" max="2" step="0.05">
-        </label>
-        <label>시점 가속 (GTA의 Look Acceleration에 해당) <output id="o_tLookAcceleration"></output>
-          <input id="tLookAcceleration" type="range" min="0" max="1" step="0.05">
-        </label>
-        <label>조준(L2) 중 시점 배율 <output id="o_tAimLookScale"></output>
-          <input id="tAimLookScale" type="range" min="0.2" max="1" step="0.05">
-        </label>
-        <label>데드존 모양
-          <select id="tShape">
-            <option value="radial">원형</option>
-            <option value="axial">축별</option>
-          </select>
-        </label>
-        <label class="check"><input id="tAimAssist" type="checkbox"> 보조 조준 (조준 중 목표 쪽으로 카메라가 살짝 끌림)</label>
-      </div>
+    <!-- ============================================================ 설정 -->
+    <section id="viewSettings" class="view" hidden aria-label="설정">
+      <div class="view-head"><h2>설정</h2></div>
+      <div class="settings-layout">
+        <nav class="subnav" aria-label="설정 항목">
+          <button type="button" data-pane="paneInput" aria-pressed="true">입력 매핑</button>
+          <button type="button" data-pane="paneConsoles" aria-pressed="false">콘솔 관리</button>
+          <button type="button" data-pane="paneAdvanced" aria-pressed="false">고급</button>
+        </nav>
+        <div class="settings-body">
+          <div id="paneInput" class="pane">
+            <h3>마우스 매핑</h3>
+            <label>대상
+              <select id="mouseTarget">
+                <option value="right_stick">오른쪽 스틱</option>
+                <option value="gyro">가상 자이로 (게임의 자이로 조준을 켜야 함)</option>
+                <option value="off">끔</option>
+              </select>
+            </label>
+            <label>감도 (카운트당 °) <output id="o_degPerCount"></output>
+              <input id="degPerCount" type="range" min="0.005" max="0.3" step="0.005">
+            </label>
+            <label>응답 곡선 (1 = 선형) <output id="o_curve"></output>
+              <input id="curve" type="range" min="0.5" max="3" step="0.05">
+            </label>
+            <label>스무딩 (ms) <output id="o_smoothingMs"></output>
+              <input id="smoothingMs" type="range" min="0" max="100" step="1">
+            </label>
+            <label>속도 상한 (°/s) <output id="o_maxTurnRate"></output>
+              <input id="maxTurnRate" type="range" min="20" max="1500" step="10">
+            </label>
+            <label>스틱 최대 편향 <output id="o_maxDeflection"></output>
+              <input id="maxDeflection" type="range" min="0.1" max="1" step="0.05">
+            </label>
+            <label>세로 배율 <output id="o_verticalScale"></output>
+              <input id="verticalScale" type="range" min="0.2" max="2" step="0.05">
+            </label>
+            <label class="check"><input id="invertY" type="checkbox"> 세로 반전</label>
 
-      <div class="row">
-        <button id="autoCalibrate" type="button">게임을 측정해 자동 보정</button>
-      </div>
-      <p class="hint">게임 내부 값을 바꾸면 매핑이 모르는 상태가 되어 회전 각도가 어긋납니다. 자동 보정은 게임을 스틱으로 직접 돌려 보며 측정해 표, 세로 비율, 데드존 모양, 조준 시 배율을 프로필에 채웁니다.
-        시점 가속은 시간에 따라 변해서 표로는 보정되지 않습니다(느린 움직임에서는 영향이 없고, 빠르게 오래 쓸어 넘기면 커집니다).</p>
+            <h3>프로필에 기록한 게임 내 설정 <span class="muted small">(내가 안다고 선언한 값)</span></h3>
+            <label>안쪽 데드존 <output id="o_innerDeadzone"></output>
+              <input id="innerDeadzone" type="range" min="0" max="0.5" step="0.01">
+            </label>
+            <label>최대 편향에서 회전 속도 (°/s) <output id="o_maxTurnRateAtFullStick"></output>
+              <input id="maxTurnRateAtFullStick" type="range" min="60" max="1000" step="10">
+            </label>
+            <label>응답 곡선 <output id="o_responseCurve"></output>
+              <input id="responseCurve" type="range" min="0.5" max="3" step="0.05">
+            </label>
+            <label>세로/가로 회전 비율 <output id="o_verticalRateRatio"></output>
+              <input id="verticalRateRatio" type="range" min="0.2" max="2" step="0.05">
+            </label>
+            <label>조준 중 게임의 시점 배율 (aim 레이어) <output id="o_aimLayerScale"></output>
+              <input id="aimLayerScale" type="range" min="0.2" max="2" step="0.05">
+            </label>
+            <label>데드존 모양
+              <select id="inShape">
+                <option value="radial">원형 (스틱 벡터 기준, 대부분의 게임)</option>
+                <option value="axial">축별</option>
+              </select>
+            </label>
 
-      <h2>프로필 JSON</h2>
-      <textarea id="profileJson" rows="10" spellcheck="false" aria-label="프로필 JSON"></textarea>
-      <div class="row">
-        <button id="applyJson" type="button">JSON 적용</button>
-        <button id="resetProfile" type="button">이 게임의 기본 프로필로</button>
+            <h3>프로필</h3>
+            <label>PS5에 연결할 때 쓸 프로필
+              <select id="consoleProfile">
+                <option value="keep">현재 프로필 유지</option>
+                <option value="fps">FPS 기본</option>
+                <option value="tps">GTA V 스타일</option>
+              </select>
+            </label>
+            <textarea id="profileJson" rows="10" spellcheck="false" aria-label="프로필 JSON"></textarea>
+            <div class="row">
+              <button id="applyJson" class="btn small" type="button">JSON 적용</button>
+              <button id="resetProfile" class="btn small" type="button">이 게임의 기본 프로필로</button>
+            </div>
+            <p id="profileMsg" class="msg" role="status"></p>
+          </div>
+
+          <div id="paneConsoles" class="pane" hidden>
+            <h3>등록한 콘솔</h3>
+            <p class="muted small">이 컴퓨터에 저장돼 있습니다. 콘솔을 켜고 연결하는 데 쓰는 키는 화면으로 보내지 않습니다. 목록에서 지워도 PS5 쪽의 기기 목록은 그대로입니다.</p>
+            <ul id="regList"></ul>
+            <div class="row">
+              <button id="setAdd" class="btn small" type="button">+ 콘솔 추가</button>
+              <button id="setRoutes" class="btn small" type="button">접속 경로 지도</button>
+            </div>
+            <p class="muted small">등록 정보는 컴퓨터의 <code>~/.gtp/consoles.json</code>에 저장되어, 다시 등록하거나 PSN에 로그인할 일이 없습니다. 다른 컴퓨터로 옮기려면 <code>npm run consoles</code> 명령을 쓰세요.</p>
+          </div>
+
+          <div id="paneAdvanced" class="pane" hidden>
+            <h3>브리지</h3>
+            <label>브리지 주소 (WebSocket)
+              <input id="bridgeUrl" type="text" spellcheck="false" autocomplete="off" aria-label="브리지 WebSocket 주소">
+            </label>
+            <p class="muted small">보통은 바꿀 필요가 없습니다. 이 페이지를 연 브리지의 주소가 자동으로 들어 있습니다.</p>
+            <h3>진단</h3>
+            <p class="muted small"><a href="?selftest=1">셀프 테스트 열기</a> · 브라우저 안에서 매핑 엔진과 영상 재생기를 점검합니다.</p>
+          </div>
+        </div>
       </div>
-      <p id="profileMsg" class="msg" role="status"></p>
     </section>
   </main>
 
+  <!-- ============================================================ dialogs -->
+  <dialog id="addDialog" aria-labelledby="addTitle">
+    <div class="dialog-head"><h2 id="addTitle">콘솔 등록</h2><button id="addClose" class="btn ghost small" type="button">닫기</button></div>
+    <p class="muted small">처음 한 번만 합니다. 콘솔을 <b>켜 두고</b>, <b>설정 → 시스템 → 원격 플레이 → 기기 연결</b>(PS5) 화면을 연 채로 거기 나온 8자리 코드를 입력하세요. 코드는 몇 분 안에 바뀝니다.</p>
+    <div class="row"><button id="regScan" class="btn small" type="button">콘솔 찾기</button></div>
+    <label>찾은 콘솔
+      <select id="regHost" aria-label="찾은 콘솔"><option value="">(찾기를 누르세요)</option></select>
+    </label>
+    <label>콘솔 IP 주소 <span class="muted small">(목록에 없으면 직접 입력)</span>
+      <input id="regAddr" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" aria-label="콘솔 IP 주소">
+    </label>
+    <label>8자리 코드
+      <input id="regPin" type="text" inputmode="numeric" maxlength="9" spellcheck="false" autocomplete="off" aria-label="콘솔에 표시된 8자리 코드">
+    </label>
+    <details id="psnBox">
+      <summary>PSN 계정 ID를 모르면 여기서 가져오기</summary>
+      <p class="muted small">Sony 로그인 페이지에 직접 로그인한 뒤, 나온 주소의 일회용 코드로 <b>계정 ID 숫자만</b> 가져와 이 컴퓨터에 저장합니다.
+        이 방식은 <b>Sony 공식 Remote Play 앱의 인증 정보</b>(chiaki-ng 공개 소스의 값)로 코드를 교환합니다. 비공식 클라이언트가 그 정보를 쓰는 것이라 Sony 약관상 회색지대이니 본인 계정에만 쓰세요.
+        받은 접근 토큰은 저장하지도 기록하지도 않고 바로 버립니다. 주소의 <code>code=</code> 는 일회용 로그인 코드이므로 이 칸 밖에는 붙여 넣지 마세요.</p>
+      <label class="check"><input id="psnAck" type="checkbox"> 위 내용을 이해했고, 내 계정으로 진행합니다</label>
+      <p><a id="psnLogin" href="#" target="_blank" rel="noopener noreferrer">1. Sony 로그인 열기 (새 탭)</a></p>
+      <label>2. 로그인 후 “redirect”라고 뜬 페이지의 <b>주소창 주소 전체</b>를 붙여넣기
+        <input id="psnUrl" type="password" spellcheck="false" autocomplete="off" aria-label="로그인 후 주소">
+      </label>
+      <div class="row"><button id="psnGo" class="btn small" type="button" disabled>3. 계정 ID 가져오기</button></div>
+    </details>
+    <label>PSN 계정 ID <span class="muted small" id="regAccountNote">(숫자 또는 Base64. 처음 한 번만 필요)</span>
+      <input id="regAccount" type="password" spellcheck="false" autocomplete="off" aria-label="PSN 계정 ID">
+    </label>
+    <div class="row"><button id="regGo" class="btn primary" type="button">등록</button><button id="addClose2" class="btn ghost" type="button">닫기</button></div>
+    <p id="regMsg" class="callout" role="status"></p>
+  </dialog>
+
+  <dialog id="routeDialog" aria-labelledby="routeTitle" class="wide">
+    <div class="dialog-head"><h2 id="routeTitle">접속 경로 지도</h2><button id="routeClose" class="btn ghost small" type="button">닫기</button></div>
+    <p class="muted small">PC에서 PS5까지 가는 길은 집 안과 밖에서 다릅니다. 경로와 단계를 눌러 보세요. “확인됨”은 이 프로젝트가 실제 PS5로 본 것만 해당합니다.</p>
+    <div id="routeExplorer"></div>
+  </dialog>
+
   <pre id="selftest" hidden></pre>
-  <script type="module" src="/web/tester.ts"></script>
+  <script type="module" src="/web/app.ts"></script>
 </body>
 </html>

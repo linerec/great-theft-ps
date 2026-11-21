@@ -25,15 +25,29 @@ export interface StoredConsole {
   rpKeyType: number;
   rpKey: string; // hex
   registeredAt: string;
+  /** When the console last accepted a session request with this registration (proof that the registration works). */
+  verifiedAt?: string;
 }
 
-export type PublicConsole = Pick<StoredConsole, 'mac' | 'nickname' | 'target' | 'host' | 'registeredAt'>;
+export type PublicConsole = Pick<StoredConsole, 'mac' | 'nickname' | 'target' | 'host' | 'registeredAt' | 'verifiedAt'>;
 
 interface FileShape {
   version: 1;
   /** The user's PSN account id as base64 of its 8 bytes. An identifier, not a credential. */
   accountId?: string;
   consoles: StoredConsole[];
+}
+
+/** Keeps what is well formed and drops the rest, so a damaged or foreign file cannot put garbage into the store. */
+export function normalizeStoreData(raw: unknown): FileShape {
+  const obj = (raw ?? {}) as Partial<FileShape>;
+  const consoles = (Array.isArray(obj.consoles) ? obj.consoles : []).filter(
+    (c): c is StoredConsole =>
+      !!c && isHex((c as StoredConsole).mac, 6) && isKnownTarget((c as StoredConsole).target) && isHex((c as StoredConsole).rpKey, 16) && typeof (c as StoredConsole).registKey === 'string',
+  );
+  const out: FileShape = { version: 1, consoles };
+  if (typeof obj.accountId === 'string' && /^[A-Za-z0-9+/]{11}=$/.test(obj.accountId)) out.accountId = obj.accountId;
+  return out;
 }
 
 export function defaultStorePath(env: NodeJS.ProcessEnv = process.env): string {
@@ -59,14 +73,45 @@ export class ConsoleStore {
     } catch {
       throw new Error(`${this.file} is not valid JSON. Move it away to start over (it holds your console registrations).`);
     }
-    const obj = raw as Partial<FileShape>;
-    const consoles = (Array.isArray(obj.consoles) ? obj.consoles : []).filter(
-      (c): c is StoredConsole =>
-        !!c && isHex((c as StoredConsole).mac, 6) && isKnownTarget((c as StoredConsole).target) && isHex((c as StoredConsole).rpKey, 16) && typeof (c as StoredConsole).registKey === 'string',
-    );
-    const out: FileShape = { version: 1, consoles };
-    if (typeof obj.accountId === 'string' && /^[A-Za-z0-9+/]{11}=$/.test(obj.accountId)) out.accountId = obj.accountId;
-    return out;
+    return normalizeStoreData(raw);
+  }
+
+  /** A copy of everything, secrets included. For exporting a backup only. */
+  snapshot(): FileShape {
+    return JSON.parse(JSON.stringify(this.#data)) as FileShape;
+  }
+
+  /**
+   * Add what another copy of the store knows. A console is added when new; when both have it the newer registration
+   * wins. Imported consoles are not marked verified: that has to be shown again from this computer. The account id is
+   * taken only if this computer has none.
+   */
+  merge(incoming: unknown): { added: PublicConsole[]; updated: PublicConsole[]; kept: PublicConsole[]; accountId: 'taken' | 'kept' | 'none' } {
+    const other = normalizeStoreData(incoming);
+    const result = { added: [] as PublicConsole[], updated: [] as PublicConsole[], kept: [] as PublicConsole[], accountId: 'none' as 'taken' | 'kept' | 'none' };
+    const pub = ({ mac, nickname, target, host, registeredAt }: StoredConsole): PublicConsole => ({ mac, nickname, target, host, registeredAt });
+    for (const c of other.consoles) {
+      const { verifiedAt: _dropped, ...fresh } = c;
+      const mine = this.#data.consoles.find((x) => x.mac === c.mac);
+      if (!mine) {
+        this.#data.consoles.push(fresh);
+        result.added.push(pub(fresh));
+      } else if (Date.parse(c.registeredAt) > Date.parse(mine.registeredAt)) {
+        this.#data.consoles = this.#data.consoles.map((x) => (x.mac === c.mac ? fresh : x));
+        result.updated.push(pub(fresh));
+      } else {
+        result.kept.push(pub(mine));
+      }
+    }
+    if (other.accountId) {
+      if (this.#data.accountId) result.accountId = 'kept';
+      else {
+        this.#data.accountId = other.accountId;
+        result.accountId = 'taken';
+      }
+    }
+    if (result.added.length || result.updated.length || result.accountId === 'taken') this.#write();
+    return result;
   }
 
   #write(): void {
@@ -83,7 +128,17 @@ export class ConsoleStore {
   }
 
   list(): PublicConsole[] {
-    return this.#data.consoles.map(({ mac, nickname, target, host, registeredAt }) => ({ mac, nickname, target, host, registeredAt }));
+    return this.#data.consoles.map(({ mac, nickname, target, host, registeredAt, verifiedAt }) => ({ mac, nickname, target, host, registeredAt, ...(verifiedAt ? { verifiedAt } : {}) }));
+  }
+
+  /** Remember that the console accepted a session request, and the address it answered at. */
+  markVerified(mac: string, host: string): boolean {
+    const c = this.#data.consoles.find((x) => x.mac === mac.toLowerCase());
+    if (!c) return false;
+    c.verifiedAt = new Date().toISOString();
+    c.host = host;
+    this.#write();
+    return true;
   }
 
   /** The full record including secrets. For the console link only; never sent to a browser. */

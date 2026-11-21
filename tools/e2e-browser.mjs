@@ -72,7 +72,7 @@ const bridge = await startBridge({
 });
 
 const profileDir = mkdtempSync(path.join(tmpdir(), 'gtp-e2e-'));
-const url = `${bridge.url}?mode=console&e2e=1`;
+const url = `${bridge.url}?e2e=1`; // the PS5 page is the default view
 const child = spawn(chrome, ['--headless=new', '--disable-gpu', '--no-first-run', `--user-data-dir=${profileDir}`, url], { stdio: 'ignore', windowsHide: true });
 
 let exitCode = 1;

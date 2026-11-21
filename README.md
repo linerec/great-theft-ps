@@ -43,6 +43,7 @@ npm run bridge   # bridge with a SIMULATED console; open the printed URL (no tok
 npm run e2e      # real-browser end-to-end check (headless Chrome <-> bridge <-> simulated console)
 npm run discover # look for PlayStation consoles on the local network (run it where the console is)
 npm run register -- --host <console IP>   # register with your console (see below); the page can do it too
+npm run consoles -- list|export|import   # see, back up and move registrations (see below)
 ```
 
 ### Register your console (once)
@@ -58,12 +59,25 @@ It is optional: typing the number in works without it. The result is saved in `~
 browser. That file lets a program control your console: keep it private and do not commit or share it.
 This part has been checked against chiaki-ng's test vectors and a simulated console only, **not yet against a real console**.
 
-Open the page and click the game view to lock the mouse (Esc releases it). W A S D move, the mouse looks,
-left click shoots, right click aims down sights, Shift sprints, X walks slowly.
+The page has three places. **PS5** is the main one: your consoles, one button that moves you forward (register, check, connect), the
+route to the console (and a map of every route, inside the home and outside), and the picture. **연습장** holds the two test games that
+show what the keyboard and mouse do to a pad: click the game to lock the mouse (Esc releases it), W A S D move, the mouse looks, left
+click shoots, right click aims, Shift sprints. **설정** has the input mapping, console management and advanced items. Until the real
+console link exists, the picture on the PS5 page comes from the simulated console, which draws the pad state it received; the page says so.
 
-Console mode: choose "콘솔 (브리지 연결)" and press connect. With the simulated console you see the pad state it received drawn as a picture, and the
-input-to-picture latency. With a real console you will see the PlayStation once gtp-core exists.
+### Move a registration to another computer (never register twice)
 
+A registration is kept in `~/.gtp/consoles.json`, so it survives restarts and updates. To use the same console from another
+computer without a new 8 digit code and without logging in to PSN again, make a passphrase-protected copy and import it there:
+
+```sh
+npm run consoles -- export gtp-consoles.gtpbackup     # on the computer that has the registration
+npm run consoles -- import gtp-consoles.gtpbackup     # on the other computer
+```
+
+The copy is encrypted (scrypt + AES-256-GCM), but it holds the keys to your console: carry it by USB stick or a private channel and
+delete it after importing. Then open the PS5 page and press "연결 확인" once: that proves the console accepts the registration from
+the new computer. If it does not, register there normally.
 ### Bridge safety
 
 It can press buttons on a console, so: it listens on loopback only unless you pass `--host`. On loopback there is no token to
@@ -179,3 +193,4 @@ because the same profile only reproduces the same feel when those match.
 
 AGPL-3.0-only. The console-facing bridge is planned to link libchiaki (AGPL-3.0), so the project is released under the same license.
 No code from other Remote Play clients is copied; their sources are read for protocol structure only.
+
