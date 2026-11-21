@@ -260,13 +260,22 @@ const REG_HINT: Record<string, string> = {
   'not-found': '그 주소에서 콘솔이 응답하지 않습니다.',
 };
 
+/** Why a call to the bridge's /api/ did not work, in words that say what to do. `null` means no answer at all. */
+export function whyNoApi(r: { status: number; data: Record<string, any> } | null): string {
+  if (!r) return `이 주소(${location.host})의 서버에 연결하지 못했습니다. 브리지가 켜져 있는지 확인하세요.`;
+  if (r.status === 404) return `이 주소(${location.host})는 브리지가 아니라 테스트용 서버(npm run dev)로 보입니다. npm run bridge 로 연 주소(보통 http://127.0.0.1:8788/)에서 여세요.`;
+  if (r.status === 401) return '브리지가 토큰을 요구합니다. 브리지가 출력한 주소(#token=…)로 여세요.';
+  if (r.status === 403 || r.status === 421) return '브리지가 이 주소로 온 접속을 거부했습니다. 브리지가 출력한 주소(보통 http://127.0.0.1:포트/)로 여세요.';
+  return `브리지가 오류를 돌려줬습니다 (HTTP ${r.status}${r.data.message ? `: ${r.data.message}` : ''}).`;
+}
+
 async function refreshRegistered(): Promise<void> {
   const list = $<HTMLElement>('regList');
   const r = await api('GET', '/api/consoles').catch(() => null);
   list.textContent = '';
   if (!r || !r.ok) {
     const li = document.createElement('li');
-    li.textContent = '이 서버에는 등록 기능이 없습니다. npm run bridge 로 연 주소에서 사용하세요.';
+    li.textContent = whyNoApi(r);
     list.append(li);
     return;
   }
@@ -295,7 +304,7 @@ $<HTMLButtonElement>('regScan').addEventListener('click', async () => {
   const r = await api('GET', '/api/discover').catch(() => null);
   const select = $<HTMLSelectElement>('regHost');
   select.textContent = '';
-  if (!r || !r.ok) return say('콘솔을 찾지 못했습니다. 이 서버에는 등록 기능이 없을 수 있습니다.', 'err');
+  if (!r || !r.ok) return say(`콘솔을 찾지 못했습니다. ${whyNoApi(r)}`, 'err');
   const hosts = (r.data.hosts ?? []) as Array<{ address: string; name: string; type: string; state: string; registered: boolean }>;
   for (const h of hosts) {
     const o = document.createElement('option');

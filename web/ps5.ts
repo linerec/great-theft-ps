@@ -3,7 +3,7 @@
 // The PS5 page: which console, is it ready, the route to it, and the one button that moves things forward.
 // Talks to the bridge's /api/ only. Never sees a key: the bridge keeps them.
 
-import { getBridgeToken } from './tester.ts';
+import { getBridgeToken, whyNoApi } from './tester.ts';
 import { detectRoute, PATHS, pathById, STEPS, VERDICTS, type PathId, type RoutePath, type StepId } from './routes.ts';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -40,6 +40,8 @@ async function api(method: string, path: string, body?: unknown): Promise<ApiRep
 
 const S = {
   apiOk: false,
+  /** The last answer from /api/consoles (null: no answer), to explain why the bridge is not usable. */
+  lastApi: null as { status: number; data: Record<string, any> } | null,
   consoles: [] as ConsoleInfo[],
   presence: {} as Record<string, Presence>,
   selected: '',
@@ -67,6 +69,7 @@ async function probe(c: ConsoleInfo): Promise<void> {
 async function load(): Promise<void> {
   const r = await api('GET', '/api/consoles').catch(() => null);
   S.apiOk = !!r?.ok;
+  S.lastApi = r;
   S.consoles = (r?.data.consoles ?? []) as ConsoleInfo[];
   if (!S.consoles.some((c) => c.mac === S.selected)) S.selected = S.consoles[0]?.mac ?? '';
   const n = await api('GET', '/api/network').catch(() => null);
@@ -81,7 +84,7 @@ type Cta = { label: string; note: string; disabled?: boolean; kind?: 'primary' |
 
 function cta(): Cta {
   const c = selectedConsole();
-  if (!S.apiOk) return { label: '브리지에 연결할 수 없음', note: 'npm run bridge 로 연 주소에서 이 페이지를 여세요.', disabled: true, run: () => {} };
+  if (!S.apiOk) return { label: '브리지에 연결할 수 없음', note: whyNoApi(S.lastApi), disabled: true, run: () => {} };
   if (!c) return { label: '콘솔 등록하기', note: '처음 한 번만 합니다. 콘솔의 기기 연결 화면과 8자리 코드가 필요합니다.', run: () => $<HTMLDialogElement>('addDialog').showModal() };
   const p = S.presence[c.mac] ?? 'checking';
   if (S.link.state === 'ready' || S.link.state === 'connecting') {
@@ -142,7 +145,10 @@ function renderConsoles(): void {
   box.textContent = '';
   if (S.consoles.length === 0) {
     const empty = el('div', 'empty');
-    empty.append(el('strong', '', '등록된 PS5가 없습니다'), el('span', '', S.apiOk ? '아래 버튼으로 한 번만 등록하면 됩니다.' : '브리지에 연결되면 여기에 나옵니다.'));
+    empty.append(
+      el('strong', '', S.apiOk ? '등록된 PS5가 없습니다' : '브리지에 연결되지 않았습니다'),
+      el('span', '', S.apiOk ? '아래 버튼으로 한 번만 등록하면 됩니다.' : '이 주소에서는 콘솔 목록을 가져올 수 없습니다.'),
+    );
     box.append(empty);
     return;
   }
