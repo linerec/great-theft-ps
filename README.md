@@ -39,7 +39,7 @@ Requires Node.js 24 or newer. No dependencies to install.
 ```sh
 npm test         # unit and integration tests (node --test): 100 tests
 npm run dev      # test beds (FPS, GTA style) at http://127.0.0.1:5173/, no console needed
-npm run bridge   # bridge with a SIMULATED console; prints a URL with a one-time token
+npm run bridge   # bridge with a SIMULATED console; open the printed URL (no token needed on this computer)
 npm run e2e      # real-browser end-to-end check (headless Chrome <-> bridge <-> simulated console)
 npm run discover # look for PlayStation consoles on the local network (run it where the console is)
 ```
@@ -47,14 +47,16 @@ npm run discover # look for PlayStation consoles on the local network (run it wh
 Open the page and click the game view to lock the mouse (Esc releases it). W A S D move, the mouse looks,
 left click shoots, right click aims down sights, Shift sprints, X walks slowly.
 
-Console mode: choose "콘솔 (브리지 연결)", paste the token from the bridge output (or open the printed URL, which
-contains it) and connect. With the simulated console you see the pad state it received drawn as a picture, and the
+Console mode: choose "콘솔 (브리지 연결)" and press connect. With the simulated console you see the pad state it received drawn as a picture, and the
 input-to-picture latency. With a real console you will see the PlayStation once gtp-core exists.
 
 ### Bridge safety
 
-It can press buttons on a console, so: it listens on loopback only unless you pass `--host`; a token is always required
-(random unless `--token`); the WebSocket must be same-origin (another web page cannot drive it); one client at a time; the pad
+It can press buttons on a console, so: it listens on loopback only unless you pass `--host`. On loopback there is no token to
+deal with: the WebSocket must be same-origin and the Host header must be loopback, so another web page (or a DNS rebinding trick)
+cannot drive it. A program already running as you on the same computer can still connect, which is no new power because it can
+already read your files. If you pass `--host` to listen on the network, a token becomes mandatory (random unless `--token`, and
+added to the printed URL). One client at a time; the pad
 is released when the client disconnects or goes silent for 2 s; messages are size and rate limited; video is dropped, not queued,
 when the client cannot keep up. It also refuses to start if another program already answers on the port (default 8787),
 because on some systems two programs can otherwise share a port and split traffic by address; pick another with `--port`.

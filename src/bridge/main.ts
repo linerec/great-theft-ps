@@ -4,7 +4,8 @@
 //   node src/bridge/main.ts                          simulated console (no PlayStation needed)
 //   node src/bridge/main.ts --link core --core <gtp-core executable> [--core-arg <arg> ...]
 // Options: --host 127.0.0.1  --port 8787  --token <string>
-// A token is always required. If you do not pass one a random one is generated and printed in the URL.
+// On this computer (the default) no token is used. With --host set to anything else a token is required: if you do
+// not pass one, a random one is generated and added to the printed URL.
 
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
@@ -28,7 +29,8 @@ const args = parseArgs(process.argv.slice(2));
 const first = (k: string, d: string): string => args[k]?.[0] ?? d;
 const host = first('host', '127.0.0.1');
 const port = Number(first('port', '8787'));
-const token = first('token', randomBytes(16).toString('hex'));
+const loopback = host === '127.0.0.1' || host === 'localhost' || host === '::1';
+const token: string | undefined = args.token?.[0] ?? (loopback ? undefined : randomBytes(16).toString('hex'));
 const linkKind = first('link', 'mock');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const log = (line: string): void => console.log(`[${new Date().toISOString().slice(11, 19)}] ${line}`);
@@ -56,8 +58,8 @@ const bridge = await startBridge({
 });
 
 console.log(`\nGreat Theft P.S bridge (${linkKind === 'mock' ? 'SIMULATED console' : 'gtp-core'})`);
-console.log(`Open:  ${bridge.url}#token=${token}`);
-if (host !== '127.0.0.1' && host !== 'localhost') console.log('WARNING: listening beyond this computer. Anyone on the network who has the token can press buttons on your console.');
+console.log(`Open:  ${bridge.url}${token ? `#token=${token}` : ''}`);
+if (!loopback) console.log('WARNING: listening beyond this computer. Anyone on the network who has the token can press buttons on your console.');
 console.log('Ctrl+C to stop.\n');
 
 process.on('SIGINT', () => void bridge.close().then(() => process.exit(0)));

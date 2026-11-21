@@ -27,7 +27,6 @@ if (!chrome) {
   process.exit(2);
 }
 
-const TOKEN = 'e2e-token';
 let mock;
 let maxRightX = 0; // the mouse is only moved for a while, so look at the largest value seen, not the last
 let resolveReport;
@@ -35,7 +34,6 @@ const reported = new Promise((r) => (resolveReport = r));
 const bridge = await startBridge({
   host: '127.0.0.1',
   port: 0,
-  token: TOKEN,
   root,
   createLink: () => {
     mock = new MockConsole();
@@ -50,7 +48,7 @@ const bridge = await startBridge({
 });
 
 const profileDir = mkdtempSync(path.join(tmpdir(), 'gtp-e2e-'));
-const url = `${bridge.url}?mode=console&e2e=1#token=${TOKEN}`;
+const url = `${bridge.url}?mode=console&e2e=1`;
 const child = spawn(chrome, ['--headless=new', '--disable-gpu', '--no-first-run', `--user-data-dir=${profileDir}`, url], { stdio: 'ignore', windowsHide: true });
 
 let exitCode = 1;

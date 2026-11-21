@@ -205,13 +205,14 @@ function setMode(next: Mode, loadPreset: boolean): void {
 // ---------------------------------------------------------------- console (bridge) connection
 
 const bridgeUrl = $<HTMLInputElement>('bridgeUrl');
-const bridgeToken = $<HTMLInputElement>('bridgeToken');
 bridgeUrl.value = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+// Normally there is no token. Only a bridge that listens beyond its own computer prints a URL ending in #token=...;
+// take it from there and remove it from the address bar.
+let bridgeToken = '';
 {
-  // The bridge prints a URL ending in #token=...; take it and remove it from the address bar.
   const fromHash = new URLSearchParams(location.hash.slice(1)).get('token');
   if (fromHash) {
-    bridgeToken.value = fromHash;
+    bridgeToken = fromHash;
     history.replaceState(null, '', location.pathname + location.search);
   }
 }
@@ -228,7 +229,7 @@ qualityNote();
 
 $<HTMLButtonElement>('bridgeConnect').addEventListener('click', () => {
   player.close();
-  client.connect(bridgeUrl.value, bridgeToken.value);
+  client.connect(bridgeUrl.value, bridgeToken);
 });
 $<HTMLButtonElement>('bridgeDisconnect').addEventListener('click', () => client.disconnect());
 $<HTMLSelectElement>('consoleProfile').addEventListener('change', (e) => {
@@ -763,7 +764,7 @@ async function runE2e(): Promise<void> {
   };
   try {
     setMode('console', false);
-    client.connect(bridgeUrl.value, bridgeToken.value);
+    client.connect(bridgeUrl.value, bridgeToken);
     await until(() => client.state === 'ready', 5000);
     check('connected and authenticated', client.state === 'ready', client.detail);
 
@@ -802,4 +803,4 @@ async function runE2e(): Promise<void> {
 }
 
 if (params.has('e2e')) void runE2e();
-if (params.has('autoconnect') && mode === 'console') client.connect(bridgeUrl.value, bridgeToken.value);
+if (params.has('autoconnect') && mode === 'console') client.connect(bridgeUrl.value, bridgeToken);

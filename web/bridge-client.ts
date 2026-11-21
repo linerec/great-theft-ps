@@ -35,18 +35,19 @@ export class BridgeClient {
   #bytes = 0;
   #timer: ReturnType<typeof setInterval> | null = null;
 
-  connect(url: string, token: string): void {
+  /** `token` is only needed when the bridge listens beyond its own computer. */
+  connect(url: string, token = ''): void {
     this.disconnect();
     this.#set('connecting', url);
     const ws = new WebSocket(url);
     ws.binaryType = 'arraybuffer';
     this.#ws = ws;
-    ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', token, client: 'gtp-web' }));
+    ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', ...(token ? { token } : {}), client: 'gtp-web' }));
     ws.onmessage = (e) => this.#message(e.data as string | ArrayBuffer);
     ws.onclose = (e) => {
       if (this.#ws === ws) {
         this.#stopTimer();
-        this.#set('closed', e.code === 4401 ? 'token rejected' : e.code === 4409 ? 'another client is connected' : `closed (${e.code})`);
+        this.#set('closed', e.code === 4401 ? '이 브리지는 토큰이 필요합니다. 브리지가 출력한 주소로 여세요' : e.code === 4409 ? 'another client is connected' : `closed (${e.code})`);
       }
     };
     ws.onerror = () => this.#set('closed', 'connection failed');

@@ -3,7 +3,8 @@
 // The bridge: serves the web client and relays between ONE browser client and a console link.
 //
 // Safety, because this process can press buttons on a console:
-//  - binds to loopback unless told otherwise; a token is always required (first message, constant-time compare);
+//  - binds to loopback unless told otherwise. On loopback no token is needed (the checks below keep other web pages and
+//    other hosts out). Listening beyond loopback REQUIRES a token (first message, constant-time compare);
 //  - the WebSocket upgrade must be same-origin, so a random web page cannot drive it;
 //  - one client at a time; a second one is refused;
 //  - when the client goes quiet or disconnects the pad is released, so no button can stay stuck on the console;
@@ -30,7 +31,8 @@ const MAX_PADS_PER_SECOND = 2000;
 export interface BridgeOptions {
   host: string;
   port: number;
-  token: string;
+  /** Optional on loopback. Required when `host` is anything else. */
+  token?: string;
   root: string;
   createLink: () => ConsoleLink;
   log?: (line: string) => void;
@@ -49,6 +51,7 @@ const sha = (s: string): Buffer => createHash('sha256').update(s).digest();
 export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
   const log = opts.log ?? (() => {});
   const loopbackOnly = opts.host === '127.0.0.1' || opts.host === 'localhost' || opts.host === '::1';
+  if (!loopbackOnly && !opts.token) throw new Error(`listening on ${opts.host} (beyond this computer) requires a token: pass --token or leave --host out`);
   let active: { conn: WsConnection; stop(): Promise<void> } | null = null;
   const connections = new Set<WsConnection>();
   let boundPort = opts.port;
@@ -123,7 +126,8 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
     conn.onClose = () => void cleanup();
 
     async function authenticate(msg: ClientControl): Promise<void> {
-      if (msg.type !== 'hello' || typeof msg.token !== 'string' || !timingSafeEqual(sha(msg.token), sha(opts.token))) {
+      const tokenOk = opts.token === undefined || (typeof msg.token === 'string' && timingSafeEqual(sha(msg.token), sha(opts.token)));
+      if (msg.type !== 'hello' || !tokenOk) {
         sendJson({ type: 'error', code: 'unauthorized', message: 'bad token' });
         return conn.close(4401, 'unauthorized');
       }

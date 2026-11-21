@@ -246,6 +246,66 @@ describe('websocket server', () => {
   });
 });
 
+describe('bridge without a token (the default on this computer)', () => {
+  it('lets a client in with a plain hello, and still ignores input sent before it', async () => {
+    const mocks: MockConsole[] = [];
+    const b = await startBridge({
+      host: '127.0.0.1', port: 0, root,
+      createLink: () => {
+        const m = new MockConsole();
+        mocks.push(m);
+        return m;
+      },
+    });
+    bridges.push(b);
+
+    const early = await Client.open(b.port, false);
+    early.ws.send(encodePad(1, padWith((p) => (p.buttons = BUTTON.cross)), false));
+    await sleep(150);
+    assert.equal(mocks.length, 0, 'no link may be created before the hello');
+    early.close();
+
+    const c = await Client.open(b.port, false);
+    c.ws.send(JSON.stringify({ type: 'hello', client: 'test' })); // no token field at all
+    assert.equal((await c.json('ready')).link, 'mock');
+    c.close();
+  });
+
+  it('still refuses another web page (cross-origin) and a wrong Host, token or not', async () => {
+    const b = await startBridge({ host: '127.0.0.1', port: 0, root, createLink: () => new MockConsole() });
+    bridges.push(b);
+    const status = (headers: Record<string, string>): Promise<number> =>
+      new Promise((resolve) => {
+        const req = request(
+          { host: '127.0.0.1', port: b.port, path: '/ws', headers: { Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13', 'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==', ...headers } },
+          (res) => resolve(res.statusCode ?? 0),
+        );
+        req.on('upgrade', (res, socket) => {
+          socket.destroy();
+          resolve(res.statusCode ?? 0);
+        });
+        req.on('error', () => resolve(0));
+        req.end();
+      });
+    assert.equal(await status({ Origin: 'https://evil.example' }), 403, 'another web page cannot drive it');
+    assert.equal(await status({ Host: 'evil.example' }), 421, 'DNS rebinding is refused');
+    assert.equal(await status({ Origin: `http://127.0.0.1:${b.port}` }), 101, 'same-origin page is accepted');
+  });
+
+  it('refuses to listen beyond this computer without a token (before opening any port)', async () => {
+    await assert.rejects(startBridge({ host: '0.0.0.0', port: 0, root, createLink: () => new MockConsole() }), /requires a token/);
+  });
+
+  it('with a token set, a hello that has none is refused', async () => {
+    const b = await startBridge({ host: '127.0.0.1', port: 0, token: 'abc', root, createLink: () => new MockConsole() });
+    bridges.push(b);
+    const c = await Client.open(b.port, false);
+    c.ws.send(JSON.stringify({ type: 'hello', client: 'test' }));
+    assert.equal((await c.json('error')).code, 'unauthorized', 'with a token set, a hello without it is refused');
+    c.close();
+  });
+});
+
 describe('bridge with a simulated console', () => {
   it('rejects a wrong token and ignores input sent before authentication', async () => {
     const { bridge, mocks } = await mockBridge();

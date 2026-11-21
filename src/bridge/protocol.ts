@@ -130,7 +130,7 @@ export function decodePong(buf: Uint8Array): { clientTime: number; bridgeTime: n
 // ------------------------------------------------------------------ control messages (JSON text frames)
 
 export type ClientControl =
-  | { type: 'hello'; token: string; client: string }
+  | { type: 'hello'; token?: string; client: string }
   | { type: 'quality'; preset?: string; width?: number; height?: number; fps?: number; bitrateKbps?: number; codec?: string }
   | { type: 'keyframe' }
   | { type: 'bye' };
