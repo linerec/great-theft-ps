@@ -11,6 +11,7 @@
 // session id, and with --stream: the stream connection and a few seconds of video, counted and measured.
 // Nothing secret is printed: no keys, no device id, no session id (only its length).
 
+import { Handover } from '../src/bridge/handover.ts';
 import { discover } from '../src/console/discovery.ts';
 import { Ctrl, CtrlError, CTRL_MESSAGE } from '../src/console/ctrl.ts';
 import { requestSession, SessionError } from '../src/console/session.ts';
@@ -115,7 +116,16 @@ try {
       await stream.start();
       ok(`stream set up. Profiles the console offers: ${stream.profiles.map((p) => `${p.width}x${p.height} (header ${p.header.length} bytes)`).join(', ') || 'none'}`);
       step(6, `Receiving video for ${streamSeconds} s (no input is sent)`);
-      await new Promise((r) => setTimeout(r, streamSeconds * 1000));
+      // Like any client of this project, this one lets go when another asks for the console (it is never locked).
+      const handover = new Handover({ store, name: 'connect tool' });
+      await handover.start();
+      let yieldedTo = '';
+      const unhold = handover.hold(record.mac, { locked: false, release: (by) => (yieldedTo = by) });
+      const until = Date.now() + streamSeconds * 1000;
+      while (Date.now() < until && !yieldedTo && !closedReason) await new Promise((r) => setTimeout(r, 100));
+      unhold();
+      handover.close();
+      if (yieldedTo) console.log(`    another client asked for the console (${yieldedTo}): letting go early`);
       const s = stream.stats.snapshot();
       if (frames > 0) ok(`${frames} frames, ${keyFrames} key frames, ${(bytes / 1024).toFixed(0)} KiB, about ${(frames / streamSeconds).toFixed(1)} fps and ${((bytes * 8) / streamSeconds / 1000).toFixed(0)} kbit/s`);
       else bad(`no frame arrived${closedReason ? ` (the stream ended: ${closedReason})` : ''}`);

@@ -9,6 +9,7 @@
 //   GET    /api/network           this computer's LAN addresses (the page uses them to tell which kind of route it is on)
 //   POST   /api/session-check     { mac, host? }  asks the console for a session with the stored registration; answers ok
 //                                 or the console's reason. Proves the registration works. Never returns keys or the nonce.
+//   GET    /api/handover          whether this client hands the console over to this project's other clients, and its name
 //   GET    /api/stream/stats      measurements of the running or last stream (totals, one sample per second, events)
 //   GET    /api/stream/tuning     the settings that can be changed to study the stream
 //   POST   /api/stream/tuning     { enableIdrOnFecFailure?, packetLossMax?, congestionIntervalMs?, heartbeatIntervalMs? }  for the next connection
@@ -29,6 +30,7 @@ import { extractLoginCode, fetchAccountId, PSN_LOGIN_URL, PsnAccountError } from
 import { isKnownTarget } from '../console/rpcrypt.ts';
 import { requestSession, SessionError, type SessionRequestOptions } from '../console/session.ts';
 import os from 'node:os';
+import type { Handover } from './handover.ts';
 import type { StreamResearch } from './ps5-link.ts';
 import type { ConsoleStore } from '../console/store.ts';
 
@@ -44,6 +46,8 @@ export interface ApiOptions {
   session?: (opts: SessionRequestOptions) => Promise<unknown>;
   /** Measurements and settings of the stream, for studying its delivery. Without it the /api/stream/ endpoints answer 404. */
   research?: StreamResearch;
+  /** Handing the console over between this project's clients. Without it /api/handover says it is off. */
+  handover?: Handover;
   /** This computer's usable network addresses. Replaced by tests. */
   network?: () => NetworkInterfaceInfo[];
   log?: (line: string) => void;
@@ -172,6 +176,10 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
       const result = await register({ host: body.host, target: target as never, pin: body.pin as string | number, accountId: accountText, log });
       store.setAccountId(Buffer.from(parseAccountId(accountText)).toString('base64'));
       json(res, 200, { console: store.put(result, body.host) });
+    } else if (req.method === 'GET' && url.pathname === '/api/handover') {
+      // Whether this client takes part in handing the console over, and under which name the others see it.
+      const h = opts.handover?.status();
+      json(res, 200, h ? { enabled: true, listening: h.listening, port: h.port, name: h.name, holding: h.holding } : { enabled: false });
     } else if (url.pathname.startsWith('/api/stream/') && !opts.research) {
       json(res, 404, { error: 'unknown endpoint' });
     } else if (req.method === 'GET' && url.pathname === '/api/stream/stats') {

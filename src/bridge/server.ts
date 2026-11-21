@@ -20,6 +20,7 @@ import { decodePad, decodePing, encodePong, encodeVideo, isNeutral, MSG, type Cl
 import { DEFAULT_QUALITY, parseQuality, type QualityRequest } from './quality.ts';
 import type { ConsoleStore } from '../console/store.ts';
 import { handleApi, type ApiOptions } from './api.ts';
+import type { Handover } from './handover.ts';
 import type { StreamResearch } from './ps5-link.ts';
 import { portInUse } from './ports.ts';
 import { handleStatic, isLoopbackHost, send } from './static.ts';
@@ -42,6 +43,8 @@ export interface BridgeOptions {
   store?: ConsoleStore;
   /** Measurements and settings of the stream (see /api/stream/). */
   research?: StreamResearch;
+  /** Handing the console over between this project's clients (see /api/handover). */
+  handover?: Handover;
   /** Replaces network discovery and registration. For tests. */
   api?: Pick<ApiOptions, 'discover' | 'register' | 'psn' | 'session' | 'network'>;
   log?: (line: string) => void;
@@ -68,7 +71,7 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
   const server = http.createServer((req, res) => {
     if (loopbackOnly && !isLoopbackHost(req.headers.host, boundPort)) return send(res, 421, { 'Content-Type': 'text/plain' }, 'Misdirected request');
     if (opts.store && (req.url ?? '').startsWith('/api/')) {
-      const api: ApiOptions = { store: opts.store, ...(opts.token !== undefined ? { token: opts.token } : {}), ...(opts.research ? { research: opts.research } : {}), ...opts.api, log };
+      const api: ApiOptions = { store: opts.store, ...(opts.token !== undefined ? { token: opts.token } : {}), ...(opts.research ? { research: opts.research } : {}), ...(opts.handover ? { handover: opts.handover } : {}), ...opts.api, log };
       void handleApi(req, res, api).catch(() => send(res, 500, { 'Content-Type': 'text/plain' }, 'error'));
       return;
     }
@@ -175,10 +178,16 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
               counters.bytes += bytes.length;
               conn.sendBinary(bytes);
             },
-            onStatus: (s) => sendJson({ type: 'status', state: s.state, detail: s.detail }),
+            onStatus: (s) => {
+              if (s.state !== 'closed') return sendJson({ type: 'status', state: s.state, detail: s.detail });
+              // The link ended by itself (the console closed it, or this client let go for another one). The page is
+              // told why, and the connection ends with it: an open connection without a picture helps nobody.
+              sendJson({ type: 'error', code: 'link-closed', message: s.detail ?? 'the connection to the console ended' });
+              conn.close(1000, 'link closed');
+            },
           },
           quality,
-          typeof msg.console === 'string' && /^[0-9a-f]{12}$/i.test(msg.console) ? { mac: msg.console.toLowerCase() } : {},
+          { ...(typeof msg.console === 'string' && /^[0-9a-f]{12}$/i.test(msg.console) ? { mac: msg.console.toLowerCase() } : {}), locked: msg.lock === true },
         );
       } catch (e) {
         sendJson({ type: 'error', code: 'link', message: String((e as Error).message ?? e) });
@@ -230,6 +239,8 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
           sendJson({ type: 'status', state: 'quality', detail: JSON.stringify(q) });
         } else if (msg.type === 'keyframe') {
           link?.requestKeyframe();
+        } else if (msg.type === 'lock') {
+          link?.setLocked?.(msg.locked === true);
         } else if (msg.type === 'display') {
           opts.research?.addDisplay(msg);
         } else if (msg.type === 'bye') {

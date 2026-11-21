@@ -23,6 +23,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { Handover } from '../src/bridge/handover.ts';
 import { Ps5Link, StreamResearch } from '../src/bridge/ps5-link.ts';
 import { startBridge } from '../src/bridge/server.ts';
 import { ConsoleStore, defaultStorePath } from '../src/console/store.ts';
@@ -50,13 +51,17 @@ if (store.list().length === 0) {
   process.exit(1);
 }
 const research = new StreamResearch();
+// This tool takes part in the handover like any client, unlocked: when the person connects from a page while it is
+// measuring, it lets go at once instead of keeping the console from them.
+const handover = new Handover({ store, name: 'measurement tool' });
+await handover.start();
 let resolveReport;
 const reported = new Promise((r) => (resolveReport = r));
 const lines = [];
 const bridge = await startBridge({
   host: '127.0.0.1', port: 0, root, store, research,
   log: (l) => lines.push(l),
-  createLink: () => new Ps5Link({ store, research, log: (l) => lines.push(l) }),
+  createLink: () => new Ps5Link({ store, research, handover, log: (l) => lines.push(l) }),
   onE2eReport: (r) => resolveReport(r),
 });
 
@@ -108,6 +113,7 @@ try {
   console.error(lines.slice(-12).join('\n'));
 } finally {
   child.kill();
+  handover.close();
   await bridge.close();
   setTimeout(() => {
     try {

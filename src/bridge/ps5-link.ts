@@ -26,6 +26,7 @@ import { StreamStats } from '../console/streamstats.ts';
 import { takionTransport } from '../console/takion-transport.ts';
 import type { VirtualPadState } from '../engine/types.ts';
 import type { ConsoleLink, LinkHandlers, LinkStartOptions } from './console-link.ts';
+import type { Handover } from './handover.ts';
 import { CODEC } from './protocol.ts';
 import type { QualityRequest } from './quality.ts';
 
@@ -161,6 +162,8 @@ export interface Ps5LinkOptions {
   session?: (opts: SessionRequestOptions) => Promise<SessionGrant>;
   createCtrl?: (opts: ConstructorParameters<typeof Ctrl>[0]) => Pick<Ctrl, 'connect' | 'waitForSessionId' | 'close' | 'events'>;
   createTransport?: (opts: { host: string; protocolVersion: number; log?: (line: string) => void }) => StreamTransport;
+  /** Lets this project's clients hand the console over among themselves. Without it this link neither asks nor lets go. */
+  handover?: Pick<Handover, 'ask' | 'hold' | 'setLocked'>;
   /** How long to wait for each answer while the stream is set up. Default: the reference's 5000 ms. */
   streamTimeoutMs?: number;
   /** How often to ask again when the console says Remote Play is in use, and how long to wait in between. Default: 18 times, 2000 ms (the console holds an abandoned session for about 30 s). */
@@ -177,6 +180,9 @@ export class Ps5Link implements ConsoleLink {
   #stream: StreamConnection | null = null;
   #lastSeq = 0;
   #startedAt = 0;
+  #mac = '';
+  #locked = false;
+  #unhold: (() => void) | null = null;
 
   constructor(opts: Ps5LinkOptions) {
     this.#opts = opts;
@@ -214,6 +220,9 @@ export class Ps5Link implements ConsoleLink {
     const retries = this.#opts.inUseRetries ?? 18;
     const retryWaitMs = this.#opts.inUseRetryWaitMs ?? 2000;
     let asked = 0;
+    let yieldedBy = '';
+    this.#mac = record.mac;
+    this.#locked = !!options.locked;
     let grant: SessionGrant;
     let ctrl: Pick<Ctrl, 'connect' | 'waitForSessionId' | 'close' | 'events'>;
     let sessionId: string;
@@ -226,10 +235,20 @@ export class Ps5Link implements ConsoleLink {
         } catch (e) {
           if (!(e instanceof SessionError)) throw e;
           if (e.reason !== APPLICATION_REASON.inUse) return fail(`${name}이(가) 세션을 받아들이지 않았습니다. ${e.message}`);
-          if (asked >= retries) return fail(`${name}에서 원격 플레이가 이미 사용 중입니다. 다른 기기의 연결을 끊은 뒤 다시 시도하세요.`);
+          if (asked >= retries) return fail(`${name}에서 원격 플레이가 이미 사용 중입니다. Great Theft P.S가 아닌 앱(공식 앱, chiaki 등)이 연결 중이면 그쪽에서 끊어야 합니다.`);
           asked++;
           stats.event('session-in-use', `asking again (${asked} of ${retries})`);
-          step(`${name}이(가) 앞선 원격 플레이 연결을 정리하는 중입니다 (길면 30초쯤). 다시 시도합니다 (${asked}/${retries})`);
+          if (asked === 1 && this.#opts.handover) {
+            // Is it one of this project's own clients that has the console? Then it lets go when asked, unless locked.
+            const answer = await this.#opts.handover.ask(record.mac);
+            if (this.#stopped) return;
+            if (answer.result === 'locked') return fail(`${answer.name}에서 잠금 상태로 사용 중입니다. 그 기기에서 잠금을 풀거나 연결을 끊으면 가져올 수 있습니다.`);
+            if (answer.result === 'yielded') {
+              yieldedBy = answer.name;
+              stats.event('handover', 'another client let go');
+            }
+          }
+          step(yieldedBy ? `${yieldedBy}이(가) 자리를 내주었습니다. ${name}이(가) 그 연결을 정리하는 동안 기다립니다 (${asked}/${retries})` : `${name}이(가) 앞선 원격 플레이 연결을 정리하는 중입니다 (길면 30초쯤). 다시 시도합니다 (${asked}/${retries})`);
           await new Promise((r) => setTimeout(r, retryWaitMs));
           if (this.#stopped) return;
         }
@@ -282,6 +301,8 @@ export class Ps5Link implements ConsoleLink {
     }
     if (this.#stopped) return this.#cleanup();
     research.state = 'streaming';
+    // From here on another of this project's clients can ask for the console, and gets it unless this one is locked.
+    this.#unhold = this.#opts.handover?.hold(record.mac, { locked: this.#locked, release: (by) => this.#ended(handlers, `다른 내 기기(${by})에 자리를 내주었습니다.`) }) ?? null;
     handlers.onStatus({ state: 'streaming', detail: `${name} · ${stream.profiles.map((p) => `${p.width}×${p.height}`).join(', ') || '프로필 없음'}` });
   }
 
@@ -302,6 +323,8 @@ export class Ps5Link implements ConsoleLink {
   }
 
   #cleanup(): void {
+    this.#unhold?.();
+    this.#unhold = null;
     this.#stream?.stop();
     this.#stream = null;
     this.#ctrl?.close();
@@ -311,6 +334,11 @@ export class Ps5Link implements ConsoleLink {
   sendPad(seq: number, state: VirtualPadState): void {
     this.#lastSeq = seq;
     this.#stream?.setPad(state);
+  }
+
+  setLocked(locked: boolean): void {
+    this.#locked = locked;
+    if (this.#mac) this.#opts.handover?.setLocked(this.#mac, locked);
   }
 
   setQuality(_quality: QualityRequest): void {

@@ -111,7 +111,7 @@ interface Rig {
   asked: SessionRequestOptions[];
   ctrlEvents: { onLoginPinRequest?: () => void; onClose?: (r: string) => void };
 }
-function rig(o: { store?: ConsoleStore; silentStream?: boolean; ctrlFails?: Error; ctrlFailsFirst?: Error; askPin?: boolean; session?: Ps5LinkOptions['session'] } = {}): Rig {
+function rig(o: { store?: ConsoleStore; silentStream?: boolean; ctrlFails?: Error; ctrlFailsFirst?: Error; askPin?: boolean; session?: Ps5LinkOptions['session']; handover?: Ps5LinkOptions['handover'] } = {}): Rig {
   const store = o.store ?? storeWith([reg(), '192.168.1.50']);
   const research = new StreamResearch();
   const stream = new FakeStream(o.silentStream);
@@ -120,7 +120,7 @@ function rig(o: { store?: ConsoleStore; silentStream?: boolean; ctrlFails?: Erro
   let ctrlConnects = 0;
   const ctrlEvents: Rig['ctrlEvents'] = {};
   const link = new Ps5Link({
-    store, research, streamTimeoutMs: 200, inUseRetryWaitMs: 5,
+    store, research, streamTimeoutMs: 200, inUseRetryWaitMs: 5, ...(o.handover ? { handover: o.handover } : {}),
     session: o.session ?? (async (s) => (asked.push(s), grant(s))),
     createCtrl: () => ({
       events: ctrlEvents,
@@ -337,6 +337,84 @@ describe('stream settings for study', () => {
     assert.equal(problems.length, 3);
     assert.equal(research.tuning.packetLossMax, 0.2, 'nothing changes when anything is wrong');
     assert.deepEqual(research.snapshot().stream, null, 'no stream yet');
+  });
+});
+
+describe('handing the console over to another client of this project', () => {
+  const inUse = (): SessionError => new SessionError('rejected', 'The console answered 403: Remote Play is already in use on the console (0x80108b10)', { reason: 0x80108b10 });
+  /** Stands in for the handover service: answers a request as told, and remembers who holds what. */
+  function fakeHandover(answer: { result: 'yielded' | 'locked'; name: string } | { result: 'none' }) {
+    const held: Array<{ mac: string; locked: boolean; release: (by: string) => void }> = [];
+    const asked: string[] = [];
+    const locks: Array<[string, boolean]> = [];
+    return {
+      held, asked, locks,
+      ask: async (mac: string) => (asked.push(mac), answer),
+      hold: (mac: string, h: { locked: boolean; release: (by: string) => void }) => {
+        const entry = { mac, ...h };
+        held.push(entry);
+        return () => void held.splice(held.indexOf(entry), 1);
+      },
+      setLocked: (mac: string, locked: boolean) => void locks.push([mac, locked]),
+    };
+  }
+
+  it('asks the client that has the console to let go, then waits for the console and connects', async () => {
+    const handover = fakeHandover({ result: 'yielded', name: 'Mac Studio' });
+    let calls = 0;
+    const r = rig({ handover, session: async (s) => (++calls <= 2 ? Promise.reject(inUse()) : grant(s)) });
+    const { statuses, error } = await run(r.link);
+    try {
+      assert.equal(error, null);
+      assert.deepEqual(handover.asked, ['0123456789ab'], 'asked once, not on every retry');
+      assert.match(statuses[1]!.detail!, /Mac Studio이\(가\) 자리를 내주었습니다/);
+      assert.equal(statuses.at(-1)!.state, 'streaming');
+      // Now this one has the console, unlocked: the next client that asks gets it.
+      assert.equal(handover.held.length, 1);
+      assert.equal(handover.held[0]!.locked, false);
+      handover.held[0]!.release('Desk PC');
+      assert.equal(statuses.at(-1)!.state, 'closed');
+      assert.match(statuses.at(-1)!.detail!, /다른 내 기기\(Desk PC\)에 자리를 내주었습니다/);
+      assert.equal(r.stream.closed, 1, 'the stream was ended, so the console is free for the other one');
+      assert.equal(r.stream.messages.at(-1)!.type, TAKION_PAYLOAD_TYPE.DISCONNECT);
+      assert.equal(handover.held.length, 0);
+    } finally {
+      await r.link.stop();
+    }
+  });
+
+  it('stops at once when the client that has the console is locked, and says where', async () => {
+    const handover = fakeHandover({ result: 'locked', name: 'Mac Studio' });
+    let calls = 0;
+    const r = rig({ handover, session: async () => (calls++, Promise.reject(inUse())) });
+    const { error } = await run(r.link);
+    assert.equal(calls, 1, 'no waiting around: a locked client does not let go');
+    assert.match(error!.message, /Mac Studio에서 잠금 상태로 사용 중입니다/);
+  });
+
+  it('keeps waiting as before when no client of this project answers (another program has the console, or it is still letting go)', async () => {
+    const handover = fakeHandover({ result: 'none' });
+    let calls = 0;
+    const r = rig({ handover, session: async (s) => (++calls <= 3 ? Promise.reject(inUse()) : grant(s)) });
+    const { statuses, error } = await run(r.link);
+    await r.link.stop();
+    assert.equal(error, null);
+    assert.equal(handover.asked.length, 1);
+    assert.match(statuses[1]!.detail!, /정리하는 중입니다/);
+  });
+
+  it('holds the console locked when the page asked for that, and follows the switch on the page', async () => {
+    const handover = fakeHandover({ result: 'none' });
+    const r = rig({ handover });
+    await r.link.start({ onVideo: () => {}, onStatus: () => {} }, DEFAULT_QUALITY, { locked: true });
+    try {
+      assert.equal(handover.held[0]!.locked, true);
+      r.link.setLocked(false);
+      assert.deepEqual(handover.locks, [['0123456789ab', false]]);
+    } finally {
+      await r.link.stop();
+    }
+    assert.equal(handover.held.length, 0, 'stopping gives the place up');
   });
 });
 

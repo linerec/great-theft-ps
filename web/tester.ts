@@ -425,9 +425,25 @@ const chosenQuality = (): { preset: string } => ({ preset: $<HTMLSelectElement>(
 function connectConsole(): void {
   player.close();
   hitchesSeen = 0;
-  client.connect(bridgeUrl.value, bridgeToken, consoleMac, chosenQuality());
+  client.connect(bridgeUrl.value, bridgeToken, consoleMac, chosenQuality(), lockToggle.checked);
 }
 $<HTMLButtonElement>('bridgeConnect').addEventListener('click', connectConsole);
+
+// A connection that is not locked is handed over when another of this person's clients asks for the console.
+const lockToggle = $<HTMLInputElement>('lockToggle');
+try {
+  lockToggle.checked = localStorage.getItem('gtp.lock') === '1';
+} catch {
+  /* storage may be unavailable */
+}
+lockToggle.addEventListener('change', () => {
+  try {
+    localStorage.setItem('gtp.lock', lockToggle.checked ? '1' : '0');
+  } catch {
+    /* not remembered, that is all */
+  }
+  if (client.state === 'ready') client.sendJson({ type: 'lock', locked: lockToggle.checked });
+});
 
 // ---------------------------------------------------------------- how frames are paced on the screen
 //
@@ -1011,7 +1027,7 @@ async function runE2e(): Promise<void> {
   };
   try {
     setMode('console', false);
-    client.connect(bridgeUrl.value, bridgeToken, consoleMac, chosenQuality());
+    client.connect(bridgeUrl.value, bridgeToken, consoleMac, chosenQuality(), false);
     await until(() => client.state === 'ready', 5000);
     check('connected and authenticated', client.state === 'ready', client.detail);
 

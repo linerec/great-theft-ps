@@ -26,6 +26,8 @@ export interface LinkHandlers {
 export interface LinkStartOptions {
   /** Which registered console to connect to (12 lower case hex digits). The first one when absent. */
   mac?: string;
+  /** Do not let go when another of this project's clients asks for the console (see handover.ts). */
+  locked?: boolean;
 }
 
 export interface ConsoleLink {
@@ -34,6 +36,8 @@ export interface ConsoleLink {
   /** `seq` is the client's PAD sequence number, echoed back in video headers where the source can tell. */
   sendPad(seq: number, state: VirtualPadState): void;
   setQuality(quality: QualityRequest): void;
+  /** Change whether this connection lets go when another of this project's clients asks. Links that cannot be asked leave it out. */
+  setLocked?(locked: boolean): void;
   requestKeyframe(): void;
   stop(): Promise<void>;
 }

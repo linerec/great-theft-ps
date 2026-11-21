@@ -130,7 +130,9 @@ export function decodePong(buf: Uint8Array): { clientTime: number; bridgeTime: n
 // ------------------------------------------------------------------ control messages (JSON text frames)
 
 export type ClientControl =
-  | { type: 'hello'; token?: string; console?: string; client: string; quality?: unknown }
+  | { type: 'hello'; token?: string; console?: string; client: string; quality?: unknown; lock?: boolean }
+  /** Lock or unlock this connection: a locked one does not let go when another of this project's clients asks for the console. */
+  | { type: 'lock'; locked: boolean }
   | { type: 'quality'; preset?: string; width?: number; height?: number; fps?: number; bitrateKbps?: number; codec?: string }
   /** Once a second from the page: what went on the screen (see DisplaySample in playout.ts). Kept for study only. */
   | { type: 'display'; [key: string]: unknown }
