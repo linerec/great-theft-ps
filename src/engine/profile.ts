@@ -57,6 +57,9 @@ export interface Layer {
    * Input code (KeyboardEvent.code, Mouse0..4, WheelUp/WheelDown) to action text.
    * A hold key of this layer is looked up here and nowhere else, so holding it never also fires its default binding.
    * Several actions can be combined with "+", for example "btn:pyramid+toggle:vehicle".
+   *
+   * An input code may carry an activator: "KeyG@long", "KeyG@double", "KeyG@start", "KeyG@release" (see Activator).
+   * Without one, the binding is the plain press: the action lasts exactly as long as the key is held.
    */
   bindings: Record<string, string>;
 }
@@ -86,9 +89,51 @@ export interface Profile {
    */
   calibration: { horizontal: CalPoint[] | null; vertical: CalPoint[] | null };
   mouse: MouseConfig;
-  keys: { rampUpMs: number; rampDownMs: number };
+  keys: {
+    rampUpMs: number;
+    rampDownMs: number;
+    /** How long a "tap" lasts on the pad, in ms: `tap:` actions, and a short press on a key that also has a long or double press. */
+    tapMs: number;
+    /** The least time a `hold:` action keeps the button pressed, in ms. */
+    holdMs: number;
+    /** A key held this long is a long press (for keys with a "@long" binding), in ms. */
+    longPressMs: number;
+    /** A second press within this time of the first is a double press (for keys with a "@double" binding), in ms. */
+    doublePressMs: number;
+  };
   layers: Layer[];
   network: { preset: 'saver' | 'balanced' | 'low-latency' | 'quality' };
+}
+
+/** A pad button or a trigger pressed all the way. */
+export type Output = { button: ButtonName } | { trigger: 'l2' | 'r2' };
+
+/**
+ * Which kind of press of a key a binding is for. This is the model Steam Input and reWASD use, and it has one cost
+ * that both document: once a key has a long or a double press, its plain press can no longer act the moment the key
+ * goes down, because the engine has to see how the press ends first. Then the plain binding fires as a tap when the
+ * key is let go early (after the double press time when there is a double press). "start" is the way around that: it
+ * fires at once, whatever follows.
+ *
+ *   (none)    the plain press. Alone on a key: the action lasts as long as the key is held, with no delay.
+ *   start     fires once when the key goes down, always.
+ *   long      takes over when the key has been held for keys.longPressMs, and lasts until it is let go.
+ *   double    the second of two presses within keys.doublePressMs, lasting as long as that press.
+ *   release   fires once when the key is let go.
+ */
+export type Activator = 'regular' | 'start' | 'long' | 'double' | 'release';
+export const ACTIVATORS: readonly Activator[] = ['regular', 'start', 'long', 'double', 'release'];
+
+const BINDING_KEY = /^([A-Za-z0-9_]{1,24})(?:@(start|long|double|release))?$/;
+
+/** "KeyG@long" -> { code: "KeyG", activator: "long" }. null when it is not a valid binding key. */
+export function splitBindingKey(key: string): { code: string; activator: Activator } | null {
+  const m = BINDING_KEY.exec(key);
+  return m ? { code: m[1]!, activator: (m[2] as Activator | undefined) ?? 'regular' } : null;
+}
+
+export function bindingKey(code: string, activator: Activator): string {
+  return activator === 'regular' ? code : `${code}@${activator}`;
 }
 
 export type Action =
@@ -99,6 +144,18 @@ export type Action =
   | { kind: 'turbo'; button: ButtonName; hz: number }
   /** Switches a layer on or off each time the key is pressed. */
   | { kind: 'toggle'; layer: string }
+  /**
+   * Presses the button for a fixed short time when the key goes down, however long the key is held. For games where
+   * one pad button does two things by press length: a key bound to this can never turn into the "held" one.
+   */
+  | { kind: 'tap'; out: Output; ms: number | null }
+  /**
+   * Presses the button while the key is held and for at least `ms`, even if the key is let go at once. The other
+   * half: a quick key press that the game sees as "button held".
+   */
+  | { kind: 'hold'; out: Output; ms: number | null }
+  /** Each press of the key switches the button on or off (hold to aim becomes press to aim, and so on). */
+  | { kind: 'latch'; out: Output }
   /** Does nothing. Binds a key to nothing inside a layer so the default layer's binding does not show through. */
   | { kind: 'none' };
 
@@ -109,6 +166,10 @@ export type Action =
  *   trigger:r2               trigger:r2:0.5
  *   turbo:cross              turbo:cross:12      (presses per second, 2..30, default 10)
  *   toggle:vehicle           (flip a layer on each key press)
+ *   tap:box                  tap:box:60          (a press of fixed length in ms, 20..1000; default keys.tapMs)
+ *   hold:box                 hold:box:800        (pressed while held and at least this long, 100..5000; default keys.holdMs)
+ *   latch:l2                 (each key press switches it on or off)
+ * tap, hold and latch take a button name or l2 / r2.
  */
 export function parseAction(text: string): Action | null {
   const parts = text.split(':');
@@ -118,6 +179,16 @@ export function parseAction(text: string): Action | null {
     const hz = parts.length === 3 ? Number(parts[2]) : 10;
     if (!Object.hasOwn(BUTTON, name) || !Number.isFinite(hz) || hz < 2 || hz > 30) return null;
     return { kind: 'turbo', button: name as ButtonName, hz };
+  }
+  if ((kind === 'tap' || kind === 'hold' || kind === 'latch') && (parts.length === 2 || (parts.length === 3 && kind !== 'latch'))) {
+    const name = parts[1] as string;
+    const out: Output | null = name === 'l2' || name === 'r2' ? { trigger: name } : Object.hasOwn(BUTTON, name) ? { button: name as ButtonName } : null;
+    if (!out) return null;
+    if (kind === 'latch') return { kind, out };
+    const ms = parts.length === 3 ? Number(parts[2]) : null;
+    const [min, max] = kind === 'tap' ? [20, 1000] : [100, 5000];
+    if (ms !== null && (!Number.isFinite(ms) || ms < min || ms > max)) return null;
+    return { kind, out, ms };
   }
   if (kind === 'toggle' && parts.length === 2) {
     return /^[A-Za-z0-9_-]{1,32}$/.test(parts[1] as string) ? { kind: 'toggle', layer: parts[1] as string } : null;
@@ -187,34 +258,59 @@ export function defaultProfile(): Profile {
       invertY: false,
       gyro: { gain: 1, maxRadPerSec: 30, yawAxis: 'y', pitchAxis: 'x', yawSign: 1, pitchSign: 1 },
     },
-    keys: { rampUpMs: 30, rampDownMs: 50 },
+    keys: { rampUpMs: 30, rampDownMs: 50, tapMs: 80, holdMs: 600, longPressMs: 300, doublePressMs: 250 },
     layers: [
       {
         name: 'default',
         holdKey: null,
         leftStickScale: 1,
         lookScale: 1,
+        // The general-purpose layout. Every key is a plain press: the button is down exactly as long as the key is,
+        // so whatever a game does with short and long presses works as it does on a pad, with no delay added.
+        // It follows what PC games and the PC versions of PlayStation games use (WASD, mouse buttons for the
+        // triggers, Space jump, R reload, Shift sprint, Tab map), with the left hand never leaving the WASD area for
+        // anything needed in play, and keeps away from keys a browser acts on by itself (Esc, Ctrl combinations,
+        // F5, F11). See docs/keyboard-mouse-mapping.md.
         bindings: {
+          // Left stick. Hold X to walk (the "walk" layer below).
           KeyW: 'stick:left:up',
           KeyS: 'stick:left:down',
           KeyA: 'stick:left:left',
           KeyD: 'stick:left:right',
+          // Face buttons.
           Space: 'btn:cross',
           KeyC: 'btn:moon',
           KeyR: 'btn:box',
           KeyF: 'btn:pyramid',
+          // Shoulders and triggers. The right mouse button is L2 through the "aim" layer below.
+          Mouse0: 'trigger:r2',
           KeyQ: 'btn:l1',
           KeyE: 'btn:r1',
+          Mouse3: 'btn:l1',
+          Mouse4: 'btn:r1',
+          // Stick clicks.
           ShiftLeft: 'btn:l3',
           KeyV: 'btn:r3',
-          Mouse0: 'trigger:r2',
+          Mouse1: 'btn:r3',
+          // D-pad: the number row for play, the arrow keys for menus.
+          Digit1: 'btn:dpad_up',
+          Digit2: 'btn:dpad_right',
+          Digit3: 'btn:dpad_down',
+          Digit4: 'btn:dpad_left',
           ArrowUp: 'btn:dpad_up',
           ArrowDown: 'btn:dpad_down',
           ArrowLeft: 'btn:dpad_left',
           ArrowRight: 'btn:dpad_right',
-          Tab: 'btn:share',
-          Enter: 'btn:options',
-          Backquote: 'btn:ps',
+          // Menus with one hand on the arrows: Enter confirms, Backspace goes back.
+          Enter: 'btn:cross',
+          Backspace: 'btn:moon',
+          // System buttons. Esc cannot be used: a browser takes it to release the mouse.
+          Tab: 'btn:touchpad',
+          KeyM: 'btn:touchpad',
+          Backquote: 'btn:options',
+          KeyO: 'btn:options',
+          KeyP: 'btn:ps',
+          KeyT: 'btn:share',
         },
       },
       // Not Ctrl: browsers keep Ctrl+W (close tab) and similar shortcuts for themselves.
@@ -242,19 +338,16 @@ export function gtaProfile(): Profile {
       leftStickScale: 1,
       lookScale: 1,
       bindings: {
-        KeyW: 'stick:left:up',
-        KeyS: 'stick:left:down',
-        KeyA: 'stick:left:left',
-        KeyD: 'stick:left:right',
+        // Everything of the general layout that is not said otherwise below (d-pad, menus, system buttons, stick clicks).
+        ...defaultProfile().layers[0]!.bindings,
         // GTA V on PlayStation: sprint means tapping X repeatedly, so holding Shift auto-taps it.
         ShiftLeft: 'turbo:cross:10',
         Space: 'btn:box',
         // Enter / exit a vehicle, and switch the controls between on foot and driving.
         KeyF: 'btn:pyramid+toggle:vehicle',
         KeyQ: 'btn:r1',
-        Mouse0: 'trigger:r2',
-        Tab: 'btn:share',
-        Enter: 'btn:options',
+        // Left to the general layout and NOT checked against the game: R (Square), C (Circle), E (R1), V and the
+        // middle mouse button (R3), the number row and arrows (d-pad). Change them to what the game shows.
       },
     },
     { name: 'walk', holdKey: 'KeyX', leftStickScale: 0.45, lookScale: 1, bindings: {} },
@@ -270,6 +363,38 @@ export function gtaProfile(): Profile {
   ];
   return p;
 }
+
+/**
+ * An example of splitting one pad button into two keys by press length, for shooters where a button does one thing
+ * when tapped and another when held (reload and pick up on the same button, crouch and prone on the same button).
+ * It is an example to adapt, not the layout of one particular game: check the game's own button list.
+ *
+ *   R  taps Square, however long R is held        (reload, never "pick up" by holding too long)
+ *   E  holds Square for at least keys.holdMs      (pick up / use with a quick press of E)
+ *   C  taps Circle                                (crouch)
+ *   Z  holds Circle                               (prone)
+ *   G  R1, since E is now taken
+ *   Caps Lock switches walking on and off
+ */
+export function shooterProfile(): Profile {
+  const p = defaultProfile();
+  p.game = { name: 'Shooter (tap and hold on separate keys)', platform: 'any', id: null };
+  const b = p.layers[0]!.bindings;
+  b.KeyR = 'tap:box';
+  b.KeyE = 'hold:box';
+  b.KeyC = 'tap:moon';
+  b.KeyZ = 'hold:moon';
+  b.KeyG = 'btn:r1';
+  b.CapsLock = 'toggle:walk';
+  return p;
+}
+
+/** The presets a person can start from. */
+export const PRESETS: ReadonlyArray<{ id: string; name: string; make: () => Profile }> = [
+  { id: 'default', name: '기본 (범용)', make: defaultProfile },
+  { id: 'shooter', name: '슈터 예시 (짧게/길게를 다른 키로)', make: shooterProfile },
+  { id: 'gta', name: 'GTA V 스타일', make: gtaProfile },
+];
 
 export type ParseResult = { ok: true; profile: Profile } | { ok: false; errors: string[] };
 
@@ -403,6 +528,10 @@ export function validateProfile(input: unknown): ParseResult {
   const keys: Profile['keys'] = {
     rampUpMs: c.num(kSrc, 'rampUpMs', 'keys', 0, 500, def.keys.rampUpMs),
     rampDownMs: c.num(kSrc, 'rampDownMs', 'keys', 0, 500, def.keys.rampDownMs),
+    tapMs: c.num(kSrc, 'tapMs', 'keys', 20, 500, def.keys.tapMs),
+    holdMs: c.num(kSrc, 'holdMs', 'keys', 100, 5000, def.keys.holdMs),
+    longPressMs: c.num(kSrc, 'longPressMs', 'keys', 100, 2000, def.keys.longPressMs),
+    doublePressMs: c.num(kSrc, 'doublePressMs', 'keys', 100, 1000, def.keys.doublePressMs),
   };
 
   const layers: Layer[] = [];
@@ -434,8 +563,11 @@ export function validateProfile(input: unknown): ParseResult {
       const entries = bSrc ? Object.entries(bSrc) : [];
       if (entries.length > 128) c.errors.push(`${path}.bindings: at most 128 bindings`);
       for (const [code, action] of entries.slice(0, 128)) {
-        if (!CODE_PATTERN.test(code)) {
+        const key = splitBindingKey(code);
+        if (!key) {
           c.errors.push(`${path}.bindings: invalid input code "${code.slice(0, 32)}"`);
+        } else if (key.code.startsWith('Wheel') && key.activator !== 'regular') {
+          c.errors.push(`${path}.bindings.${code}: a wheel notch has no length, so it cannot have a long, double, start or release press`);
         } else if (typeof action !== 'string' || parseActions(action) === null) {
           c.errors.push(`${path}.bindings.${code}: invalid action`);
         } else {

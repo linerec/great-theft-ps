@@ -5,7 +5,7 @@
 
 import { modelTable } from './calibration.ts';
 import { LookFilter, VirtualGyro, rateToStick, type StickModel } from './mouse.ts';
-import { parseActions, type Action, type Layer, type Profile } from './profile.ts';
+import { parseActions, splitBindingKey, type Action, type Activator, type Layer, type Output, type Profile } from './profile.ts';
 import { BUTTON, emptyPadState, type LookDiagnostics, type VirtualPadState } from './types.ts';
 
 type Dir = 'up' | 'down' | 'left' | 'right';
@@ -18,10 +18,31 @@ interface Ramp {
   right: number;
 }
 
+/** What one input does, by kind of press (see Activator in profile.ts). */
+type BindingSet = Partial<Record<Activator, Action[]>>;
+
 interface CompiledLayer {
   layer: Layer;
-  actions: Map<string, Action[]>;
+  sets: Map<string, BindingSet>;
 }
+
+/** A key with a long or a double press: what the press turned out to be is only known as it goes on. */
+interface PressState {
+  set: BindingSet;
+  downAt: number;
+  down: boolean;
+  /** The long press took over, or this is the second press of a double press. */
+  active: 'long' | 'double' | null;
+  activeSince: number;
+  /** The first press was let go early; a second one may still follow. */
+  waiting: boolean;
+}
+
+/** Something a pulse keeps pressed: a button, a trigger or a stick direction. */
+type Simple = Extract<Action, { kind: 'button' | 'trigger' | 'stick' }>;
+
+const toSimple = (out: Output): Simple => ('button' in out ? { kind: 'button', button: out.button } : { kind: 'trigger', trigger: out.trigger, amount: 1 });
+const outputId = (out: Output): string => ('button' in out ? `b:${out.button}` : `t:${out.trigger}`);
 
 /** How long a mouse wheel notch counts as "held". */
 const WHEEL_PULSE_SECONDS = 0.06;
@@ -41,8 +62,14 @@ export class MappingEngine {
   #down = new Set<string>();
   /** Engine time at which each held input went down, for turbo phase. */
   #downAt = new Map<string, number>();
-  /** Inputs pressed since the last tick, in order. Toggle actions fire on these. */
-  #edges: string[] = [];
+  /** Presses and releases since the last tick, in the order they happened. */
+  #events: Array<{ code: string; down: boolean }> = [];
+  /** Keys with a long or double press that are in the middle of one. */
+  #presses = new Map<string, PressState>();
+  /** Outputs kept pressed until a point in time: taps, the least duration of a hold. */
+  #timed: Array<{ until: number; action: Simple }> = [];
+  /** Outputs switched on by a latch action. */
+  #latchedOut = new Map<string, Simple>();
   /** Layers switched on by a toggle action. */
   #latched = new Set<string>();
   #pulses = new Map<string, number>();
@@ -89,12 +116,13 @@ export class MappingEngine {
     if (this.#down.has(code)) return;
     this.#down.add(code);
     this.#downAt.set(code, this.#time);
-    this.#edges.push(code);
+    this.#events.push({ code, down: true });
   }
 
   keyUp(code: string): void {
-    this.#down.delete(code);
+    if (!this.#down.delete(code)) return;
     this.#downAt.delete(code);
+    this.#events.push({ code, down: false });
   }
 
   /** Mouse button index as in DOM MouseEvent.button (0 left, 1 middle, 2 right, 3/4 side buttons). */
@@ -113,14 +141,20 @@ export class MappingEngine {
     if (deltaY === 0) return;
     const code = deltaY < 0 ? 'WheelUp' : 'WheelDown';
     this.#pulses.set(code, WHEEL_PULSE_SECONDS);
-    this.#edges.push(code);
+    this.#events.push({ code, down: true });
   }
 
-  /** Release everything, for example when the window loses focus. Toggled layers stay as they are. */
+  /**
+   * Release everything, for example when the window loses focus. Toggled layers stay as they are; buttons that were
+   * latched on, taps that were still running and presses that were waiting to be decided do not.
+   */
   releaseAll(): void {
     this.#down.clear();
     this.#downAt.clear();
-    this.#edges = [];
+    this.#events = [];
+    this.#presses.clear();
+    this.#timed = [];
+    this.#latchedOut.clear();
     this.#pulses.clear();
     this.#mouseDx = 0;
     this.#mouseDy = 0;
@@ -129,6 +163,12 @@ export class MappingEngine {
   /** Switch off all toggled layers, for example when the game and the profile have drifted out of sync. */
   clearLatched(): void {
     this.#latched.clear();
+    this.#latchedOut.clear();
+  }
+
+  /** Buttons and triggers a latch action has switched on, as "b:cross" or "t:l2". */
+  get latchedOutputs(): string[] {
+    return [...this.#latchedOut.keys()];
   }
 
   get latchedLayers(): string[] {
@@ -138,13 +178,18 @@ export class MappingEngine {
   #compile(): void {
     const p = this.#profile;
     this.#layers = p.layers.map((layer) => {
-      const actions = new Map<string, Action[]>();
-      for (const [code, text] of Object.entries(layer.bindings)) {
+      const sets = new Map<string, BindingSet>();
+      for (const [key, text] of Object.entries(layer.bindings)) {
         const parsed = parseActions(text);
-        if (parsed) actions.set(code, parsed);
+        const k = splitBindingKey(key);
+        if (!parsed || !k) continue;
+        const set = sets.get(k.code) ?? {};
+        set[k.activator] = parsed;
+        sets.set(k.code, set);
       }
-      return { layer, actions };
+      return { layer, sets };
     });
+    this.#presses.clear();
     const g = p.inGame;
     const horizontal = p.calibration.horizontal ?? modelTable(g.innerDeadzone, g.maxTurnRateAtFullStick, g.responseCurve);
     const vertical =
@@ -167,14 +212,104 @@ export class MappingEngine {
    * What an input does right now. A hold key of an active layer is looked up in that layer only, so holding it
    * does not also fire its default binding. Anything else is looked up from the last active layer back to default.
    */
-  #resolve(code: string, active: CompiledLayer[]): Action[] {
+  #resolve(code: string, active: CompiledLayer[]): BindingSet | null {
     const owners = active.filter((l) => l.layer.holdKey === code);
     const chain = owners.length > 0 ? [...owners].reverse() : [...active].reverse().concat(this.#layers[0] ?? []);
     for (const l of chain) {
-      const actions = l.actions.get(code);
-      if (actions) return actions;
+      const set = l.sets.get(code);
+      if (set) return set;
     }
-    return [];
+    return null;
+  }
+
+  /** Does this key wait to see how the press ends? (A wheel notch has no length, so it never does.) */
+  #deferred(code: string, set: BindingSet): boolean {
+    return (set.long !== undefined || set.double !== undefined) && !code.startsWith('Wheel');
+  }
+
+  #press(action: Simple, ms: number): void {
+    this.#timed.push({ until: this.#time + ms / 1000, action });
+  }
+
+  #flipLayer(name: string): void {
+    if (this.#latched.has(name)) this.#latched.delete(name);
+    else this.#latched.add(name);
+  }
+
+  #flipOutput(out: Output): void {
+    const id = outputId(out);
+    if (this.#latchedOut.has(id)) this.#latchedOut.delete(id);
+    else this.#latchedOut.set(id, toSimple(out));
+  }
+
+  /**
+   * A group of actions starts being held (a plain press goes down, a long press takes over, the second press of a
+   * double press goes down). The parts that happen once happen here; the parts that last are applied every tick.
+   * `least`: keep buttons down for at least a tap, so that a press that is let go at once is still seen by the game.
+   */
+  #begin(actions: Action[] | undefined, least: boolean): void {
+    const k = this.#profile.keys;
+    for (const a of actions ?? []) {
+      if (a.kind === 'toggle') this.#flipLayer(a.layer);
+      else if (a.kind === 'latch') this.#flipOutput(a.out);
+      else if (a.kind === 'tap') this.#press(toSimple(a.out), a.ms ?? k.tapMs);
+      else if (a.kind === 'hold') this.#press(toSimple(a.out), a.ms ?? k.holdMs);
+      else if (least && (a.kind === 'button' || a.kind === 'trigger' || a.kind === 'stick')) this.#press(a, k.tapMs);
+      else if (least && a.kind === 'turbo') this.#press({ kind: 'button', button: a.button }, k.tapMs);
+    }
+  }
+
+  /** A group of actions fires once, with nothing held: a short press that was decided late, a start or release press. */
+  #fire(actions: Action[] | undefined): void {
+    this.#begin(actions, true);
+  }
+
+  #pressed(code: string, layers: CompiledLayer[]): void {
+    const set = this.#resolve(code, layers);
+    if (!set) return;
+    this.#fire(set.start);
+    if (!this.#deferred(code, set)) {
+      this.#begin(set.regular, false);
+      return;
+    }
+    const before = this.#presses.get(code);
+    if (before?.waiting && set.double && this.#time - before.downAt <= this.#profile.keys.doublePressMs / 1000) {
+      this.#presses.set(code, { set, downAt: this.#time, down: true, active: 'double', activeSince: this.#time, waiting: false });
+      this.#begin(set.double, true);
+      return;
+    }
+    if (before?.waiting) this.#fire(before.set.regular); // the first press stood alone after all
+    this.#presses.set(code, { set, downAt: this.#time, down: true, active: null, activeSince: this.#time, waiting: false });
+  }
+
+  #released(code: string, layers: CompiledLayer[]): void {
+    const s = this.#presses.get(code);
+    const set = s?.set ?? this.#resolve(code, layers);
+    if (s?.down) {
+      s.down = false;
+      if (s.active !== null) this.#presses.delete(code);
+      else if (s.set.double && this.#time - s.downAt <= this.#profile.keys.doublePressMs / 1000) s.waiting = true;
+      else {
+        this.#fire(s.set.regular); // let go before it became a long press: the plain press, as a tap
+        this.#presses.delete(code);
+      }
+    }
+    this.#fire(set?.release);
+  }
+
+  /** Presses that are decided by time passing: a key held long enough, a second press that did not come. */
+  #decide(): void {
+    const k = this.#profile.keys;
+    for (const [code, s] of this.#presses) {
+      if (s.down && s.active === null && s.set.long && this.#time - s.downAt >= k.longPressMs / 1000) {
+        s.active = 'long';
+        s.activeSince = this.#time;
+        this.#begin(s.set.long, true);
+      } else if (!s.down && s.waiting && this.#time - s.downAt > k.doublePressMs / 1000) {
+        this.#fire(s.set.regular);
+        this.#presses.delete(code);
+      }
+    }
   }
 
   /**
@@ -203,17 +338,13 @@ export class MappingEngine {
     const p = this.#profile;
     const state = emptyPadState();
 
-    // Toggle actions fire on the press itself, resolved with the layers active at that moment.
-    if (this.#edges.length > 0) {
-      const before = this.#activeLayers();
-      for (const code of this.#edges.splice(0)) {
-        for (const action of this.#resolve(code, before)) {
-          if (action.kind !== 'toggle') continue;
-          if (this.#latched.has(action.layer)) this.#latched.delete(action.layer);
-          else this.#latched.add(action.layer);
-        }
-      }
+    // Presses and releases act in the order they happened, each resolved with the layers active at that moment.
+    for (const e of this.#events.splice(0)) {
+      const layers = this.#activeLayers();
+      if (e.down) this.#pressed(e.code, layers);
+      else this.#released(e.code, layers);
     }
+    this.#decide();
 
     const active = this.#activeLayers();
     this.#activeNames = active.map((l) => l.layer.name);
@@ -231,24 +362,41 @@ export class MappingEngine {
     let l2 = 0;
     let r2 = 0;
 
-    const held = new Set<string>([...this.#down, ...this.#pulses.keys()]);
-    for (const code of held) {
-      for (const action of this.#resolve(code, active)) {
-        if (action.kind === 'button') {
-          state.buttons |= BUTTON[action.button];
-        } else if (action.kind === 'stick') {
-          const t = targets[action.stick];
-          t[action.dir] = Math.max(t[action.dir], action.amount);
-        } else if (action.kind === 'trigger') {
-          if (action.trigger === 'l2') l2 = Math.max(l2, action.amount);
-          else r2 = Math.max(r2, action.amount);
-        } else if (action.kind === 'turbo') {
+    const output = (action: Simple): void => {
+      if (action.kind === 'button') {
+        state.buttons |= BUTTON[action.button];
+      } else if (action.kind === 'stick') {
+        const t = targets[action.stick];
+        t[action.dir] = Math.max(t[action.dir], action.amount);
+      } else if (action.trigger === 'l2') l2 = Math.max(l2, action.amount);
+      else r2 = Math.max(r2, action.amount);
+    };
+    /** The lasting part of a group that is being held since `since`. */
+    const hold = (actions: Action[] | undefined, since: number): void => {
+      for (const action of actions ?? []) {
+        if (action.kind === 'button' || action.kind === 'stick' || action.kind === 'trigger') output(action);
+        else if (action.kind === 'hold') output(toSimple(action.out));
+        else if (action.kind === 'turbo') {
           // Starts pressed, then alternates at `hz` presses per second.
-          const heldFor = this.#time - (this.#downAt.get(code) ?? this.#time);
-          if (Math.floor(heldFor * action.hz * 2 + 1e-9) % 2 === 0) state.buttons |= BUTTON[action.button];
+          if (Math.floor((this.#time - since) * action.hz * 2 + 1e-9) % 2 === 0) state.buttons |= BUTTON[action.button];
         }
       }
+    };
+
+    const held = new Set<string>([...this.#down, ...this.#pulses.keys()]);
+    for (const code of held) {
+      const s = this.#presses.get(code);
+      if (s) {
+        if (s.down && s.active !== null) hold(s.set[s.active], s.activeSince);
+        continue;
+      }
+      const set = this.#resolve(code, active);
+      if (!set || this.#deferred(code, set)) continue;
+      hold(set.regular, this.#downAt.get(code) ?? this.#time);
     }
+    this.#timed = this.#timed.filter((t) => t.until > this.#time + 1e-9);
+    for (const t of this.#timed) output(t.action);
+    for (const action of this.#latchedOut.values()) output(action);
     state.l2 = Math.round(l2 * 255);
     state.r2 = Math.round(r2 * 255);
 

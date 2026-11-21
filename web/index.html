@@ -100,7 +100,14 @@
                   <b>테스트베드의 가정</b>이며 실제 게임과 다를 수 있습니다.
                 </p>
               </div>
-              <p id="hintConsole" class="hint" hidden>화면을 클릭하면 마우스가 잠기고, 키보드와 마우스가 현재 프로필로 PS5에 전달됩니다 (Esc로 해제). 방향키 = 십자키, 음성은 아직 나오지 않습니다.</p>
+              <div id="hintConsole" class="hint" hidden>
+                <p>화면을 클릭하면 마우스가 잠기고, 키보드와 마우스가 PS5로 전달됩니다 (Esc로 해제). 음성은 아직 나오지 않습니다.</p>
+                <details id="layoutLegend" open>
+                  <summary>키 배치 <span id="layoutName" class="muted small"></span></summary>
+                  <dl id="layoutList" class="layout-list"></dl>
+                  <p class="muted small">바꾸려면 <b>설정 → 입력 매핑</b>. 게임마다 다른 이름으로 저장해 둘 수 있습니다.</p>
+                </details>
+              </div>
             </div>
             <div id="ps5Overlay" class="overlay"><p id="ps5OverlayText">연결하면 여기에 화면이 나옵니다</p></div>
           </div>
@@ -227,7 +234,39 @@
         </nav>
         <div class="settings-body">
           <div id="paneInput" class="pane">
+            <h3>프로필 <span class="muted small">(게임마다 따로 저장해 두고 골라 씁니다)</span></h3>
+            <div class="row profile-row">
+              <label class="inline">불러오기
+                <select id="profilePick" aria-label="프로필 불러오기"></select>
+              </label>
+              <label class="inline">이름
+                <input id="profileName" type="text" maxlength="80" spellcheck="false" autocomplete="off" placeholder="게임 이름">
+              </label>
+              <button id="profileSave" class="btn small" type="button">이 이름으로 저장</button>
+              <button id="profileDelete" class="btn ghost small" type="button">삭제</button>
+            </div>
+            <p id="profileMsg" class="msg" role="status"></p>
+
+            <h3>키 배치</h3>
+            <p class="muted small">패드의 버튼마다 어떤 키로 누를지 정합니다. <b>+ 키</b>를 누른 뒤 쓰고 싶은 키나 마우스 버튼을 누르면 됩니다. 기본은 모두 <b>누르는 동안</b>(패드와 똑같이, 지연 없이)이고, 게임이 한 버튼의 짧게/길게를 다른 동작으로 쓸 때만 방식을 바꾸세요: 한 키는 <b>짧게 한 번</b>, 다른 키는 <b>길게 유지</b>. 한 키에 <b>길게 누르면/두 번 누르면</b>을 따로 두면 그 키의 일반 누름은 키를 뗄 때 나가서 조금 늦어집니다.</p>
+            <div id="keymap" class="keymap"></div>
+
+            <h3>누르는 시간 <span class="muted small">(위의 탭, 홀드, 길게/두 번 누르기에 쓰는 값)</span></h3>
+            <label>탭 길이 (ms) <output id="o_tapMs"></output>
+              <input id="tapMs" type="range" min="30" max="300" step="10">
+            </label>
+            <label>홀드 최소 길이 (ms) <output id="o_holdMs"></output>
+              <input id="holdMs" type="range" min="200" max="2000" step="50">
+            </label>
+            <label>길게 누르기로 보는 시간 (ms) <output id="o_longPressMs"></output>
+              <input id="longPressMs" type="range" min="150" max="1000" step="10">
+            </label>
+            <label>두 번 누르기로 보는 간격 (ms) <output id="o_doublePressMs"></output>
+              <input id="doublePressMs" type="range" min="150" max="600" step="10">
+            </label>
+
             <h3>마우스 매핑</h3>
+            <p class="muted small">마우스 느낌을 위해 <b>게임 안의 설정</b>도 맞추세요: 시점(카메라) 감도는 최대로, 데드존은 최소로, 가속이나 스무딩 옵션은 있으면 끄기. 그래야 마우스가 스틱으로 낼 수 있는 속도 범위가 넓어지고, 손의 움직임과 화면이 같은 비율로 움직입니다. 그 다음 아래 감도로 맞춥니다.</p>
             <label>대상
               <select id="mouseTarget">
                 <option value="right_stick">오른쪽 스틱</option>
@@ -278,20 +317,12 @@
               </select>
             </label>
 
-            <h3>프로필</h3>
-            <label>PS5에 연결할 때 쓸 프로필
-              <select id="consoleProfile">
-                <option value="keep">현재 프로필 유지</option>
-                <option value="fps">FPS 기본</option>
-                <option value="tps">GTA V 스타일</option>
-              </select>
-            </label>
+            <h3>프로필 글 <span class="muted small">(전체 내용. 다른 사람과 주고받을 때 이 글을 복사합니다)</span></h3>
             <textarea id="profileJson" rows="10" spellcheck="false" aria-label="프로필 JSON"></textarea>
             <div class="row">
-              <button id="applyJson" class="btn small" type="button">JSON 적용</button>
-              <button id="resetProfile" class="btn small" type="button">이 게임의 기본 프로필로</button>
+              <button id="applyJson" class="btn small" type="button">글 적용</button>
+              <button id="resetProfile" class="btn small" type="button">기본 배치로 되돌리기</button>
             </div>
-            <p id="profileMsg" class="msg" role="status"></p>
           </div>
 
           <div id="paneConsoles" class="pane" hidden>

@@ -186,7 +186,7 @@ src/bridge/      the bridge
 web/             the page: PS5 view, test beds, settings, video player, bridge client
 tools/           connect, discover, register, consoles, handover, snap-console (real console + real browser), e2e-browser
 test/            tests, the reference's vectors, and test doubles (test/support/)
-docs/            ts-protocol-port.md, stream-research.md, gtp-core-contract.md
+docs/            keyboard-mouse-mapping.md, stream-research.md, ts-protocol-port.md, gtp-core-contract.md
 ```
 ## How mouse look works
 
@@ -215,11 +215,22 @@ A profile is data only. It is validated and normalised (unknown fields dropped, 
 bounded numbers, strict action syntax) and never executed. It records the in-game settings it was tuned for,
 because the same profile only reproduces the same feel when those match.
 
+The page edits a profile by pressing keys (설정 → 입력 매핑: one row per pad button, "+ 키", then the key) and keeps one
+per game in the browser. `docs/keyboard-mouse-mapping.md` has the built-in layout, why it is what it is, and what the
+established remappers do.
+
 ### Binding syntax
 
 `btn:cross`, `stick:left:up[:0.5]`, `trigger:r2[:0.5]`, `turbo:cross[:hz]` (presses repeatedly while held),
 `toggle:<layer>` (flips a layer on each press), `none` (binds a key to nothing inside a layer), and `+` to combine
 (`btn:pyramid+toggle:vehicle`). A hold key of a layer is looked up in that layer only, so holding it never also fires its default binding.
+
+By default a button is down exactly as long as its key, so a game tells short and long presses apart as it does on a
+pad. For games that put two actions on one button by press length, two keys can share the button: `tap:box[:ms]` (a
+press of fixed length however long the key is held) and `hold:box[:ms]` (held at least that long, even after a quick
+key press). `latch:l2` switches a button on and off with each press. One key can also do different things by how it is
+pressed: `"KeyF": ...`, `"KeyF@long": ...`, `"KeyF@double": ...`, `"KeyF@start": ...`, `"KeyF@release": ...`; a key
+with a long or double press sends its plain press only when it is let go, which is the price of that.
 
 ## License
 

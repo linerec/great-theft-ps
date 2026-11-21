@@ -5,7 +5,7 @@
 // Everything runs on a fixed 250 Hz clock.
 
 import { MappingEngine } from '../src/engine/engine.ts';
-import { defaultProfile, gtaProfile, parseProfileText, type Profile } from '../src/engine/profile.ts';
+import { defaultProfile, gtaProfile, parseProfileText, PRESETS, validateProfile, type Profile } from '../src/engine/profile.ts';
 import { BUTTON, BUTTON_NAMES, type VirtualPadState } from '../src/engine/types.ts';
 import { FpsGame, defaultGameSettings } from '../src/testbed/fps.ts';
 import { applyMeasuredCalibration, measureCalibration, type GameFactory } from '../src/testbed/measure.ts';
@@ -15,6 +15,7 @@ import { renderTps } from '../src/testbed/tpsrender.ts';
 import { CODEC } from '../src/bridge/protocol.ts';
 import { QUALITY_PRESETS, megabytesPerHour, type QualityPreset } from '../src/bridge/quality.ts';
 import { BridgeClient } from './bridge-client.ts';
+import { describeLayout, mountKeymap } from './keymap.ts';
 import { VideoPlayer } from './video-player.ts';
 
 const TICK = 0.004;
@@ -96,6 +97,10 @@ const FIELDS: Field[] = [
   pf('maxTurnRateAtFullStick', () => profile.inGame.maxTurnRateAtFullStick, (v) => (profile.inGame.maxTurnRateAtFullStick = v), 0),
   pf('responseCurve', () => profile.inGame.responseCurve, (v) => (profile.inGame.responseCurve = v), 2),
   pf('verticalRateRatio', () => profile.inGame.verticalRateRatio, (v) => (profile.inGame.verticalRateRatio = v), 2),
+  pf('tapMs', () => profile.keys.tapMs, (v) => (profile.keys.tapMs = v), 0),
+  pf('holdMs', () => profile.keys.holdMs, (v) => (profile.keys.holdMs = v), 0),
+  pf('longPressMs', () => profile.keys.longPressMs, (v) => (profile.keys.longPressMs = v), 0),
+  pf('doublePressMs', () => profile.keys.doublePressMs, (v) => (profile.keys.doublePressMs = v), 0),
   pf('aimLayerScale', () => aimLayer()?.lookScale ?? 1, (v) => {
     const l = aimLayer();
     if (l) l.lookScale = v;
@@ -129,9 +134,13 @@ function syncControls(): void {
   $<HTMLTextAreaElement>('profileJson').value = JSON.stringify(profile, null, 2);
 }
 
+/** Called whenever the profile in use changed in any way. Set once the editor and the legend exist (further down). */
+let onProfileChanged: () => void = () => {};
+
 function applyProfile(next: Profile): void {
   profile = next;
   engine.setProfile(profile);
+  onProfileChanged();
 }
 
 function refreshJson(): void {
@@ -182,7 +191,10 @@ function message(text: string, kind: '' | 'error' | 'ok'): void {
 
 /** Which thing the shared stage and the input engine serve: a test game, or the console. The shell (app.ts) decides what is shown. */
 export function setMode(next: Mode, loadPreset: boolean): void {
+  const from = mode;
   mode = next;
+  // Coming back to the console from a test bed: the console's own profile again, not the test bed's preset.
+  if (next === 'console' && from !== 'console') applyProfile(workingProfile() ?? defaultProfile());
   $<HTMLElement>('fpsSettings').hidden = mode !== 'fps';
   $<HTMLElement>('tpsSettings').hidden = mode !== 'tps';
   $<HTMLElement>('hintFps').hidden = mode !== 'fps';
@@ -494,15 +506,164 @@ setInterval(() => {
   });
 }, 1000);
 $<HTMLButtonElement>('bridgeDisconnect').addEventListener('click', () => client.disconnect());
-$<HTMLSelectElement>('consoleProfile').addEventListener('change', (e) => {
-  const v = (e.target as HTMLSelectElement).value;
-  if (v === 'fps' || v === 'tps') {
-    applyProfile(presetProfile(v));
-    engine.releaseAll();
-    engine.clearLatched();
-    syncControls();
+
+// ---------------------------------------------------------------- profiles: one per game, kept in this browser
+//
+// The profile in use for the console is remembered as it is changed (so a reload loses nothing), and can be saved
+// under a name: one per game. The test beds use their own presets and do not touch either.
+
+const STORE_PROFILES = 'gtp.profiles';
+const STORE_WORKING = 'gtp.profile.working';
+
+function readStore<T>(key: string, fallback: T): T {
+  try {
+    const text = localStorage.getItem(key);
+    return text ? (JSON.parse(text) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function writeStore(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage may be unavailable: the profile then lives until the page is closed */
+  }
+}
+/** Saved profiles by name. Anything that is not a valid profile any more is left out. */
+function savedProfiles(): Record<string, Profile> {
+  const out: Record<string, Profile> = {};
+  for (const [name, raw] of Object.entries(readStore<Record<string, unknown>>(STORE_PROFILES, {}))) {
+    const checked = validateProfile(raw);
+    if (checked.ok) out[name] = checked.profile;
+  }
+  return out;
+}
+function workingProfile(): Profile | null {
+  const checked = validateProfile(readStore<unknown>(STORE_WORKING, null));
+  return checked.ok ? checked.profile : null;
+}
+
+const profilePick = $<HTMLSelectElement>('profilePick');
+const profileName = $<HTMLInputElement>('profileName');
+function renderProfilePick(): void {
+  profilePick.textContent = '';
+  const first = document.createElement('option');
+  first.value = '';
+  first.textContent = '고르세요…';
+  profilePick.append(first);
+  const presets = document.createElement('optgroup');
+  presets.label = '처음부터 시작';
+  for (const p of PRESETS) {
+    const o = document.createElement('option');
+    o.value = `preset:${p.id}`;
+    o.textContent = p.name;
+    presets.append(o);
+  }
+  profilePick.append(presets);
+  const names = Object.keys(savedProfiles()).sort((a, b) => a.localeCompare(b));
+  if (names.length) {
+    const mine = document.createElement('optgroup');
+    mine.label = '저장해 둔 프로필';
+    for (const name of names) {
+      const o = document.createElement('option');
+      o.value = `saved:${name}`;
+      o.textContent = name;
+      mine.append(o);
+    }
+    profilePick.append(mine);
+  }
+}
+/** Switch to another profile as a whole: nothing held or switched on carries over. */
+function useProfile(next: Profile): void {
+  applyProfile(next);
+  engine.releaseAll();
+  engine.clearLatched();
+  syncControls();
+}
+profilePick.addEventListener('change', () => {
+  const v = profilePick.value;
+  profilePick.value = '';
+  if (v.startsWith('preset:')) {
+    const preset = PRESETS.find((p) => p.id === v.slice(7));
+    if (!preset) return;
+    useProfile(preset.make());
+    message(`"${preset.name}" 배치를 불러왔습니다.`, 'ok');
+  } else if (v.startsWith('saved:')) {
+    const saved = savedProfiles()[v.slice(6)];
+    if (!saved) return;
+    useProfile(saved);
+    message(`"${v.slice(6)}" 프로필을 불러왔습니다.`, 'ok');
   }
 });
+$<HTMLButtonElement>('profileSave').addEventListener('click', () => {
+  const name = profileName.value.trim();
+  if (!name) return message('저장할 이름을 적어 주세요 (보통 게임 이름).', 'error');
+  profile.game.name = name;
+  writeStore(STORE_PROFILES, { ...savedProfiles(), [name]: profile });
+  applyProfile(profile);
+  syncControls();
+  renderProfilePick();
+  message(`"${name}"(으)로 저장했습니다. 이 브라우저에 보관됩니다.`, 'ok');
+});
+$<HTMLButtonElement>('profileDelete').addEventListener('click', () => {
+  const name = profileName.value.trim();
+  const all = savedProfiles();
+  if (!(name in all)) return message(`"${name}"(이)라는 저장된 프로필이 없습니다.`, 'error');
+  delete all[name];
+  writeStore(STORE_PROFILES, all);
+  renderProfilePick();
+  message(`"${name}" 프로필을 지웠습니다. 지금 쓰고 있는 배치는 그대로입니다.`, 'ok');
+});
+renderProfilePick();
+
+// The key layout editor (설정 → 입력 매핑) and the layout shown next to the picture.
+const keymap = mountKeymap($<HTMLElement>('keymap'), {
+  getProfile: () => profile,
+  setProfile: (next) => {
+    applyProfile(next);
+    syncControls();
+  },
+  say: (text, kind) => message(text, kind),
+});
+function renderLegend(): void {
+  $<HTMLElement>('layoutName').textContent = `· ${profile.game.name}`;
+  const list = $<HTMLElement>('layoutList');
+  list.textContent = '';
+  for (const item of describeLayout(profile)) {
+    const row = document.createElement('div');
+    const dt = document.createElement('dt');
+    dt.textContent = item.label;
+    const dd = document.createElement('dd');
+    dd.textContent = item.keys;
+    row.append(dt, dd);
+    list.append(row);
+  }
+}
+let refreshQueued = false;
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
+onProfileChanged = () => {
+  profileName.value = profile.game.name;
+  // A slider being dragged changes the profile many times a second: redraw once per frame, save once it settles.
+  if (!refreshQueued) {
+    refreshQueued = true;
+    requestAnimationFrame(() => {
+      refreshQueued = false;
+      keymap.refresh();
+      renderLegend();
+    });
+  }
+  if (mode === 'console') {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => writeStore(STORE_WORKING, profile), 300);
+  }
+};
+// On the console, start with the profile that was in use last time.
+if (mode === 'console') {
+  const last = workingProfile();
+  if (last) applyProfile(last);
+}
+onProfileChanged();
 
 client.onVideo = (header, payload) => player.push(header, payload);
 player.onNeedKeyframe = () => client.requestKeyframe();
@@ -529,9 +690,10 @@ $<HTMLButtonElement>('applyJson').addEventListener('click', () => {
 
 $<HTMLButtonElement>('resetProfile').addEventListener('click', () => {
   applyProfile(presetProfile(mode));
+  engine.releaseAll();
   engine.clearLatched();
   syncControls();
-  message('이 게임의 기본 프로필로 되돌렸습니다.', 'ok');
+  message('기본 배치로 되돌렸습니다.', 'ok');
 });
 
 $<HTMLButtonElement>('autoCalibrate').addEventListener('click', () => {
@@ -1071,6 +1233,39 @@ async function runE2e(): Promise<void> {
     check('registration form registers a console and lists it', ($<HTMLElement>('regList').textContent ?? '').includes('E2E console'), regMsg.textContent ?? '');
     check('the PIN is cleared from the page after the attempt', $<HTMLInputElement>('regPin').value === '');
     check('the registration key never reaches the page', !document.body.innerText.includes('00112233445566778899aabbccddeeff'));
+
+    // The key layout editor: a row per pad control, a key added by pressing it, the press style changed with the select.
+    const padRow = (label: string): HTMLElement | undefined => [...document.querySelectorAll<HTMLElement>('#keymap .keymap-row')].find((r) => r.querySelector('.keymap-pad')?.textContent === label);
+    check('the key layout editor lists every pad control', document.querySelectorAll('#keymap .keymap-row').length >= 26, `${document.querySelectorAll('#keymap .keymap-row').length} rows`);
+    check('the layout next to the picture names the keys', /Space/.test($<HTMLElement>('layoutList').textContent ?? '') && /좌클릭/.test($<HTMLElement>('layoutList').textContent ?? ''));
+    padRow('□')?.querySelector<HTMLButtonElement>('.keymap-add')?.click();
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyG', bubbles: true, cancelable: true }));
+    await sleep(60);
+    check('pressing a key after "+ 키" binds it to that button', profile.layers[0]!.bindings.KeyG === 'btn:box', String(profile.layers[0]!.bindings.KeyG));
+    const how = [...(padRow('□')?.querySelectorAll<HTMLElement>('.keymap-binding') ?? [])].find((b) => b.querySelector('.keycap')?.textContent === 'G')?.querySelector<HTMLSelectElement>('select[aria-label="버튼을 어떻게 누를지"]');
+    if (how) {
+      how.value = 'tap';
+      how.dispatchEvent(new Event('change'));
+    }
+    await sleep(60);
+    check('the press style of a binding can be changed to a tap', profile.layers[0]!.bindings.KeyG === 'tap:box', String(profile.layers[0]!.bindings.KeyG));
+    padRow('□')?.querySelector<HTMLButtonElement>('.keymap-add')?.click();
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'ControlLeft', bubbles: true, cancelable: true }));
+    await sleep(60);
+    check('a key the browser keeps for itself is refused with the reason', profile.layers[0]!.bindings.ControlLeft === undefined && /Ctrl/.test($<HTMLElement>('profileMsg').textContent ?? ''), $<HTMLElement>('profileMsg').textContent ?? '');
+    // Saving under a name and getting it back.
+    profileName.value = 'E2E game';
+    $<HTMLButtonElement>('profileSave').click();
+    useProfile(defaultProfile());
+    check('a fresh layout no longer has the change', profile.layers[0]!.bindings.KeyG === undefined);
+    profilePick.value = 'saved:E2E game';
+    profilePick.dispatchEvent(new Event('change'));
+    check('a saved profile comes back with its changes', profile.layers[0]!.bindings.KeyG === 'tap:box' && profile.game.name === 'E2E game', profile.game.name);
+    useProfile(defaultProfile());
+    // Switching profiles lets go of everything, as it should. The checks that follow expect W and the left button held.
+    engine.keyDown('KeyW');
+    engine.mouseButton(0, true);
+    await sleep(200);
 
     const codecLines: string[] = [];
     await codecChecks((name, ok, detail) => {
