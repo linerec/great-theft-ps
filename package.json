@@ -14,6 +14,7 @@
     "connect": "node tools/connect.mjs",
     "register": "node tools/register.mjs",
     "consoles": "node tools/consoles.mjs",
+    "handover": "node tools/handover.mjs",
     "discover": "node tools/discover.mjs"
   }
 }

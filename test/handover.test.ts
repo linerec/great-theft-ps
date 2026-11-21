@@ -48,9 +48,10 @@ function freePort(): Promise<number> {
 }
 
 /** A client on 127.0.0.1 that sends its requests to the given ports. */
-async function client(name: string, rpKey: string | null, o: { port?: number; targets?: () => HandoverTarget[]; now?: () => number } = {}): Promise<Handover> {
+async function client(name: string, rpKey: string | null, o: { port?: number; targets?: () => HandoverTarget[]; now?: () => number; announceMs?: number } = {}): Promise<Handover> {
   const port = o.port ?? (await freePort());
-  const h = new Handover({ store: storeWith(rpKey), name, port, bind: '127.0.0.1', ...(o.targets ? { targets: o.targets } : {}), ...(o.now ? { now: o.now } : {}) });
+  // No targets given: this client's own requests and announcements reach nobody (on a real network they are broadcast).
+  const h = new Handover({ store: storeWith(rpKey), name, port, bind: '127.0.0.1', targets: o.targets ?? (() => []), announceMs: o.announceMs ?? 60_000, ...(o.now ? { now: o.now } : {}) });
   await h.start();
   open.push(h);
   return h;
@@ -83,6 +84,44 @@ describe('handing the console over between this project\'s clients', () => {
     holder.setLocked(MAC, false);
     assert.equal((await asker.ask(MAC)).result, 'yielded');
     assert.equal(released, 1);
+  });
+
+  it('works when the client that has the console cannot be spoken to first: it announces itself, and the request comes back as an answer', async () => {
+    // A firewall in front of the holder: the asker's own request reaches nobody. The holder's announcements go out, though.
+    const asker = await client('Mac Studio', SAME);
+    const holder = await client('Desk PC', SAME, { targets: to(asker), announceMs: 40 });
+    const released: string[] = [];
+    holder.hold(MAC, { locked: false, release: (by) => released.push(by) });
+    assert.deepEqual(await asker.ask(MAC, 1500), { result: 'yielded', name: 'Desk PC' });
+    assert.deepEqual(released, ['Mac Studio']);
+
+    // A locked holder's announcement says so, and that settles it without a request.
+    const locked = await client('Desk PC', SAME, { targets: to(asker), announceMs: 40 });
+    let let_go = 0;
+    locked.hold(MAC, { locked: true, release: () => let_go++ });
+    assert.deepEqual(await asker.ask(MAC, 1500), { result: 'locked', name: 'Desk PC' });
+    assert.equal(let_go, 0);
+
+    // Announcements for a console nobody here is waiting for do nothing.
+    const bystander = await client('Laptop', SAME);
+    const loud = await client('Desk PC', SAME, { targets: to(bystander), announceMs: 30 });
+    let moved = 0;
+    loud.hold(MAC, { locked: false, release: () => moved++ });
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(moved, 0);
+  });
+
+  it('says who has the console without changing anything', async () => {
+    const holder = await client('Desk PC', SAME);
+    const other = await client('Mac Studio', SAME, { targets: to(holder) });
+    let released = 0;
+    assert.deepEqual(await other.who(MAC, 200), [], 'nobody yet');
+    holder.hold(MAC, { locked: true, release: () => released++ });
+    assert.deepEqual(await other.who(MAC, 200), [{ name: 'Desk PC', locked: true }]);
+    holder.setLocked(MAC, false);
+    assert.deepEqual(await other.who(MAC, 200), [{ name: 'Desk PC', locked: false }]);
+    assert.equal(released, 0, 'asking who has it lets nobody go');
+    assert.deepEqual(await (await client('Someone else', OTHER, { targets: to(holder) })).who(MAC, 200), [], 'not for those without the registration');
   });
 
   it('a client that no longer has the console is not asked to do anything', async () => {
@@ -173,7 +212,7 @@ describe('handing the console over between this project\'s clients', () => {
     const holder = await client('Desk PC', SAME);
     holder.hold(MAC, { locked: false, release: () => {} });
     const lines: string[] = [];
-    const h = new Handover({ store: storeWith(SAME), name: 'Mac Studio', port: taken.address().port, bind: '127.0.0.1', targets: to(holder), log: (l) => lines.push(l) });
+    const h = new Handover({ store: storeWith(SAME), name: 'Mac Studio', port: taken.address().port, bind: '127.0.0.1', targets: to(holder), announceMs: 60_000, log: (l) => lines.push(l) });
     await h.start();
     open.push(h);
     assert.equal(h.listening, false);
