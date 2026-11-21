@@ -292,6 +292,20 @@ describe('the PS5 link', () => {
     assert.equal(never.asked.length, 2);
   });
 
+  it('says that the console does not answer, not that it refused, when nothing comes back', async () => {
+    for (const code of ['timeout', 'network', 'refused'] as const) {
+      const r = rig({
+        session: async () => {
+          throw new SessionError(code, 'The console did not answer the session request');
+        },
+      });
+      const { error } = await run(r.link);
+      assert.match(error!.message, /응답하지 않습니다.*대기 모드/, code);
+      assert.doesNotMatch(error!.message, /받아들이지 않았습니다/);
+      assert.equal(r.research.lastError, error!.message);
+    }
+  });
+
   it('stops at the control connection when that fails, closing what it opened', async () => {
     const r = rig({ ctrlFails: new CtrlError('rejected', 'The console answered 403 to the control request') });
     const { error, statuses } = await run(r.link);

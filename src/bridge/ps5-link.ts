@@ -234,6 +234,10 @@ export class Ps5Link implements ConsoleLink {
           break;
         } catch (e) {
           if (!(e instanceof SessionError)) throw e;
+          // No answer at all is not a refusal: the console is off, asleep, or not where it was.
+          if (e.code === 'timeout' || e.code === 'network' || e.code === 'refused') {
+            return fail(`${name}이(가) 응답하지 않습니다. 꺼져 있거나 대기 모드이거나, 주소가 바뀌었을 수 있습니다. (${e.message})`);
+          }
           if (e.reason !== APPLICATION_REASON.inUse) return fail(`${name}이(가) 세션을 받아들이지 않았습니다. ${e.message}`);
           if (asked >= retries) return fail(`${name}에서 원격 플레이가 이미 사용 중입니다. Great Theft P.S가 아닌 앱(공식 앱, chiaki 등)이 연결 중이면 그쪽에서 끊어야 합니다.`);
           asked++;

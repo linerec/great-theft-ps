@@ -124,7 +124,11 @@ try {
   if (pictures.length === 0) console.log('no picture came back from the page');
   exitCode = report.pass ? 0 : 1;
 } catch (e) {
-  console.error(String(e.message ?? e));
+  // When the link to the console fails, the page's connection is closed with the reason and its report cannot come
+  // back. The reason is what matters then, and the bridge side has it.
+  const why = research.snapshot(0).lastError;
+  if (why) console.error(`The connection to the console did not come up: ${why}`);
+  else console.error(String(e.message ?? e));
   console.error(lines.slice(-12).join('\n'));
 } finally {
   child.kill();
