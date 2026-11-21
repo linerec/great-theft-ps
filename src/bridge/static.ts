@@ -34,6 +34,27 @@ export function isLoopbackHost(host: string | undefined, port: number): boolean 
   return h === `127.0.0.1:${port}` || h === `localhost:${port}` || h === `[::1]:${port}`;
 }
 
+/** A Host or Origin host without its port, lower case: "Name.ts.net:443" -> "name.ts.net". */
+export function hostName(host: string | undefined): string {
+  return (host ?? '').toLowerCase().replace(/:\d+$/, '');
+}
+
+/**
+ * Is this request from the page itself? Same origin as the Host it was sent to, or from a host name the person
+ * starting the bridge said to trust (a local HTTPS proxy such as `tailscale serve` in front of it: some proxies pass
+ * the public Host on, some replace it with the local one, so the Origin is checked against the trusted names too).
+ */
+export function originAllowed(origin: string | undefined, host: string | undefined, trusted: readonly string[]): boolean {
+  if (origin === undefined) return true; // not a browser page: the token and the Host check do the work
+  let originHost = '';
+  try {
+    originHost = new URL(origin).host.toLowerCase();
+  } catch {
+    return false;
+  }
+  return originHost === (host ?? '').toLowerCase() || trusted.includes(hostName(originHost));
+}
+
 export async function handleStatic(req: IncomingMessage, res: ServerResponse, root: string): Promise<void> {
   try {
     if (req.method !== 'GET' && req.method !== 'HEAD') {

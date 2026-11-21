@@ -32,6 +32,7 @@ import { requestSession, SessionError, type SessionRequestOptions } from '../con
 import os from 'node:os';
 import type { Handover } from './handover.ts';
 import type { StreamResearch } from './ps5-link.ts';
+import { originAllowed } from './static.ts';
 import type { ConsoleStore } from '../console/store.ts';
 
 export interface ApiOptions {
@@ -46,6 +47,8 @@ export interface ApiOptions {
   session?: (opts: SessionRequestOptions) => Promise<unknown>;
   /** Measurements and settings of the stream, for studying its delivery. Without it the /api/stream/ endpoints answer 404. */
   research?: StreamResearch;
+  /** Host names the bridge is reached under through a local proxy (see BridgeOptions.trustedHosts). */
+  trustedHosts?: string[];
   /** Handing the console over between this project's clients. Without it /api/handover says it is off. */
   handover?: Handover;
   /** This computer's usable network addresses. Replaced by tests. */
@@ -127,16 +130,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
   if (!url.pathname.startsWith('/api/')) return false;
   const log = opts.log ?? (() => {});
 
-  const origin = req.headers.origin;
-  if (origin !== undefined) {
-    let originHost = '';
-    try {
-      originHost = new URL(origin).host;
-    } catch {
-      /* invalid */
-    }
-    if (originHost.toLowerCase() !== String(req.headers.host ?? '').toLowerCase()) return json(res, 403, { error: 'forbidden' }), true;
-  }
+  if (!originAllowed(req.headers.origin, req.headers.host, opts.trustedHosts ?? [])) return json(res, 403, { error: 'forbidden' }), true;
   if (opts.token !== undefined) {
     const auth = /^Bearer (.+)$/.exec(String(req.headers.authorization ?? ''))?.[1] ?? '';
     if (!timingSafeEqual(sha(auth), sha(opts.token))) return json(res, 401, { error: 'unauthorized' }), true;

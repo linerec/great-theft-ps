@@ -23,7 +23,7 @@ import { handleApi, type ApiOptions } from './api.ts';
 import type { Handover } from './handover.ts';
 import type { StreamResearch } from './ps5-link.ts';
 import { portInUse } from './ports.ts';
-import { handleStatic, isLoopbackHost, send } from './static.ts';
+import { handleStatic, hostName, isLoopbackHost, originAllowed, send } from './static.ts';
 import { acceptUpgrade, type WsConnection } from './ws.ts';
 
 const MAX_MESSAGE_BYTES = 64 * 1024; // from the client: pads and small JSON only
@@ -35,8 +35,14 @@ const MAX_PADS_PER_SECOND = 2000;
 export interface BridgeOptions {
   host: string;
   port: number;
-  /** Optional on loopback. Required when `host` is anything else. */
+  /** Optional on loopback. Required when `host` is anything else, and when a host name is trusted. */
   token?: string;
+  /**
+   * Host names under which this bridge is reached through a proxy on this computer (for example the HTTPS address
+   * `tailscale serve` gives it). The bridge keeps listening on loopback; requests naming one of these hosts are
+   * accepted as well. They come from other devices, so a token is then required for everything.
+   */
+  trustedHosts?: string[];
   root: string;
   createLink: () => ConsoleLink;
   /** Where registered consoles are kept. Without it the /api/ endpoints are off. */
@@ -64,14 +70,18 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
   const log = opts.log ?? (() => {});
   const loopbackOnly = opts.host === '127.0.0.1' || opts.host === 'localhost' || opts.host === '::1';
   if (!loopbackOnly && !opts.token) throw new Error(`listening on ${opts.host} (beyond this computer) requires a token: pass --token or leave --host out`);
+  const trusted = (opts.trustedHosts ?? []).map((h) => hostName(h)).filter(Boolean);
+  if (trusted.length > 0 && !opts.token) throw new Error('trusting a host name lets other devices in through a proxy, which requires a token');
+  /** Was the request sent to an address this bridge answers to? (Keeps a web page from reaching it under another name.) */
+  const hostOk = (host: string | undefined): boolean => !loopbackOnly || isLoopbackHost(host, boundPort) || trusted.includes(hostName(host));
   let active: { conn: WsConnection; stop(): Promise<void> } | null = null;
   const connections = new Set<WsConnection>();
   let boundPort = opts.port;
 
   const server = http.createServer((req, res) => {
-    if (loopbackOnly && !isLoopbackHost(req.headers.host, boundPort)) return send(res, 421, { 'Content-Type': 'text/plain' }, 'Misdirected request');
+    if (!hostOk(req.headers.host)) return send(res, 421, { 'Content-Type': 'text/plain' }, 'Misdirected request');
     if (opts.store && (req.url ?? '').startsWith('/api/')) {
-      const api: ApiOptions = { store: opts.store, ...(opts.token !== undefined ? { token: opts.token } : {}), ...(opts.research ? { research: opts.research } : {}), ...(opts.handover ? { handover: opts.handover } : {}), ...opts.api, log };
+      const api: ApiOptions = { store: opts.store, ...(opts.token !== undefined ? { token: opts.token } : {}), ...(opts.research ? { research: opts.research } : {}), ...(opts.handover ? { handover: opts.handover } : {}), ...(trusted.length ? { trustedHosts: trusted } : {}), ...opts.api, log };
       void handleApi(req, res, api).catch(() => send(res, 500, { 'Content-Type': 'text/plain' }, 'error'));
       return;
     }
@@ -81,20 +91,9 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
   server.on('upgrade', (req, socket, head) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (url.pathname !== '/ws') return void socket.destroy();
-    if (loopbackOnly && !isLoopbackHost(req.headers.host, boundPort)) return void socket.end('HTTP/1.1 421 Misdirected Request\r\nConnection: close\r\n\r\n');
-    // Same-origin only. Browsers always send Origin on WebSocket handshakes.
-    const origin = req.headers.origin;
-    if (origin !== undefined) {
-      let originHost = '';
-      try {
-        originHost = new URL(origin).host;
-      } catch {
-        /* invalid origin */
-      }
-      if (originHost.toLowerCase() !== String(req.headers.host ?? '').toLowerCase()) {
-        return void socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
-      }
-    }
+    if (!hostOk(req.headers.host)) return void socket.end('HTTP/1.1 421 Misdirected Request\r\nConnection: close\r\n\r\n');
+    // Same-origin only (or a trusted host name). Browsers always send Origin on WebSocket handshakes.
+    if (!originAllowed(req.headers.origin, req.headers.host, trusted)) return void socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
     const conn = acceptUpgrade(req, socket, head, MAX_MESSAGE_BYTES);
     if (conn) {
       connections.add(conn);
