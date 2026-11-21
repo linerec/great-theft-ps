@@ -153,12 +153,12 @@ describe('parsing answers', () => {
     const iface = (address: string, netmask: string, extra: object = {}): never =>
       ({ address, netmask, family: 'IPv4', internal: false, mac: '00:00:00:00:00:00', cidr: null, ...extra }) as never;
     const found = localBroadcastAddresses({
-      en0: [iface('192.168.1.12', '255.255.255.0')],
-      utun0: [iface('100.79.111.60', '255.255.255.255')], // VPN tunnel: broadcast would be itself
+      en0: [iface('192.168.1.20', '255.255.255.0')],
+      utun0: [iface('100.64.0.2', '255.255.255.255')], // VPN tunnel: broadcast would be itself
       lo0: [iface('127.0.0.1', '255.0.0.0', { internal: true })],
       en1: [iface('fe80::1', 'ffff:ffff:ffff:ffff::', { family: 'IPv6' })],
     });
-    assert.deepEqual(found, [{ iface: 'en0', address: '192.168.1.12', broadcast: '192.168.1.255' }]);
+    assert.deepEqual(found, [{ iface: 'en0', address: '192.168.1.20', broadcast: '192.168.1.255' }]);
   });
 
   it('computes directed broadcast addresses', () => {

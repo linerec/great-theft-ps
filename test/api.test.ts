@@ -347,11 +347,11 @@ describe('/api/ endpoints', () => {
       const store = new ConsoleStore(path.join(tmp(), 'consoles.json'));
       const bridge = await startBridge({
         host: '127.0.0.1', port: 0, root, store, createLink: () => new FakeLink(),
-        api: { network: () => [{ iface: 'en0', address: '192.168.1.12', netmask: '255.255.255.0' }] },
+        api: { network: () => [{ iface: 'en0', address: '192.168.1.20', netmask: '255.255.255.0' }] },
       });
       bridges.push(bridge);
       const r = await call(bridge.port, 'GET', '/api/network');
-      assert.deepEqual(r.json(), { interfaces: [{ iface: 'en0', address: '192.168.1.12', netmask: '255.255.255.0' }] });
+      assert.deepEqual(r.json(), { interfaces: [{ iface: 'en0', address: '192.168.1.20', netmask: '255.255.255.0' }] });
     });
   });
 
