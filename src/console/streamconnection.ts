@@ -167,6 +167,8 @@ export class StreamConnection {
     this.#o = o;
     this.tuning = { ...DEFAULT_TUNING, ...o.tuning };
     this.stats = o.stats ?? new StreamStats();
+    // A gap of more than two and a half frame times is what a viewer sees as a hitch: 83 ms at 30 fps, 42 ms at 60.
+    if (o.video.maxFps > 0) this.stats.stutterThresholdMs = Math.round(2500 / o.video.maxFps);
     this.#handshakeKey = o.handshakeKey ?? randomBytes(16);
     this.#ecdh = o.ecdh ?? new Ecdh();
     this.#video = new VideoReceiver({

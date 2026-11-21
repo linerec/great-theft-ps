@@ -7,9 +7,11 @@
 //   2. session request over TCP 9295                (session.ts)          confirmed on a real PS5
 //   3. control connection, session id               (ctrl.ts)             confirmed on a real PS5
 //   4. stream connection over UDP 9296              (streamconnection.ts over takion.ts): key exchange, stream info
-//   5. video frames to the page, pad state to the console
-// Steps 4 and 5 are written and tested against simulated consoles only. Nothing here shows a picture that is not the
-// console's: when a step fails, the link stops and says which one and why.
+//                                                                          confirmed on a real PS5
+//   5. video frames to the page, pad state to the console                  confirmed on a real PS5 (H.264 960x540,
+//                                                                          d-pad presses from the page)
+// Not built: audio, the login PIN prompt, HEVC in the page. Nothing here shows a picture that is not the console's:
+// when a step fails, the link stops and says which one and why.
 //
 // It also keeps what a study of the stream needs: the measurements of the current (or last) stream, and the settings
 // that can be changed between connections (see StreamResearch).

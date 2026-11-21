@@ -39,6 +39,9 @@ const presetProfile = (m: Mode): Profile => (m === 'tps' ? gtaProfile() : defaul
 
 const client = new BridgeClient();
 const player = new VideoPlayer(document.getElementById('game') as HTMLCanvasElement);
+player.fitCanvas = true;
+/** The size the test games draw at. A console's picture resizes the canvas to its own size; this puts it back. */
+const BASE_VIEW = { width: view.width, height: view.height };
 
 let profile: Profile = presetProfile(mode);
 const engine = new MappingEngine(profile);
@@ -187,6 +190,10 @@ export function setMode(next: Mode, loadPreset: boolean): void {
   $<HTMLElement>('hintConsole').hidden = mode !== 'console';
   $<HTMLButtonElement>('autoCalibrate').disabled = mode === 'console';
   if (mode !== 'console' && client.state !== 'idle') client.disconnect();
+  if (mode !== 'console' && (view.width !== BASE_VIEW.width || view.height !== BASE_VIEW.height)) {
+    view.width = BASE_VIEW.width;
+    view.height = BASE_VIEW.height;
+  }
   if (loadPreset && mode !== 'console') {
     applyProfile(presetProfile(mode));
     engine.releaseAll();
@@ -1003,11 +1010,31 @@ async function runE2e(): Promise<void> {
 
 /**
  * Connect to the console, wait for decoded frames, and send a small picture of the canvas back to the bridge
- * (driven by tools/snap-console.mjs). It sends no input. For checking the real picture path in a real browser.
+ * (driven by tools/snap-console.mjs). For checking the real picture path in a real browser.
+ *
+ * It sends no input, unless asked with ?nudge=1: then it presses the d-pad down once and up once through the same
+ * path a key press takes (ArrowDown and ArrowUp on the default profile), and takes a picture before, between and
+ * after. One step down and one step back: enough to see the console react, and the selection ends where it began.
  */
 async function runSnap(): Promise<void> {
   const lines: string[] = [];
-  let frame = '';
+  const frames: string[] = [];
+  let pass = false;
+  const small = document.createElement('canvas');
+  small.width = 480;
+  small.height = 270;
+  const smallCtx = small.getContext('2d', { willReadFrequently: true })!;
+  const shot = (): Uint8ClampedArray => {
+    smallCtx.drawImage(view, 0, 0, small.width, small.height);
+    frames.push(small.toDataURL('image/jpeg', 0.55));
+    return smallCtx.getImageData(0, 0, small.width, small.height).data;
+  };
+  /** Share of pixels that differ clearly between two pictures, in percent. */
+  const changed = (a: Uint8ClampedArray, b: Uint8ClampedArray): number => {
+    let n = 0;
+    for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i]! - b[i]!) + Math.abs(a[i + 1]! - b[i + 1]!) + Math.abs(a[i + 2]! - b[i + 2]!) > 48) n++;
+    return (n / (a.length / 4)) * 100;
+  };
   try {
     setMode('console', false);
     client.connect(bridgeUrl.value, bridgeToken, consoleMac);
@@ -1016,15 +1043,37 @@ async function runSnap(): Promise<void> {
     await until(() => player.decoded >= 45, 15000);
     lines.push(`frames decoded ${player.decoded}, dropped ${player.dropped}, received ${client.fpsIn} fps / ${client.kbpsIn} kbit/s`);
     lines.push(`canvas ${view.width}x${view.height}`);
-    const small = document.createElement('canvas');
-    small.width = 640;
-    small.height = 360;
-    small.getContext('2d')!.drawImage(view, 0, 0, small.width, small.height);
-    frame = small.toDataURL('image/jpeg', 0.6);
+    pass = player.decoded > 0;
+    const before = shot();
+    if (params.has('nudge') && pass) {
+      const tap = async (code: string): Promise<void> => {
+        engine.keyDown(code);
+        await sleep(120);
+        engine.keyUp(code);
+        await sleep(1200);
+      };
+      await sleep(600);
+      const still = shot();
+      frames.pop();
+      await tap('ArrowDown');
+      const moved = shot();
+      await tap('ArrowUp');
+      const back = shot();
+      const noise = changed(before, still);
+      const down = changed(still, moved);
+      const returned = changed(still, back);
+      lines.push(`picture change with no input: ${noise.toFixed(2)}% of pixels`);
+      lines.push(`after d-pad down: ${down.toFixed(2)}% of pixels changed`);
+      lines.push(`after d-pad up again: ${returned.toFixed(2)}% differ from the start`);
+      const reacted = down > noise + 0.3 && returned < down / 2;
+      lines.push(reacted ? 'ok   the console reacted to the input, and the selection went back' : 'FAIL no clear reaction to the input in the picture');
+      pass = reacted;
+    }
   } catch (e) {
     lines.push(`error: ${String(e)}`);
   }
-  client.sendJson({ type: 'e2e', pass: player.decoded > 0, lines, frame: frame.length < 60000 ? frame : '' });
+  const fits = frames.reduce((n, f) => n + f.length, 0) < 56000;
+  client.sendJson({ type: 'e2e', pass, lines, frames: fits ? frames : frames.slice(0, 1) });
 }
 
 if (params.has('snap')) void runSnap();

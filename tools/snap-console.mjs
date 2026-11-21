@@ -2,9 +2,13 @@
 //
 // The whole picture path with a REAL console and a REAL browser: starts the bridge (the PS5 link), opens headless
 // Chrome on the page, lets the page connect to the registered console, waits for decoded frames and saves a small
-// picture of what the page drew. It sends no controller input, and it closes the connection at the end.
+// picture of what the page drew. It closes the connection at the end.
 //
-//   node tools/snap-console.mjs [--out picture.jpg]
+//   node tools/snap-console.mjs [--out picture.jpg] [--nudge]
+//
+// Without --nudge it sends no controller input. With it, the page presses the d-pad down once and up once (the same
+// path a key press takes) and takes a picture before, between and after: one step down and one step back, to see
+// that input reaches the console. Pictures are saved as picture.jpg, picture-2.jpg, picture-3.jpg.
 //
 // Needs Chrome or Edge, and a console registered on this computer that is on and reachable.
 
@@ -52,7 +56,7 @@ const bridge = await startBridge({
 });
 
 const profileDir = mkdtempSync(path.join(tmpdir(), 'gtp-snap-'));
-const child = spawn(chrome, ['--headless=new', '--disable-gpu', '--no-first-run', `--user-data-dir=${profileDir}`, `${bridge.url}?snap=1`], { stdio: 'ignore', windowsHide: true });
+const child = spawn(chrome, ['--headless=new', '--disable-gpu', '--no-first-run', `--user-data-dir=${profileDir}`, `${bridge.url}?snap=1${process.argv.includes('--nudge') ? '&nudge=1' : ''}`], { stdio: 'ignore', windowsHide: true });
 
 let exitCode = 1;
 try {
@@ -65,10 +69,13 @@ try {
     console.log(`set-up times (ms): ${Object.entries(s.stream.stages).map(([k, v]) => `${k} ${v}`).join(', ')}`);
   }
   if (s.lastError) console.log(`link: ${s.lastError}`);
-  if (typeof report.frame === 'string' && report.frame.startsWith('data:image/jpeg;base64,')) {
-    writeFileSync(out, Buffer.from(report.frame.slice(23), 'base64'));
-    console.log(`picture saved to ${out}`);
-  } else console.log('no picture came back from the page');
+  const pictures = (Array.isArray(report.frames) ? report.frames : []).filter((f) => typeof f === 'string' && f.startsWith('data:image/jpeg;base64,'));
+  pictures.forEach((f, i) => {
+    const file = i === 0 ? out : out.replace(/(\.\w+)?$/, (ext) => `-${i + 1}${ext}`);
+    writeFileSync(file, Buffer.from(f.slice(23), 'base64'));
+    console.log(`picture saved to ${file}`);
+  });
+  if (pictures.length === 0) console.log('no picture came back from the page');
   exitCode = report.pass ? 0 : 1;
 } catch (e) {
   console.error(String(e.message ?? e));

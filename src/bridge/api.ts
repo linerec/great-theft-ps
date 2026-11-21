@@ -176,7 +176,8 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
       json(res, 404, { error: 'unknown endpoint' });
     } else if (req.method === 'GET' && url.pathname === '/api/stream/stats') {
       // Everything measured about the running (or last) stream. ?samples=N limits the per-second series.
-      const n = Number(url.searchParams.get('samples') ?? '');
+      const asked = url.searchParams.get('samples');
+      const n = asked === null || asked === '' ? NaN : Number(asked);
       json(res, 200, opts.research!.snapshot(Number.isInteger(n) && n >= 0 ? n : undefined));
     } else if (req.method === 'GET' && url.pathname === '/api/stream/tuning') {
       json(res, 200, { tuning: opts.research!.tuning, appliesTo: 'the next connection' });

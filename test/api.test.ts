@@ -12,7 +12,10 @@ import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { FakeLink } from './support/fake-link.ts';
+import { StreamResearch } from '../src/bridge/ps5-link.ts';
 import { startBridge, type Bridge } from '../src/bridge/server.ts';
+import { DEFAULT_TUNING } from '../src/console/streamconnection.ts';
+import { StreamStats } from '../src/console/streamstats.ts';
 import type { DiscoveredHost } from '../src/console/discovery.ts';
 import { PsnAccountError } from '../src/console/psn-account.ts';
 import { RegistError, type RegisterOptions, type RegisteredConsole } from '../src/console/regist.ts';
@@ -349,6 +352,75 @@ describe('/api/ endpoints', () => {
       bridges.push(bridge);
       const r = await call(bridge.port, 'GET', '/api/network');
       assert.deepEqual(r.json(), { interfaces: [{ iface: 'en0', address: '192.168.1.12', netmask: '255.255.255.0' }] });
+    });
+  });
+
+  describe('stream measurements and settings (for studying how well the stream is delivered)', () => {
+    async function researchBridge() {
+      const research = new StreamResearch();
+      const lines: string[] = [];
+      const bridge = await startBridge({ host: '127.0.0.1', port: 0, root, store: new ConsoleStore(path.join(tmp(), 'consoles.json')), research, createLink: () => new FakeLink(), log: (l) => lines.push(l) });
+      bridges.push(bridge);
+      return { bridge, research, lines };
+    }
+
+    it('reports nothing before the first stream, then the stream as it runs', async () => {
+      const { bridge, research } = await researchBridge();
+      const idle = (await call(bridge.port, 'GET', '/api/stream/stats')).json();
+      assert.equal(idle.state, 'idle');
+      assert.equal(idle.stream, null);
+      assert.deepEqual(idle.tuning, DEFAULT_TUNING);
+
+      let now = 0;
+      const stats = new StreamStats(() => now);
+      research.stats = stats;
+      research.state = 'streaming';
+      research.video = { width: 960, height: 540, maxFps: 30, bitrateKbps: 4000, codec: 'h264' };
+      stats.stage('session');
+      now = 300;
+      stats.frame(8000, { keyFrame: true, fecRecovered: false, framesLost: 0 });
+      now = 333;
+      stats.frame(600, { keyFrame: false, fecRecovered: true, framesLost: 0 });
+      now = 2100;
+      const live = (await call(bridge.port, 'GET', '/api/stream/stats')).json();
+      assert.equal(live.state, 'streaming');
+      assert.deepEqual(live.video, { width: 960, height: 540, maxFps: 30, bitrateKbps: 4000, codec: 'h264' });
+      assert.equal(live.stream.totals.frames, 2);
+      assert.equal(live.stream.totals.fecRecovered, 1);
+      assert.deepEqual(live.stream.stages, { session: 0, 'first-frame': 300 });
+      assert.equal(live.stream.samples.length, 2, 'one sample per second that has ended');
+      assert.equal(live.stream.samples[0].frames, 2);
+      assert.ok(Array.isArray(live.stream.events));
+
+      const last = (await call(bridge.port, 'GET', '/api/stream/stats?samples=1')).json();
+      assert.deepEqual(last.stream.samples.map((s: { t: number }) => s.t), [1]);
+      assert.deepEqual((await call(bridge.port, 'GET', '/api/stream/stats?samples=0')).json().stream.samples, []);
+    });
+
+    it('changes settings for the next connection, and refuses what it does not understand without changing anything', async () => {
+      const { bridge, research, lines } = await researchBridge();
+      const before = (await call(bridge.port, 'GET', '/api/stream/tuning')).json();
+      assert.deepEqual(before, { tuning: DEFAULT_TUNING, appliesTo: 'the next connection' });
+
+      const ok = await call(bridge.port, 'POST', '/api/stream/tuning', { body: { enableIdrOnFecFailure: true, packetLossMax: 0.2 } });
+      assert.equal(ok.status, 200);
+      assert.deepEqual(ok.json().tuning, { ...DEFAULT_TUNING, enableIdrOnFecFailure: true, packetLossMax: 0.2 });
+      assert.equal(research.tuning.packetLossMax, 0.2);
+      assert.ok(lines.some((l) => /stream settings changed/.test(l)));
+
+      const bad = await call(bridge.port, 'POST', '/api/stream/tuning', { body: { packetLossMax: 5, heartbeatIntervalMs: 250 } });
+      assert.equal(bad.status, 400);
+      assert.match(bad.json().message, /packetLossMax/);
+      assert.equal(research.tuning.heartbeatIntervalMs, DEFAULT_TUNING.heartbeatIntervalMs, 'the valid half of a bad request is not applied');
+      assert.equal((await call(bridge.port, 'POST', '/api/stream/tuning', { body: { turbo: true } })).status, 400);
+      assert.equal((await call(bridge.port, 'POST', '/api/stream/tuning', { body: [1, 2] })).status, 400);
+      assert.equal(research.tuning.packetLossMax, 0.2);
+    });
+
+    it('is absent on a bridge that keeps no measurements', async () => {
+      const { bridge } = await apiBridge();
+      assert.equal((await call(bridge.port, 'GET', '/api/stream/stats')).status, 404);
+      assert.equal((await call(bridge.port, 'POST', '/api/stream/tuning', { body: { packetLossMax: 0.1 } })).status, 404);
     });
   });
 

@@ -14,6 +14,8 @@ export class VideoPlayer {
   dropped = 0;
   lastFrameAt = 0;
   error = '';
+  /** Give the canvas the size of the decoded picture, so a console's picture is not scaled down before it is shown. */
+  fitCanvas = false;
   /** Called when the stream needs a keyframe to continue (start, error, or after dropping frames). */
   onNeedKeyframe: () => void = () => {};
   /** Called for every frame that was drawn, with the header it arrived with. */
@@ -79,6 +81,10 @@ export class VideoPlayer {
     this.#codec = codec;
     const decoder = new VideoDecoder({
       output: (frame) => {
+        if (this.fitCanvas && (this.#canvas.width !== frame.displayWidth || this.#canvas.height !== frame.displayHeight)) {
+          this.#canvas.width = frame.displayWidth;
+          this.#canvas.height = frame.displayHeight;
+        }
         this.#ctx.drawImage(frame, 0, 0, this.#canvas.width, this.#canvas.height);
         const header = this.#pending.get(frame.timestamp);
         this.#pending.delete(frame.timestamp);

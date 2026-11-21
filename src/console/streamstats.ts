@@ -66,7 +66,7 @@ export class StreamStats {
   stages: Record<string, number> = {};
   samples: StreamSample[] = [];
   events: StreamEvent[] = [];
-  /** A gap between frames longer than this counts as a stutter. Default: 2.5 frame times at 60 fps. */
+  /** A gap between frames longer than this counts as a stutter. Default: 2.5 frame times at 60 fps; the stream connection sets it from the frame rate it asks for. */
   stutterThresholdMs = 42;
 
   #now: () => number;
@@ -182,7 +182,7 @@ export class StreamStats {
       elapsedMs: Math.round(this.#elapsed()),
       totals: { ...this.totals },
       stages: { ...this.stages },
-      samples: this.samples.slice(-Math.max(0, sampleCount)),
+      samples: sampleCount > 0 ? this.samples.slice(-sampleCount) : [],
       events: [...this.events],
       stutterThresholdMs: this.stutterThresholdMs,
     };

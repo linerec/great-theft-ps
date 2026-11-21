@@ -950,17 +950,24 @@ describe('takion: handshake with a simulated console', () => {
     const { events, seen } = watch();
     const takion = new Takion(events);
     try {
-      const connecting = takion.connect({ host: '127.0.0.1', port: peer.port, protocolVersion: 12, enableCrypt: false, expectTimeoutMs: 80 });
-      const first = await peer.next(); // ignore the first INIT
+      const connecting = takion.connect({ host: '127.0.0.1', port: peer.port, protocolVersion: 12, enableCrypt: false, expectTimeoutMs: 150 });
+      /** The next datagram with that chunk type (so that a slow machine, where one more retry slips in, does not matter). */
+      const nextChunk = async (chunkType: number): Promise<Buffer> => {
+        for (;;) {
+          const datagram = await peer.next();
+          if (takionParseMessage(datagram.subarray(1)).chunkType === chunkType) return datagram;
+        }
+      };
+      const first = await nextChunk(TAKION_CHUNK_TYPE.INIT); // not answered
       assert.equal(first.length, 33);
-      // the second INIT is answered by handshake(); the first COOKIE that follows is ignored once
-      const initAgain = await peer.next();
+      // the second INIT is answered; the first COOKIE that follows is not
+      const initAgain = await nextChunk(TAKION_CHUNK_TYPE.INIT);
       assert.deepEqual(initAgain, first);
       const tagClient = takionParseInitPayload(takionParseMessage(initAgain.subarray(1)).payload).tag;
       const cookie = Buffer.alloc(0x20, 0x5a);
       await peer.send(takionFormatInitAck(tagClient, { tag: PEER_TAG, aRwnd: 0x19000, outboundStreams: 0x64, inboundStreams: 0x64, initialSeqNum: PEER_TAG, cookie }));
-      const cookie1 = await peer.next();
-      const cookie2 = await peer.next();
+      const cookie1 = await nextChunk(TAKION_CHUNK_TYPE.COOKIE);
+      const cookie2 = await nextChunk(TAKION_CHUNK_TYPE.COOKIE);
       assert.deepEqual(cookie2, cookie1, 'the cookie is sent again');
       assert.deepEqual(cookie1, takionFormatCookie(PEER_TAG, cookie));
       await peer.send(takionFormatCookieAck(tagClient));
@@ -1001,7 +1008,7 @@ describe('takion: handshake with a simulated console', () => {
       try {
         let settled = false;
         const result = takion
-          .connect({ host: '127.0.0.1', port: peer.port, protocolVersion: 12, enableCrypt: false, expectTimeoutMs: 300 })
+          .connect({ host: '127.0.0.1', port: peer.port, protocolVersion: 12, enableCrypt: false, expectTimeoutMs: 2000 })
           .then(
             () => 'connected',
             (e: unknown) => e,

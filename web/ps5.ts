@@ -117,7 +117,7 @@ function cta(): Cta {
   }
   return {
     label: '연결', kind: 'primary',
-    note: 'PS5에 연결합니다. 영상 수신은 개발 중이라, 지금은 연결이 어느 단계까지 되는지 화면에 그대로 보여 줍니다.',
+    note: 'PS5 화면을 띄웁니다. 화면을 클릭하면 키보드와 마우스가 PS5로 전달됩니다 (Esc로 해제). 음성은 아직 없습니다.',
     run: () => {
       setConsoleMac(c.mac);
       $<HTMLButtonElement>('bridgeConnect').click();

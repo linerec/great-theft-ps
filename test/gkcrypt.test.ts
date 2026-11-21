@@ -4,9 +4,10 @@
 // tests (test/gkcrypt.c and test/keystate.c, commit 43728af): the byte arrays were extracted from the C source by a
 // script, not retyped. The names in VECTORS are the reference's.
 //
-// The reference's /ecdh test exercises lib/src/ecdh.c, which is not ported yet. Its vector is checked here with
-// node:crypto directly: it pins the curve (secp256k1), the uncompressed public key form and that the signature is
-// HMAC-SHA256 keyed with the handshake key, which is what an ecdh.ts will have to do.
+// The reference's /ecdh test exercises lib/src/ecdh.c, which is not part of gkcrypt.ts (the key exchange has its own
+// port and test: src/console/ecdh.ts, test/ecdh.test.ts). So that every test of test/gkcrypt.c has its counterpart
+// here, its vector is checked with node:crypto directly: the curve (secp256k1), the uncompressed public key form, and
+// that the signature is HMAC-SHA256 keyed with the handshake key.
 //
 // STATUS: all of the reference's vectors pass. The last group is self-consistency only. Nothing here involves a console.
 
@@ -100,7 +101,7 @@ const VECTORS = {
 const KEY_POS_HIGH = (1n << 32n) + 0x420n;
 
 describe('gkcrypt: chiaki-ng test vectors (test/gkcrypt.c)', () => {
-  it('/ecdh (with node:crypto, ecdh.c is not ported): public key, its signature and the shared secret', () => {
+  it('/ecdh (with node:crypto directly): public key, its signature and the shared secret', () => {
     const v = VECTORS.test_ecdh;
     const ecdh = createECDH('secp256k1');
     ecdh.setPrivateKey(hex(v.local_private_key));

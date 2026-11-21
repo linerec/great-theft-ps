@@ -2,7 +2,7 @@
 //
 // The ways a client can reach a PS5, and what works on each. Pure data and logic (no DOM), so it can be tested.
 // Ports and order come from chiaki-ng (commit 43728af). "확인됨" (ok) means seen on a real console in this project;
-// "코드 있음" (likely) means written and tested against a simulator and the reference's vectors only.
+// "코드 있음" (likely) means written and tested against a simulated console and the reference's vectors only.
 
 export type PathId = 'lan' | 'bridge' | 'vlan' | 'vpn' | 'rbridge' | 'psn' | 'fwd';
 export type StepId = 'discover' | 'wake' | 'register' | 'session' | 'stream';
@@ -58,29 +58,29 @@ export const PATHS: RoutePath[] = [
     id: 'lan', name: '집 안 · 같은 네트워크', sub: '기기 → 공유기 → PS5', tag: '가장 단순',
     nodes: [{ zone: 'home', title: '이 PC · 맥', sub: '같은 Wi‑Fi' }, { zone: 'home', title: '공유기', sub: '192.168.1.x' }, PS5],
     steps: {
-      discover: { v: 'ok', proto: 'UDP 브로드캐스트 · 9302', labels: ['SRCH 브로드캐스트', '응답: 상태·이름·ID'], note: '맥에서 실제 PS5가 응답했습니다(대기 모드). 같은 대역이면 주소를 몰라도 찾습니다.' },
+      discover: { v: 'ok', proto: 'UDP 브로드캐스트 · 9302', labels: ['SRCH 브로드캐스트', '응답: 상태·이름·ID'], note: '맥과 이 PC에서 실제 PS5가 응답했습니다. 같은 대역이면 주소를 몰라도 찾습니다.' },
       wake: { v: 'likely', proto: 'UDP 9302 · WAKEUP + 등록 키', labels: ['WAKEUP', '대기 → 켜짐'], note: '함수는 있지만 실제 PS5로는 아직 시험하지 않았습니다.' },
-      register: { v: 'likely', proto: 'UDP 검색 + TCP 9295 · 8자리 코드', labels: ['검색 + 등록 요청', '키 응답(암호화)'], note: '한 번만 하면 됩니다. 결과는 컴퓨터에 저장됩니다.' },
-      session: { v: 'likely', proto: 'TCP 9295 · /sie/ps5/rp/sess/init', labels: ['init + 등록 키', 'nonce 응답'], note: '“연결 확인” 버튼이 이 요청을 실제 PS5로 보냅니다.' },
-      stream: { v: 'plan', proto: 'UDP 9296 Takion · 9297 RTT·MTU', labels: ['입력 8~200ms', '영상 · 음성'], note: '아직 만들지 않았습니다. 제어 연결, 전송 계층, 영상 수신 순서로 진행합니다.' },
+      register: { v: 'ok', proto: 'UDP 검색 + TCP 9295 · 8자리 코드', labels: ['검색 + 등록 요청', '키 응답(암호화)'], note: '실제 PS5로 확인했습니다. 한 번만 하면 되고, 결과는 컴퓨터에 저장됩니다.' },
+      session: { v: 'ok', proto: 'TCP 9295 · /sie/ps5/rp/sess/init, /ctrl', labels: ['init + 등록 키', 'nonce · 세션 ID'], note: '실제 PS5로 확인했습니다. 세션 요청 뒤 암호화된 제어 연결을 열고 세션 ID를 받습니다.' },
+      stream: { v: 'ok', proto: 'UDP 9296 Takion', labels: ['입력 · 수신 보고', '영상 (H.264)'], note: '실제 PS5의 화면을 받고 입력을 보내는 것까지 확인했습니다. 음성과 RTT·MTU 측정(9297)은 아직 없습니다.' },
     },
     needs: 'PC와 PS5가 같은 공유기(같은 대역). PS5에서 원격 플레이 켜기.',
     watch: '공유기의 “클라이언트 격리”가 켜져 있으면 어떤 방법도 막힙니다.',
-    status: '발견은 실제 PS5로 확인. 등록과 세션 요청은 작성 끝. 영상은 아직.',
+    status: '발견, 등록, 세션, 영상, 입력까지 실제 PS5로 확인. 음성과 깨우기는 아직.',
   },
   {
     id: 'bridge', name: '집 안 · 브라우저 + 브리지', sub: '브라우저 → 브리지 → PS5', tag: '지금 쓰는 구조',
-    nodes: [{ zone: 'home', title: '브라우저', sub: '맥 · 이 PC · 폰' }, { zone: 'home', title: '브리지', sub: 'Node, 집의 맥' }, PS5],
+    nodes: [{ zone: 'home', title: '브라우저', sub: '맥 · 이 PC · 폰' }, { zone: 'home', title: '브리지', sub: 'Node · 집의 맥, 이 PC' }, PS5],
     steps: {
       discover: { v: 'ok', proto: 'HTTP /api/discover → UDP 9302', labels: ['“콘솔 찾기”', 'UDP 브로드캐스트'], note: '브라우저는 UDP를 못 열어서, 브리지가 대신 찾아 줍니다.' },
       wake: { v: 'likely', proto: '브리지 → UDP 9302 WAKEUP', labels: ['(버튼 예정)', 'WAKEUP'], note: '깨우기 함수는 있고 화면 버튼은 아직 없습니다.' },
-      register: { v: 'likely', proto: 'HTTP /api/register → TCP 9295', labels: ['코드 · 계정 ID 입력', '등록 요청'], note: '키는 브리지가 있는 컴퓨터에만 저장되고 브라우저로 오지 않습니다.' },
-      session: { v: 'likely', proto: 'HTTP /api/session-check → TCP 9295', labels: ['연결 확인', '세션 요청'], note: '브리지가 저장된 키로 세션을 요청합니다. 연결 단계와 이어 붙이는 일은 아직입니다.' },
-      stream: { v: 'plan', proto: 'WebSocket(TCP) ↔ UDP 9296', labels: ['영상 · 입력(TCP)', 'Takion UDP'], note: '영상 수신은 아직 구현 중입니다. WebSocket은 TCP라 손실 시 지연이 커서, 나중에 WebRTC를 계획합니다.' },
+      register: { v: 'ok', proto: 'HTTP /api/register → TCP 9295', labels: ['코드 · 계정 ID 입력', '등록 요청'], note: '실제 PS5로 확인했습니다. 키는 브리지가 있는 컴퓨터에만 저장되고 브라우저로 오지 않습니다.' },
+      session: { v: 'ok', proto: 'WebSocket hello → TCP 9295', labels: ['연결', '세션 · 제어 연결'], note: '실제 PS5로 확인했습니다. 브리지가 저장된 키로 세션을 요청하고 제어 연결을 엽니다.' },
+      stream: { v: 'ok', proto: 'WebSocket(TCP) ↔ UDP 9296', labels: ['영상 · 입력(TCP)', 'Takion UDP'], note: '실제 PS5 화면이 브라우저에 나오고 키 입력이 전달되는 것을 확인했습니다. WebSocket은 TCP라 손실 시 지연이 커서, 나중에 WebRTC를 계획합니다. 음성은 아직 없습니다.' },
     },
-    needs: '집의 컴퓨터에서 npm run bridge. 같은 컴퓨터의 브라우저는 토큰 없이, 다른 기기는 --host와 토큰.',
+    needs: 'PS5와 같은 네트워크의 컴퓨터에서 npm run bridge. 같은 컴퓨터의 브라우저는 토큰 없이, 다른 기기는 --host와 토큰.',
     watch: '브라우저와 브리지 사이는 TCP입니다. 지연은 화면의 “입력→화면 지연”으로 잽니다.',
-    status: '맥 브리지에서 등록 폼과 계정 ID 가져오기를 쓸 수 있음. 실제 영상은 아직.',
+    status: '이 PC의 브리지로 실제 PS5 화면과 입력을 확인. 측정값은 /api/stream/stats 에서 볼 수 있음.',
   },
   {
     id: 'vlan', name: '집 안 · 다른 대역 / 게스트', sub: 'IoT·게스트 망 → 라우터 → PS5', tag: '조건부',
