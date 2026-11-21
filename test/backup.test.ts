@@ -96,6 +96,27 @@ describe('merging into a store', () => {
     assert.equal(mine.list()[0]!.nickname, 'Old');
   });
 
+  it('two programs on one file see each other\'s changes and never overwrite them (a running bridge and an import)', async () => {
+    const file = path.join(tmp(), 'shared.json');
+    const bridge = new ConsoleStore(file); // started first, holds an empty copy in memory
+    assert.deepEqual(bridge.list(), []);
+
+    const cli = new ConsoleStore(file); // the command line tool, a separate object on the same file
+    cli.put(reg(), '192.168.1.50');
+    cli.setAccountId('AgEAAAAAAAA=');
+    // Without re-reading, the bridge would still say "nothing registered".
+    assert.equal(bridge.list().length, 1, 'the running bridge sees the import without a restart');
+    assert.equal(bridge.accountId, 'AgEAAAAAAAA=');
+
+    // And its own later write keeps what the other program added instead of overwriting it with a stale copy.
+    await new Promise((r) => setTimeout(r, 20)); // distinct modification times on coarse file systems
+    cli.put(reg({ mac: 'aabbccddeeff', nickname: 'Second' }), '192.168.1.51');
+    bridge.markVerified('0123456789ab', '192.168.1.50');
+    const fresh = new ConsoleStore(file);
+    assert.deepEqual(fresh.list().map((c) => c.mac).sort(), ['0123456789ab', 'aabbccddeeff']);
+    assert.ok(fresh.get('0123456789ab')?.verifiedAt);
+  });
+
   it('ignores garbage in the copy', () => {
     const to = new ConsoleStore(path.join(tmp(), 'c.json'));
     const r = to.merge({ consoles: [{ mac: 'zz' }, null, 7, { mac: '0123456789ab', target: 'ps9', rpKey: 'x' }], accountId: 'nonsense' });

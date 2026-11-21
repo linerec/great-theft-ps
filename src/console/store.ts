@@ -8,7 +8,7 @@
 //    there it relies on the permissions of the user profile folder),
 //  - the browser never receives the keys: list() returns only the public part.
 
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -58,11 +58,35 @@ const isHex = (s: unknown, bytes: number): s is string => typeof s === 'string' 
 
 export class ConsoleStore {
   readonly file: string;
-  #data: FileShape;
+  #cache: FileShape;
+  #seen = 0;
 
   constructor(file: string) {
     this.file = file;
-    this.#data = this.#read();
+    this.#cache = this.#read();
+    this.#seen = this.#mtime();
+  }
+
+  #mtime(): number {
+    try {
+      return statSync(this.file).mtimeMs;
+    } catch {
+      return 0; // no file yet
+    }
+  }
+
+  /**
+   * The data, re-read first if another program changed the file in the meantime (the command line tool importing a
+   * backup, a second bridge). A long-running bridge therefore sees an import without a restart, and never writes its
+   * old copy over it.
+   */
+  get #data(): FileShape {
+    const now = this.#mtime();
+    if (now !== this.#seen) {
+      this.#cache = this.#read();
+      this.#seen = now;
+    }
+    return this.#cache;
   }
 
   #read(): FileShape {
@@ -118,13 +142,14 @@ export class ConsoleStore {
     const dir = path.dirname(this.file);
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     const tmp = `${this.file}.${process.pid}.tmp`;
-    writeFileSync(tmp, `${JSON.stringify(this.#data, null, 2)}\n`, { mode: 0o600 });
+    writeFileSync(tmp, `${JSON.stringify(this.#cache, null, 2)}\n`, { mode: 0o600 });
     renameSync(tmp, this.file);
     try {
       chmodSync(this.file, 0o600);
     } catch {
       /* not supported on this file system */
     }
+    this.#seen = this.#mtime(); // our own write is not "someone else's change"
   }
 
   list(): PublicConsole[] {
