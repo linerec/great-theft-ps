@@ -253,16 +253,33 @@ async function fakeConsole(o: FakeOptions): Promise<{ port: number; seen: string
     });
     socket.on('error', () => {});
   });
-  await new Promise<void>((r) => tcp.listen(0, '127.0.0.1', r));
-  const port = (tcp.address() as net.AddressInfo).port;
-
-  const udp = dgram.createSocket('udp4');
+  // A console answers on the same port number over TCP and UDP. The system hands out a free TCP port, but the UDP port
+  // with that number can belong to somebody else (seen on Windows: a system service had it, the bind failed without
+  // anybody listening for the error, and the whole test run hung). So: try again with another number.
+  let port = 0;
+  let udp!: dgram.Socket;
+  for (let attempt = 0; ; attempt++) {
+    await new Promise<void>((r) => tcp.listen(0, '127.0.0.1', r));
+    port = (tcp.address() as net.AddressInfo).port;
+    const candidate = dgram.createSocket('udp4');
+    const bound = await new Promise<boolean>((resolve) => {
+      candidate.once('error', () => resolve(false));
+      candidate.bind(port, '127.0.0.1', () => resolve(true));
+    });
+    if (bound) {
+      udp = candidate;
+      break;
+    }
+    candidate.close();
+    await new Promise<void>((r) => tcp.close(() => r()));
+    if (attempt >= 20) throw new Error('no port free for both TCP and UDP');
+  }
+  udp.on('error', () => {});
   udp.on('message', (msg, rinfo) => {
     seen.push(`UDP ${msg.toString('latin1').replace('\0', '\\0')}`);
     if (o.mode === 'silent-udp') return;
     udp.send(Buffer.from(ps5 ? 'RES3\0' : 'RES2\0', 'latin1'), rinfo.port, rinfo.address);
   });
-  await new Promise<void>((r) => udp.bind(port, '127.0.0.1', r));
   return {
     port,
     seen,
