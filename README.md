@@ -28,7 +28,7 @@ from and for trademark notes.
 | Mapping engine + test beds (pad-only FPS, GTA V style third-person) | **working** (75 tests, browser self-test) |
 | Bridge: WebSocket server, auth, safety, simulated console, gtp-core contract (fake core) | **working** (25 tests) |
 | Browser client: video player (PNG and real H.264 via WebCodecs), pad sending, latency, quality presets | **working** (real-Chrome end-to-end check) |
-| Console link for a real PlayStation: TypeScript port of the Remote Play protocol (`src/console/`) | **Phase 0 done**: discovery confirmed on a real PS5 in rest mode (from macOS); wake-up not yet tried on hardware. Phases 1 to 7 not started: `docs/ts-protocol-port.md` |
+| Console link for a real PlayStation: TypeScript port of the Remote Play protocol (`src/console/`) | **Phase 0 done**: discovery confirmed on a real PS5 in rest mode (from macOS); wake-up not yet tried on hardware. **Phase 1a written**: console registration (`npm run register`, or the page), checked against chiaki-ng's test vectors and a simulated console, **not yet against a real console**. Session setup and everything after it (1b to 7) not started: `docs/ts-protocol-port.md` |
 | gtp-core (C, libchiaki), the alternative link | specified, not built (`docs/gtp-core-contract.md`) |
 | Profile sharing registry, WebRTC, desktop and mobile shells | not started |
 
@@ -37,12 +37,23 @@ from and for trademark notes.
 Requires Node.js 24 or newer. No dependencies to install.
 
 ```sh
-npm test         # unit and integration tests (node --test): 100 tests
+npm test         # unit and integration tests (node --test): 158 tests
 npm run dev      # test beds (FPS, GTA style) at http://127.0.0.1:5173/, no console needed
 npm run bridge   # bridge with a SIMULATED console; open the printed URL (no token needed on this computer)
 npm run e2e      # real-browser end-to-end check (headless Chrome <-> bridge <-> simulated console)
 npm run discover # look for PlayStation consoles on the local network (run it where the console is)
+npm run register -- --host <console IP>   # register with your console (see below); the page can do it too
 ```
+
+### Register your console (once)
+
+Run this on a computer on the same network as the console. The console must be **on** (not in rest mode) with **Settings >
+System > Remote Play > Link Device** open; it shows an 8 digit code. Either use the "콘솔 등록" part of the page that
+`npm run bridge` prints, or the command line above (it asks for the code and the account id, and says exactly why it failed
+when it does). The first registration also needs your PSN account id (a decimal number, or its 8 bytes in base64); it is
+remembered afterwards. The result is saved in `~/.gtp/consoles.json` (set `GTP_HOME` to move it) and is never sent to the
+browser. That file lets a program control your console: keep it private and do not commit or share it.
+This part has been checked against chiaki-ng's test vectors and a simulated console only, **not yet against a real console**.
 
 Open the page and click the game view to lock the mouse (Esc releases it). W A S D move, the mouse looks,
 left click shoots, right click aims down sights, Shift sprints, X walks slowly.

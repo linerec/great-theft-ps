@@ -18,6 +18,8 @@ import { emptyPadState, type VirtualPadState } from '../engine/types.ts';
 import type { ConsoleLink } from './console-link.ts';
 import { decodePad, decodePing, encodePong, encodeVideo, isNeutral, MSG, type ClientControl } from './protocol.ts';
 import { DEFAULT_QUALITY, parseQuality, type QualityRequest } from './quality.ts';
+import type { ConsoleStore } from '../console/store.ts';
+import { handleApi, type ApiOptions } from './api.ts';
 import { portInUse } from './ports.ts';
 import { handleStatic, isLoopbackHost, send } from './static.ts';
 import { acceptUpgrade, type WsConnection } from './ws.ts';
@@ -35,6 +37,10 @@ export interface BridgeOptions {
   token?: string;
   root: string;
   createLink: () => ConsoleLink;
+  /** Where registered consoles are kept. Without it the /api/ endpoints are off. */
+  store?: ConsoleStore;
+  /** Replaces network discovery and registration. For tests. */
+  api?: Pick<ApiOptions, 'discover' | 'register'>;
   log?: (line: string) => void;
   /** Test hook: when set, a client message {type:'e2e', ...} is passed to it. Off in normal use. */
   onE2eReport?: (report: unknown) => void;
@@ -58,6 +64,11 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
 
   const server = http.createServer((req, res) => {
     if (loopbackOnly && !isLoopbackHost(req.headers.host, boundPort)) return send(res, 421, { 'Content-Type': 'text/plain' }, 'Misdirected request');
+    if (opts.store && (req.url ?? '').startsWith('/api/')) {
+      const api: ApiOptions = { store: opts.store, ...(opts.token !== undefined ? { token: opts.token } : {}), ...opts.api, log };
+      void handleApi(req, res, api).catch(() => send(res, 500, { 'Content-Type': 'text/plain' }, 'error'));
+      return;
+    }
     void handleStatic(req, res, opts.root);
   });
 

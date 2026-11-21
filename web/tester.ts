@@ -227,6 +227,123 @@ $<HTMLSelectElement>('qualityPreset').addEventListener('change', () => {
 });
 qualityNote();
 
+// ---------------------------------------------------------------- console registration (talks to the bridge's /api/)
+
+interface ApiReply {
+  ok: boolean;
+  status: number;
+  data: Record<string, any>;
+}
+async function api(method: string, path: string, body?: unknown): Promise<ApiReply> {
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (bridgeToken) headers.Authorization = `Bearer ${bridgeToken}`;
+  const res = await fetch(path, { method, headers, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
+  const data = (await res.json().catch(() => ({}))) as Record<string, any>;
+  return { ok: res.ok, status: res.status, data };
+}
+
+const regMsg = $<HTMLElement>('regMsg');
+const say = (text: string, kind: 'ok' | 'err' | '' = ''): void => {
+  regMsg.textContent = text;
+  regMsg.dataset.kind = kind;
+};
+const REG_HINT: Record<string, string> = {
+  'account-id-needed': '처음 한 번은 PSN 계정 ID가 필요합니다.',
+  rejected: '콘솔이 거부했습니다. 코드가 틀렸거나 바뀌었는지, 계정 ID가 맞는지 확인하세요. 기기 연결 화면의 코드를 다시 확인하고 새로 입력해 보세요.',
+  refused: '콘솔이 연결을 거절했습니다. 콘솔의 기기 연결 화면을 연 채로 다시 시도하세요.',
+  timeout: '콘솔이 응답하지 않습니다. 켜져 있는지, 기기 연결 화면이 열려 있는지, 같은 네트워크인지 확인하세요.',
+  'not-found': '그 주소에서 콘솔이 응답하지 않습니다.',
+};
+
+async function refreshRegistered(): Promise<void> {
+  const list = $<HTMLElement>('regList');
+  const r = await api('GET', '/api/consoles').catch(() => null);
+  list.textContent = '';
+  if (!r || !r.ok) {
+    const li = document.createElement('li');
+    li.textContent = '이 서버에는 등록 기능이 없습니다. npm run bridge 로 연 주소에서 사용하세요.';
+    list.append(li);
+    return;
+  }
+  const consoles = (r.data.consoles ?? []) as Array<{ mac: string; nickname: string; target: string; host: string }>;
+  for (const c of consoles) {
+    const li = document.createElement('li');
+    li.textContent = `${c.nickname || '(이름 없음)'} · ${c.target} · ${c.host} · ${c.mac}  `;
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.textContent = '삭제';
+    del.addEventListener('click', () => void api('DELETE', `/api/consoles/${encodeURIComponent(c.mac)}`).then(refreshRegistered));
+    li.append(del);
+    list.append(li);
+  }
+  if (consoles.length === 0) {
+    const li = document.createElement('li');
+    li.textContent = '아직 없습니다.';
+    list.append(li);
+  }
+  $<HTMLElement>('regAccountNote').textContent = r.data.accountIdSaved ? '(저장된 값을 사용합니다. 바꾸려면 새로 입력)' : '(숫자 또는 Base64. 처음 한 번만 필요)';
+}
+
+$<HTMLButtonElement>('regScan').addEventListener('click', async () => {
+  say('찾는 중…');
+  const r = await api('GET', '/api/discover').catch(() => null);
+  const select = $<HTMLSelectElement>('regHost');
+  select.textContent = '';
+  if (!r || !r.ok) return say('콘솔을 찾지 못했습니다. 이 서버에는 등록 기능이 없을 수 있습니다.', 'err');
+  const hosts = (r.data.hosts ?? []) as Array<{ address: string; name: string; type: string; state: string; registered: boolean }>;
+  for (const h of hosts) {
+    const o = document.createElement('option');
+    o.value = h.address;
+    o.textContent = `${h.name || h.type} (${h.address}) · ${h.state === 'ready' ? '켜짐' : '대기 중'} · ${h.registered ? '등록됨' : '미등록'}`;
+    select.append(o);
+  }
+  if (hosts.length === 0) {
+    const o = document.createElement('option');
+    o.value = '';
+    o.textContent = '(찾지 못함)';
+    select.append(o);
+    return say('콘솔이 응답하지 않습니다. 콘솔이 켜져 있고 같은 네트워크인지 확인하고, IP 주소를 직접 입력해도 됩니다.', 'err');
+  }
+  $<HTMLInputElement>('regAddr').value = hosts[0]!.address;
+  say(hosts.some((h) => h.state !== 'ready') ? '대기 모드인 콘솔이 있습니다. 등록하려면 콘솔을 켜세요.' : `${hosts.length}대 찾았습니다.`, 'ok');
+});
+$<HTMLSelectElement>('regHost').addEventListener('change', (e) => {
+  const v = (e.target as HTMLSelectElement).value;
+  if (v) $<HTMLInputElement>('regAddr').value = v;
+});
+
+$<HTMLButtonElement>('regGo').addEventListener('click', async () => {
+  const pinInput = $<HTMLInputElement>('regPin');
+  const accountInput = $<HTMLInputElement>('regAccount');
+  const address = $<HTMLInputElement>('regAddr').value.trim();
+  const pin = pinInput.value.replace(/[\s-]/g, '');
+  if (!address) return say('콘솔 IP 주소를 입력하거나 “콘솔 찾기”를 누르세요.', 'err');
+  if (!/^\d{8}$/.test(pin)) return say('코드는 콘솔에 표시된 8자리 숫자입니다.', 'err');
+  const body: Record<string, string> = { host: address, pin };
+  if (accountInput.value.trim()) body.accountId = accountInput.value.trim();
+  const button = $<HTMLButtonElement>('regGo');
+  button.disabled = true;
+  say('등록 중… 콘솔의 기기 연결 화면을 닫지 마세요.');
+  try {
+    const r = await api('POST', '/api/register', body);
+    if (r.ok) {
+      say(`등록했습니다: ${r.data.console?.nickname || address}`, 'ok');
+      accountInput.value = '';
+      await refreshRegistered();
+    } else {
+      const code = String(r.data.error ?? '');
+      say(`${REG_HINT[code] ?? '등록하지 못했습니다.'}${r.data.message ? ` (${r.data.message})` : ''}`, 'err');
+    }
+  } catch {
+    say('브리지에 연결하지 못했습니다.', 'err');
+  } finally {
+    pinInput.value = ''; // a PIN is single use; do not leave it on the page
+    button.disabled = false;
+  }
+});
+void refreshRegistered();
+
 $<HTMLButtonElement>('bridgeConnect').addEventListener('click', () => {
   player.close();
   client.connect(bridgeUrl.value, bridgeToken);
@@ -788,6 +905,16 @@ async function runE2e(): Promise<void> {
     client.sendJson({ type: 'quality', preset: 'saver', fps: 15 });
     await sleep(2600);
     check('quality change takes effect (frame rate follows)', client.fpsIn >= 8 && client.fpsIn <= 20, `${client.fpsIn} fps received`);
+
+    // The registration form: fill it in like a person would and press the button.
+    $<HTMLInputElement>('regAddr').value = '192.168.1.50';
+    $<HTMLInputElement>('regPin').value = '2468 0135';
+    $<HTMLInputElement>('regAccount').value = '258';
+    $<HTMLButtonElement>('regGo').click();
+    await until(() => ($<HTMLElement>('regList').textContent ?? '').includes('E2E console'), 4000);
+    check('registration form registers a console and lists it', ($<HTMLElement>('regList').textContent ?? '').includes('E2E console'), regMsg.textContent ?? '');
+    check('the PIN is cleared from the page after the attempt', $<HTMLInputElement>('regPin').value === '');
+    check('the registration key never reaches the page', !document.body.innerText.includes('00112233445566778899aabbccddeeff'));
 
     const codecLines: string[] = [];
     await codecChecks((name, ok, detail) => {

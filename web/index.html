@@ -78,6 +78,26 @@
 
     <section class="controls" aria-label="설정">
       <div id="consolePanel" hidden>
+        <h2>콘솔 등록</h2>
+        <p class="hint">처음 한 번만 합니다. 콘솔을 <b>켜 두고</b>, <b>설정 → 시스템 → 원격 플레이 → 기기 연결</b>(PS5) 화면을 연 채로 거기 나온 8자리 코드를 입력하세요. 코드는 몇 분 안에 바뀝니다.</p>
+        <div class="row"><button id="regScan" type="button">콘솔 찾기</button></div>
+        <label>찾은 콘솔
+          <select id="regHost" aria-label="찾은 콘솔"><option value="">(찾기를 누르세요)</option></select>
+        </label>
+        <label>콘솔 IP 주소 <span class="note">(목록에 없으면 직접 입력)</span>
+          <input id="regAddr" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" aria-label="콘솔 IP 주소">
+        </label>
+        <label>8자리 코드
+          <input id="regPin" type="text" inputmode="numeric" maxlength="9" spellcheck="false" autocomplete="off" aria-label="콘솔에 표시된 8자리 코드">
+        </label>
+        <label>PSN 계정 ID <span class="note" id="regAccountNote">(숫자 또는 Base64. 처음 한 번만 필요)</span>
+          <input id="regAccount" type="password" spellcheck="false" autocomplete="off" aria-label="PSN 계정 ID">
+        </label>
+        <div class="row"><button id="regGo" type="button">등록</button></div>
+        <p id="regMsg" class="hint" role="status"></p>
+        <p class="hint">등록한 콘솔 (이 컴퓨터에 저장, 키는 화면으로 보내지 않습니다)</p>
+        <ul id="regList"></ul>
+
         <h2>콘솔 연결 (브리지)</h2>
         <label>브리지 주소
           <input id="bridgeUrl" type="text" spellcheck="false" autocomplete="off" aria-label="브리지 WebSocket 주소">

@@ -11,6 +11,7 @@ import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { ConsoleStore, defaultStorePath } from '../console/store.ts';
 import { CoreLink } from './core-link.ts';
 import { MockConsole } from './mock-console.ts';
 import { startBridge } from './server.ts';
@@ -44,11 +45,13 @@ if (linkKind === 'core' && !args.core) {
   process.exit(2);
 }
 
+const store = new ConsoleStore(defaultStorePath());
 const bridge = await startBridge({
   host,
   port,
-  token,
+  ...(token !== undefined ? { token } : {}),
   root,
+  store,
   log,
   createLink: () =>
     linkKind === 'mock' ? new MockConsole() : new CoreLink({ command: first('core', ''), args: args['core-arg'] ?? [], log }),
@@ -60,6 +63,7 @@ const bridge = await startBridge({
 console.log(`\nGreat Theft P.S bridge (${linkKind === 'mock' ? 'SIMULATED console' : 'gtp-core'})`);
 console.log(`Open:  ${bridge.url}${token ? `#token=${token}` : ''}`);
 if (!loopback) console.log('WARNING: listening beyond this computer. Anyone on the network who has the token can press buttons on your console.');
+console.log(`Registered consoles are kept in ${store.file} (secrets: keep that file private).`);
 console.log('Ctrl+C to stop.\n');
 
 process.on('SIGINT', () => void bridge.close().then(() => process.exit(0)));

@@ -23,7 +23,8 @@ Do not share packet captures that contain registration keys or tokens.
 | Phase | What | Source it derives from | Check at home |
 |---|---|---|---|
 | **0 (done)** | Find consoles, read their state, wake one | `discovery.c`, `http.c` | `npm run discover` lists your console (name, state, system version). **Confirmed on a real PS5 in rest mode, run from macOS (2026-11-20):** the SRCH probe, port 9302, the `00030010` protocol version and the response parser all matched. **Not yet verified:** WAKEUP (needs a registration key), PS4, Windows and Linux hosts. |
-| 1 | Registration material, session init request, crypto for the init exchange, version negotiation (`RP-Version`) | `regist.c`, `session.c`, `rpcrypt.c`, `ecdh.c` | a tool prints "session request accepted" or the console's reason for refusing |
+| **1a (written, not yet run on hardware)** | Registering with a console: PIN key schedule, request body, search and TCP exchange, reading the answer, storing the result | `regist.c`, `rpcrypt.c` (registration part) | `npm run register` or the page's "콘솔 등록": prints the registered console or the console's exact reason for refusing. **Checked** against chiaki-ng's own test vectors (cipher, IV, PS5 and PS4 10 keys, PS4 request body byte for byte) and a simulated console. **Unverified:** the PS5 request layout and key table 1 against real hardware, and the PS4 paths altogether. |
+| 1b | Session init request, crypto for the init exchange (`keys_a`/`keys_b`), version negotiation (`RP-Version`) | `session.c`, `rpcrypt.c`, `ecdh.c` | a tool prints "session request accepted" or the console's reason for refusing (needs the console on and a registration from 1a) |
 | 2 | Control channel (TCP 9295): encrypted exchange that sets up the stream | `ctrl.c` | tool reaches "ready to stream" and prints the negotiated parameters |
 | 3 | Takion transport over UDP (handshake, acknowledgements, retransmission) | `takion.c`, `takionsendbuffer.c`, `reorderqueue.c` | tool shows a completed Takion handshake |
 | 4 | Network test (RTT and MTU, port 9297) | `senkusha.c` | tool prints measured RTT and MTU |
@@ -52,8 +53,15 @@ Facts seen on a PS5 in rest mode (2026-11-20, macOS, home network). Identifiers 
 - **Sony can change the protocol.** chiaki-ng follows those changes in its C code; the port has to follow them too.
   Each file records the chiaki-ng commit it was written from so differences are easy to find.
 - **Shared misreadings.** See above: the simulator is not proof.
-- **Registration.** The console must be registered once. Where the registration key and related key material come from,
-  and how this project receives them, is decided in Phase 1. Nothing here extracts or shares account secrets.
+- **Registration.** The console must be registered once. This project registers itself (the same exchange other Remote
+  Play clients use), so the registration key never has to be copied out of another program. The result is kept in
+  `~/.gtp/consoles.json` (or `$GTP_HOME`), written with owner-only permissions where the system supports it, and is never
+  sent to the browser. Treat that file like a password for your console.
+- **The PSN account id.** The console wants the numeric id of your PSN account during registration. This project takes it
+  as an input (a decimal number, or its 8 bytes in base64) and does **not** log in to PSN for you. chiaki-ng obtains it by
+  exchanging a login code at Sony's token endpoint with the client id and secret of Sony's own Remote Play app; that is
+  deliberately not ported, because it means presenting Sony's application credentials and holding a token for your
+  account. How to get the number without that is an open decision for the project owner.
 - **LAN only first.** Connecting from outside the home network needs a PSN login and NAT traversal (`lib/src/remote/`).
 
 ## Browser-only later
