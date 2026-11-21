@@ -35,14 +35,14 @@ export class BridgeClient {
   #bytes = 0;
   #timer: ReturnType<typeof setInterval> | null = null;
 
-  /** `token` is only needed when the bridge listens beyond its own computer. */
-  connect(url: string, token = '', consoleMac = ''): void {
+  /** `token` is only needed when the bridge listens beyond its own computer. `quality` is what the stream starts with. */
+  connect(url: string, token = '', consoleMac = '', quality?: { preset: string }): void {
     this.disconnect();
     this.#set('connecting', url);
     const ws = new WebSocket(url);
     ws.binaryType = 'arraybuffer';
     this.#ws = ws;
-    ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', ...(token ? { token } : {}), ...(consoleMac ? { console: consoleMac } : {}), client: 'gtp-web' }));
+    ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', ...(token ? { token } : {}), ...(consoleMac ? { console: consoleMac } : {}), ...(quality ? { quality } : {}), client: 'gtp-web' }));
     ws.onmessage = (e) => this.#message(e.data as string | ArrayBuffer);
     ws.onclose = (e) => {
       if (this.#ws === ws) {

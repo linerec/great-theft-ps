@@ -111,12 +111,13 @@ interface Rig {
   asked: SessionRequestOptions[];
   ctrlEvents: { onLoginPinRequest?: () => void; onClose?: (r: string) => void };
 }
-function rig(o: { store?: ConsoleStore; silentStream?: boolean; ctrlFails?: Error; askPin?: boolean; session?: Ps5LinkOptions['session'] } = {}): Rig {
+function rig(o: { store?: ConsoleStore; silentStream?: boolean; ctrlFails?: Error; ctrlFailsFirst?: Error; askPin?: boolean; session?: Ps5LinkOptions['session'] } = {}): Rig {
   const store = o.store ?? storeWith([reg(), '192.168.1.50']);
   const research = new StreamResearch();
   const stream = new FakeStream(o.silentStream);
   const asked: SessionRequestOptions[] = [];
   let closed = 0;
+  let ctrlConnects = 0;
   const ctrlEvents: Rig['ctrlEvents'] = {};
   const link = new Ps5Link({
     store, research, streamTimeoutMs: 200, inUseRetryWaitMs: 5,
@@ -126,6 +127,7 @@ function rig(o: { store?: ConsoleStore; silentStream?: boolean; ctrlFails?: Erro
       connect: async () => {
         if (o.askPin) ctrlEvents.onLoginPinRequest?.();
         if (o.ctrlFails) throw o.ctrlFails;
+        if (o.ctrlFailsFirst && ++ctrlConnects === 1) throw o.ctrlFailsFirst;
       },
       waitForSessionId: async () => {
         if (o.askPin) throw new CtrlError('timeout', 'The console did not send a session id in time');
@@ -238,8 +240,8 @@ describe('the PS5 link', () => {
       assert.equal(error, null);
       assert.equal(calls, 3);
       assert.deepEqual(statuses.map((s) => s.state), ['connecting', 'connecting', 'connecting', 'connecting', 'connecting', 'streaming']);
-      assert.match(statuses[1]!.detail!, /정리하는 중입니다. 다시 시도합니다 \(1\/5\)/);
-      assert.match(statuses[2]!.detail!, /\(2\/5\)/);
+      assert.match(statuses[1]!.detail!, /정리하는 중입니다.*다시 시도합니다 \(1\/18\)/);
+      assert.match(statuses[2]!.detail!, /\(2\/18\)/);
       assert.equal(r.research.stats!.events.filter((e) => e.kind === 'session-in-use').length, 2, 'the waiting shows in the measurements');
     } finally {
       await r.link.stop();
@@ -254,9 +256,40 @@ describe('the PS5 link', () => {
       },
     });
     const refused = await run(busy.link);
-    assert.equal(tries, 6, 'the first request and five more');
+    assert.equal(tries, 19, 'the first request and eighteen more: a little longer than the console holds an abandoned session');
     assert.match(refused.error!.message, /이미 사용 중입니다/);
     assert.equal(busy.research.state, 'ended');
+  });
+
+  it('starts over once when the console accepts the session but then says nothing on the control connection', async () => {
+    // What happened on a real PS5: session accepted, no answer to the control request. The session it gave then blocks
+    // the next request for half a minute, so the link has to do the waiting, not the person.
+    let calls = 0;
+    const r = rig({
+      ctrlFailsFirst: new CtrlError('timeout', 'The console did not answer the control request in time'),
+      session: async (s) => {
+        calls++;
+        if (calls === 2 || calls === 3) throw new SessionError('rejected', 'The console answered 403: Remote Play is already in use on the console (0x80108b10)', { reason: 0x80108b10 });
+        return grant(s);
+      },
+    });
+    const { statuses, error } = await run(r.link);
+    try {
+      assert.equal(error, null);
+      assert.equal(calls, 4, 'one that led nowhere, two refusals while the console let go, one that worked');
+      assert.equal(statuses.at(-1)!.state, 'streaming');
+      assert.ok(statuses.some((s) => /제어 연결에 답하지 않아 처음부터 다시/.test(s.detail ?? '')));
+      assert.equal(r.ctrlClosed(), 1, 'the control connection that led nowhere was closed');
+      assert.deepEqual(r.research.stats!.events.filter((e) => e.kind === 'control-retry').map((e) => e.detail), ['timeout']);
+    } finally {
+      await r.link.stop();
+    }
+
+    // It does that once, not for ever.
+    const never = rig({ ctrlFails: new CtrlError('timeout', 'The console did not answer the control request in time') });
+    const failed = await run(never.link);
+    assert.match(failed.error!.message, /제어 연결을 열지 못했습니다/);
+    assert.equal(never.asked.length, 2);
   });
 
   it('stops at the control connection when that fails, closing what it opened', async () => {
@@ -307,7 +340,58 @@ describe('stream settings for study', () => {
   });
 });
 
+describe('what the page reports about its screen', () => {
+  it('is kept second by second with totals, and nonsense is bounded instead of believed', () => {
+    const research = new StreamResearch();
+    assert.equal(research.snapshot().display, null, 'nothing before the page reports');
+    research.addDisplay({ type: 'display', mode: 'smooth', delayMs: 47.5, intervalMs: 16.683, worstLateMs: 44, waiting: 3, shown: 60, gapMaxMs: 17.2, hitches: 0, underruns: 1, skipped: 0, lateMaxMs: 44 });
+    research.addDisplay({ type: 'display', mode: 'smooth', delayMs: 47.4, intervalMs: 16.683, worstLateMs: 44, waiting: 3, shown: 59, gapMaxMs: 61, hitches: 1, underruns: 0, skipped: 2, lateMaxMs: 3 });
+    research.addDisplay({ type: 'display', mode: 'turbo', shown: 'many', hitches: -5, gapMaxMs: 1e15, delayMs: Number.NaN });
+    research.addDisplay('not an object');
+    const d = research.snapshot().display as { mode: string; totals: Record<string, number>; samples: Array<Record<string, number>> };
+    assert.equal(d.mode, 'smooth');
+    assert.deepEqual(d.totals, { shown: 119, hitches: 1, underruns: 1, skipped: 2, maxGapMs: 600000, maxLateMs: 44 });
+    assert.equal(d.samples.length, 3);
+    assert.deepEqual([d.samples[2]!.shown, d.samples[2]!.hitches, d.samples[2]!.delayMs], [0, 0, 0]);
+    assert.equal((research.snapshot(1).display as { samples: unknown[] }).samples.length, 1);
+    // A new stream starts with an empty record.
+    research.begin({ width: 960, height: 540, maxFps: 30, bitrateKbps: 4000, codec: 'h264' });
+    assert.equal(research.snapshot().display, null);
+  });
+});
+
 describe('through the bridge', () => {
+  it('starts the stream with the quality the page asked for, and keeps what the page reports about its screen', async () => {
+    const store = storeWith([reg(), '192.168.1.50']);
+    const research = new StreamResearch();
+    const stream = new FakeStream();
+    const bridge = await startBridge({
+      host: '127.0.0.1', port: 0, root, store, research,
+      createLink: () =>
+        new Ps5Link({
+          store, research, streamTimeoutMs: 200, session: grant, createTransport: () => stream,
+          createCtrl: () => ({ events: {}, connect: async () => {}, waitForSessionId: async () => SESSION_ID, close: () => {} }),
+        }),
+    });
+    bridges.push(bridge);
+    const ws = new WebSocket(`ws://127.0.0.1:${bridge.port}/ws`);
+    const seen: Array<Record<string, any>> = [];
+    ws.onmessage = (e) => typeof e.data === 'string' && seen.push(JSON.parse(e.data));
+    await new Promise<void>((resolve, reject) => ((ws.onopen = () => resolve()), (ws.onerror = () => reject(new Error('ws error')))));
+    ws.send(JSON.stringify({ type: 'hello', client: 'test', quality: { preset: 'quality' } }));
+    for (let i = 0; i < 100 && !seen.some((m) => m.type === 'ready'); i++) await sleep(10);
+    assert.deepEqual(research.video, { width: 1920, height: 1080, maxFps: 60, bitrateKbps: 15000, codec: 'h264' }, 'not the default: what the page chose');
+    assert.equal(seen.find((m) => m.type === 'ready')?.quality.preset, 'quality');
+
+    ws.send(JSON.stringify({ type: 'display', mode: 'smooth', delayMs: 47.5, intervalMs: 16.683, shown: 60, gapMaxMs: 17.2, hitches: 0, underruns: 1, skipped: 0, lateMaxMs: 44 }));
+    for (let i = 0; i < 50 && research.display.samples.length === 0; i++) await sleep(10);
+    assert.equal(research.display.totals.shown, 60);
+    assert.equal(research.display.totals.underruns, 1);
+    ws.close();
+    await sleep(60);
+    assert.equal(research.display.totals.shown, 60, 'the record stays readable after the stream ended');
+  });
+
   it('passes the chosen console to the link, reports ready, and relays pad input to the console', async () => {
     const store = storeWith([reg({ mac: 'aaaaaaaaaaaa', nickname: 'First' }), '192.168.1.10'], [reg({ mac: 'bbbbbbbbbbbb', nickname: 'Second' }), '192.168.1.11']);
     const rigs: Rig[] = [];

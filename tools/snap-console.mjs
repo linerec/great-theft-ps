@@ -5,6 +5,11 @@
 // picture of what the page drew. It closes the connection at the end.
 //
 //   node tools/snap-console.mjs [--out picture.jpg] [--nudge]
+//   node tools/snap-console.mjs --watch 60 [--playout smooth|immediate|<ms>] [--quality quality] [--stats run.json]
+//
+// --watch keeps the stream open for that many seconds and prints what went on the screen: frames shown, hitches (the
+// screen stood still for more than two and a half frame times), frames that came after their slot. Run it once with
+// --playout immediate and once with --playout smooth to compare the two on the same network.
 //
 // Without --nudge it sends no controller input. With it, the page presses the d-pad down once and up once (the same
 // path a key press takes) and takes a picture before, between and after: one step down and one step back, to see
@@ -55,13 +60,33 @@ const bridge = await startBridge({
   onE2eReport: (r) => resolveReport(r),
 });
 
+const arg = (name) => (process.argv.includes(`--${name}`) ? process.argv[process.argv.indexOf(`--${name}`) + 1] : undefined);
+const watchSeconds = Number(arg('watch') ?? 0);
+const pageOptions = [
+  watchSeconds > 0 ? `&watch=${watchSeconds}` : '',
+  arg('playout') ? `&playout=${encodeURIComponent(arg('playout'))}` : '',
+  arg('quality') ? `&quality=${encodeURIComponent(arg('quality'))}` : '',
+].join('');
 const profileDir = mkdtempSync(path.join(tmpdir(), 'gtp-snap-'));
-const child = spawn(chrome, ['--headless=new', '--disable-gpu', '--no-first-run', `--user-data-dir=${profileDir}`, `${bridge.url}?snap=1${process.argv.includes('--nudge') ? '&nudge=1' : ''}`], { stdio: 'ignore', windowsHide: true });
+const child = spawn(chrome, ['--headless=new', '--disable-gpu', '--no-first-run', `--user-data-dir=${profileDir}`, `${bridge.url}?snap=1${process.argv.includes('--nudge') ? '&nudge=1' : ''}${pageOptions}`], { stdio: 'ignore', windowsHide: true });
 
 let exitCode = 1;
 try {
-  const report = await Promise.race([reported, new Promise((_, rej) => setTimeout(() => rej(new Error('no report from the browser within 60 s')), 60000))]);
+  const limit = 60 + watchSeconds;
+  const report = await Promise.race([reported, new Promise((_, rej) => setTimeout(() => rej(new Error(`no report from the browser within ${limit} s`)), limit * 1000))]);
   for (const l of report.lines) console.log(l);
+  const whole = research.snapshot();
+  if (whole.display) {
+    // What the viewer saw, second by second, as the page reported it.
+    const d = whole.display;
+    console.log(`screen: ${d.totals.shown} frames shown, ${d.totals.hitches} hitches, ${d.totals.underruns} frames after their slot, ${d.totals.skipped} skipped, longest standstill ${d.totals.maxGapMs} ms, latest frame ${d.totals.maxLateMs} ms`);
+    const rough = d.samples.filter((x) => x.hitches > 0 || x.underruns > 0 || x.lateMaxMs > 25);
+    for (const x of rough.slice(0, 40)) console.log(`  second ${String(x.t).padStart(3)}: shown ${x.shown}, longest standstill ${x.gapMaxMs} ms, hitches ${x.hitches}, after slot ${x.underruns}, latest ${x.lateMaxMs} ms, delay ${x.delayMs} ms`);
+  }
+  if (arg('stats')) {
+    writeFileSync(arg('stats'), JSON.stringify(whole, null, 1));
+    console.log(`measurements saved to ${arg('stats')}`);
+  }
   const s = research.snapshot(0);
   if (s.stream) {
     const t = s.stream.totals;

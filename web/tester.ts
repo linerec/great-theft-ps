@@ -239,8 +239,16 @@ const qualityNote = (): void => {
 };
 $<HTMLSelectElement>('qualityPreset').addEventListener('change', () => {
   qualityNote();
-  if (client.state === 'ready') client.sendJson({ type: 'quality', preset: $<HTMLSelectElement>('qualityPreset').value });
+  if (client.state !== 'ready') return;
+  // A console fixes resolution and frame rate when the stream starts: a change means connecting again.
+  if (client.link === 'ps5') connectConsole();
+  else client.sendJson({ type: 'quality', preset: $<HTMLSelectElement>('qualityPreset').value });
 });
+{
+  // ?quality=saver|balanced|low-latency|quality picks the starting quality (for measurement runs).
+  const asked = params.get('quality');
+  if (asked && asked in QUALITY_PRESETS) $<HTMLSelectElement>('qualityPreset').value = asked;
+}
 qualityNote();
 
 // ---------------------------------------------------------------- console registration (talks to the bridge's /api/)
@@ -412,10 +420,61 @@ $<HTMLButtonElement>('regGo').addEventListener('click', async () => {
 });
 void refreshRegistered();
 
-$<HTMLButtonElement>('bridgeConnect').addEventListener('click', () => {
+/** The quality the page asks for when it connects: a console fixes resolution and frame rate when the stream starts. */
+const chosenQuality = (): { preset: string } => ({ preset: $<HTMLSelectElement>('qualityPreset').value });
+function connectConsole(): void {
   player.close();
-  client.connect(bridgeUrl.value, bridgeToken, consoleMac);
+  hitchesSeen = 0;
+  client.connect(bridgeUrl.value, bridgeToken, consoleMac, chosenQuality());
+}
+$<HTMLButtonElement>('bridgeConnect').addEventListener('click', connectConsole);
+
+// ---------------------------------------------------------------- how frames are paced on the screen
+//
+// 'smooth' holds frames back by the little it takes to keep an even pace when one arrives late; 'immediate' shows
+// each frame as it arrives. ?playout=smooth | immediate | <milliseconds> (a fixed delay) is for comparing them.
+
+const playoutSelect = $<HTMLSelectElement>('playoutMode');
+function applyPlayout(value: string): void {
+  const fixed = /^\d+(\.\d+)?$/.test(value) ? Number(value) : undefined;
+  const mode = value === 'immediate' ? 'immediate' : 'smooth';
+  player.setPlayout(fixed !== undefined ? { mode: 'smooth', fixedDelayMs: fixed } : { mode });
+  playoutSelect.value = mode;
+}
+{
+  let saved = '';
+  try {
+    saved = localStorage.getItem('gtp.playout') ?? '';
+  } catch {
+    /* storage may be unavailable */
+  }
+  applyPlayout(params.get('playout') ?? (saved === 'immediate' ? 'immediate' : 'smooth'));
+}
+playoutSelect.addEventListener('change', () => {
+  applyPlayout(playoutSelect.value);
+  try {
+    localStorage.setItem('gtp.playout', playoutSelect.value);
+  } catch {
+    /* not remembered, that is all */
+  }
 });
+
+/** Hitches the viewer saw since connecting. */
+let hitchesSeen = 0;
+setInterval(() => {
+  const sample = player.meter.take();
+  if (mode !== 'console' || client.state !== 'ready') return;
+  hitchesSeen += sample.hitches;
+  const delay = player.playout.delayMs;
+  $<HTMLElement>('cBuffer').textContent = player.playout.mode === 'immediate' ? `0 ms (늦은 프레임 최대 ${player.playout.worstLateMs.toFixed(0)} ms)` : `${delay.toFixed(0)} ms`;
+  $<HTMLElement>('cHitch').textContent = `${hitchesSeen}회`;
+  if (sample.shown === 0 && sample.underruns === 0) return;
+  // The bridge keeps these next to its own measurements (GET /api/stream/stats), so a study sees both ends.
+  client.sendJson({
+    type: 'display', mode: player.playout.mode, delayMs: Math.round(delay * 10) / 10, intervalMs: Math.round(player.playout.intervalMs * 1000) / 1000,
+    worstLateMs: Math.round(player.playout.worstLateMs * 10) / 10, waiting: player.waiting, ...sample,
+  });
+}, 1000);
 $<HTMLButtonElement>('bridgeDisconnect').addEventListener('click', () => client.disconnect());
 $<HTMLSelectElement>('consoleProfile').addEventListener('change', (e) => {
   const v = (e.target as HTMLSelectElement).value;
@@ -950,7 +1009,7 @@ async function runE2e(): Promise<void> {
   };
   try {
     setMode('console', false);
-    client.connect(bridgeUrl.value, bridgeToken, consoleMac);
+    client.connect(bridgeUrl.value, bridgeToken, consoleMac, chosenQuality());
     await until(() => client.state === 'ready', 5000);
     check('connected and authenticated', client.state === 'ready', client.detail);
 
@@ -1037,7 +1096,7 @@ async function runSnap(): Promise<void> {
   };
   try {
     setMode('console', false);
-    client.connect(bridgeUrl.value, bridgeToken, consoleMac);
+    connectConsole();
     await until(() => client.state === 'ready' || client.state === 'closed', 25000);
     lines.push(`link state: ${client.state}${client.detail ? ` (${client.detail})` : ''}`);
     await until(() => player.decoded >= 45, 15000);
@@ -1045,6 +1104,13 @@ async function runSnap(): Promise<void> {
     lines.push(`canvas ${view.width}x${view.height}`);
     pass = player.decoded > 0;
     const before = shot();
+    // ?watch=N: keep watching for N seconds. The page reports what went on the screen to the bridge once a second.
+    const watch = Number(params.get('watch') ?? 0);
+    if (watch > 0 && pass) {
+      await sleep(watch * 1000);
+      lines.push(`watched ${watch} s with playout '${player.playout.mode}'${player.playoutOptions.fixedDelayMs !== undefined ? ' (fixed delay)' : ''}: delay in use ${player.playout.delayMs.toFixed(1)} ms, frame interval ${player.playout.intervalMs.toFixed(3)} ms, latest frame in the last minute ${player.playout.worstLateMs.toFixed(1)} ms late`);
+      lines.push(`hitches seen on the screen: ${hitchesSeen}; frames decoded ${player.decoded}, dropped ${player.dropped}`);
+    }
     if (params.has('nudge') && pass) {
       const tap = async (code: string): Promise<void> => {
         engine.keyDown(code);
@@ -1078,4 +1144,4 @@ async function runSnap(): Promise<void> {
 
 if (params.has('snap')) void runSnap();
 if (params.has('e2e')) void runE2e();
-if (params.has('autoconnect') && mode === 'console') client.connect(bridgeUrl.value, bridgeToken, consoleMac);
+if (params.has('autoconnect') && mode === 'console') connectConsole();

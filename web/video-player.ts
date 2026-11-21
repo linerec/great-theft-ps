@@ -2,12 +2,25 @@
 //
 // Draws the frames a bridge sends onto a canvas. Handles PNG (test frames) and H.264 Annex B
 // through WebCodecs (a real console). HEVC is not handled: ask the console for H.264 when using a browser.
+//
+// Decoded frames are not drawn the moment they are ready: they go out on the pace the console made them at, a little
+// later than the earliest possible, so that a frame which arrives late does not show as a freeze (see playout.ts).
+// That can be switched off (mode 'immediate'), and what the viewer actually saw is counted either way.
 
 import { findSpsCodec } from '../src/bridge/h264.ts';
+import { DisplayMeter, Playout, type PlayoutOptions } from '../src/bridge/playout.ts';
 import { CODEC, type VideoHeader } from '../src/bridge/protocol.ts';
 
 /** Frames waiting in the decoder above this count mean we are falling behind: drop and ask for a keyframe. */
 const MAX_QUEUE = 6;
+/** Decoded frames waiting for their turn above this count: the oldest goes (a hidden tab draws nothing). */
+const MAX_WAITING = 12;
+
+interface Waiting {
+  frame: VideoFrame;
+  dueAt: number;
+  header: VideoHeader | undefined;
+}
 
 export class VideoPlayer {
   decoded = 0;
@@ -20,6 +33,10 @@ export class VideoPlayer {
   onNeedKeyframe: () => void = () => {};
   /** Called for every frame that was drawn, with the header it arrived with. */
   onFrame: (header: VideoHeader) => void = () => {};
+  /** When frames are shown. Replace it with setPlayout(). */
+  playout = new Playout();
+  /** What went on the screen, for the page's readout and the bridge's measurements. */
+  readonly meter = new DisplayMeter();
 
   #canvas: HTMLCanvasElement;
   #ctx: CanvasRenderingContext2D;
@@ -28,10 +45,31 @@ export class VideoPlayer {
   #waitKey = true;
   #busy = false;
   #pending = new Map<number, VideoHeader>();
+  #playoutOptions: PlayoutOptions = {};
+  #waiting: Waiting[] = [];
+  #raf = 0;
+  /** How far apart the screen's refreshes are, learned from the animation callbacks, in ms. */
+  #refreshMs = 16.7;
+  #lastTick = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.#canvas = canvas;
     this.#ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+  }
+
+  /** Change how frames are paced. Takes effect at once; what is waiting is shown on the next refresh. */
+  setPlayout(options: PlayoutOptions): void {
+    this.#playoutOptions = options;
+    this.playout = new Playout(options);
+  }
+
+  get playoutOptions(): PlayoutOptions {
+    return this.#playoutOptions;
+  }
+
+  /** Decoded frames waiting for their turn. */
+  get waiting(): number {
+    return this.#waiting.length;
   }
 
   push(header: VideoHeader, data: Uint8Array): void {
@@ -50,6 +88,11 @@ export class VideoPlayer {
     this.#codec = '';
     this.#waitKey = true;
     this.#pending.clear();
+    for (const w of this.#waiting.splice(0)) w.frame.close();
+    if (this.#raf) cancelAnimationFrame(this.#raf);
+    this.#raf = 0;
+    this.playout = new Playout(this.#playoutOptions); // a new stream has its own pace
+    this.meter.pause();
   }
 
   async #png(header: VideoHeader, data: Uint8Array): Promise<void> {
@@ -76,20 +119,71 @@ export class VideoPlayer {
     this.onFrame(header);
   }
 
+  /** Put a decoded frame on the canvas. */
+  #show(w: Waiting, now: number): void {
+    const frame = w.frame;
+    if (this.fitCanvas && (this.#canvas.width !== frame.displayWidth || this.#canvas.height !== frame.displayHeight)) {
+      this.#canvas.width = frame.displayWidth;
+      this.#canvas.height = frame.displayHeight;
+    }
+    this.#ctx.drawImage(frame, 0, 0, this.#canvas.width, this.#canvas.height);
+    frame.close();
+    this.meter.shown(now, this.playout.intervalMs);
+    if (w.header) this.#drawn(w.header);
+  }
+
+  /** A decoded frame is ready: decide when it goes out. */
+  #ready(frame: VideoFrame, header: VideoHeader | undefined): void {
+    const now = performance.now();
+    const decision = this.playout.schedule(header?.frameId ?? 0, now);
+    this.meter.arrived(decision);
+    const w: Waiting = { frame, dueAt: decision.dueAt, header };
+    if (decision.dueAt <= now + 0.5) {
+      // Due now: whatever was still waiting is older and is not shown any more.
+      this.#skip(this.#waiting.splice(0));
+      this.#show(w, now);
+      return;
+    }
+    this.#waiting.push(w);
+    if (this.#waiting.length > MAX_WAITING) this.#skip(this.#waiting.splice(0, this.#waiting.length - MAX_WAITING));
+    if (!this.#raf) this.#raf = requestAnimationFrame(this.#tick);
+  }
+
+  #skip(list: Waiting[]): void {
+    for (const w of list) w.frame.close();
+    if (list.length) this.meter.skipped(list.length);
+  }
+
+  /** Once per screen refresh: show the newest frame whose time has come. */
+  #tick = (now: number): void => {
+    this.#raf = 0;
+    if (this.#lastTick > 0) {
+      const d = now - this.#lastTick;
+      if (d > 3 && d < 50) this.#refreshMs += (d - this.#refreshMs) * 0.1;
+    }
+    this.#lastTick = now;
+    // A frame due before the middle of the coming refresh goes out with this one.
+    const horizon = now + this.#refreshMs / 2;
+    let due = 0;
+    while (due < this.#waiting.length && this.#waiting[due]!.dueAt <= horizon) due++;
+    if (due > 0) {
+      const ready = this.#waiting.splice(0, due);
+      const newest = ready.pop()!;
+      this.#skip(ready);
+      this.#show(newest, now);
+    }
+    if (this.#waiting.length) this.#raf = requestAnimationFrame(this.#tick);
+    else this.#lastTick = 0;
+  };
+
   #configure(codec: string): void {
     this.close();
     this.#codec = codec;
     const decoder = new VideoDecoder({
       output: (frame) => {
-        if (this.fitCanvas && (this.#canvas.width !== frame.displayWidth || this.#canvas.height !== frame.displayHeight)) {
-          this.#canvas.width = frame.displayWidth;
-          this.#canvas.height = frame.displayHeight;
-        }
-        this.#ctx.drawImage(frame, 0, 0, this.#canvas.width, this.#canvas.height);
         const header = this.#pending.get(frame.timestamp);
         this.#pending.delete(frame.timestamp);
-        frame.close();
-        if (header) this.#drawn(header);
+        this.#ready(frame, header);
       },
       error: (e) => {
         this.error = String(e);

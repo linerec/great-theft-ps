@@ -152,7 +152,8 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
       authed = true;
       clearTimeout(authTimer);
       active = { conn, stop: cleanup };
-      const quality: QualityRequest = DEFAULT_QUALITY;
+      // What the page asked to start with. A console fixes resolution and frame rate when its stream starts.
+      const quality: QualityRequest = (msg.quality !== undefined ? parseQuality(msg.quality) : null) ?? DEFAULT_QUALITY;
       link = opts.createLink();
       try {
         await link.start(
@@ -226,6 +227,8 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
           sendJson({ type: 'status', state: 'quality', detail: JSON.stringify(q) });
         } else if (msg.type === 'keyframe') {
           link?.requestKeyframe();
+        } else if (msg.type === 'display') {
+          opts.research?.addDisplay(msg);
         } else if (msg.type === 'bye') {
           conn.close(1000, 'bye');
         } else if ((msg as { type?: string }).type === 'e2e' && opts.onE2eReport) {

@@ -93,28 +93,8 @@ function cta(): Cta {
   if (p === 'checking') return { label: '콘솔을 찾는 중…', note: '', disabled: true, run: () => {} };
   if (p === 'absent') return { label: '다시 찾기', note: '그 주소에서 PS5가 응답하지 않습니다. 켜져 있는지, 같은 네트워크인지 확인하세요.', kind: 'quiet', run: () => probe(c) };
   if (p === 'standby') return { label: '콘솔을 켜 주세요', note: '대기 모드입니다. 깨우기 버튼은 곧 추가합니다. 지금은 PS5를 직접 켜 주세요.', disabled: true, run: () => {} };
-  if (!c.verifiedAt) {
-    return {
-      label: '연결 확인', kind: 'primary',
-      note: '저장된 등록 정보로 PS5에 세션을 요청해, 등록이 제대로 됐는지 확인합니다. 아무것도 조작하지 않습니다.',
-      run: async () => {
-        S.busy = true;
-        S.message = '';
-        render();
-        const r = await api('POST', '/api/session-check', { mac: c.mac }).catch(() => null);
-        S.busy = false;
-        if (r?.ok) {
-          S.message = 'PS5가 등록 정보를 받아들였습니다. 이제 연결할 수 있습니다.';
-          S.messageKind = 'ok';
-          await load();
-        } else {
-          S.message = describeSessionError(r?.data ?? {});
-          S.messageKind = 'err';
-          render();
-        }
-      },
-    };
-  }
+  // No separate "check" step: connecting is the check, and a session request that is not followed up keeps the console
+  // "in use" for half a minute (measured on a real PS5).
   return {
     label: '연결', kind: 'primary',
     note: 'PS5 화면을 띄웁니다. 화면을 클릭하면 키보드와 마우스가 PS5로 전달됩니다 (Esc로 해제). 음성은 아직 없습니다.',
@@ -123,19 +103,6 @@ function cta(): Cta {
       $<HTMLButtonElement>('bridgeConnect').click();
     },
   };
-}
-
-function describeSessionError(d: Record<string, any>): string {
-  const hint: Record<string, string> = {
-    rejected: 'PS5가 등록 정보를 받아들이지 않았습니다. 콘솔에서 이 기기가 삭제됐거나 등록이 어긋났을 수 있습니다. “콘솔 등록하기”로 다시 등록해 보세요.',
-    refused: 'PS5가 연결을 거절했습니다. 켜져 있는지(대기 모드 아님), 설정에서 원격 플레이가 켜져 있는지 확인하세요.',
-    timeout: 'PS5가 응답하지 않습니다. 같은 네트워크인지, 켜져 있는지 확인하세요.',
-    network: 'PS5에 닿지 못했습니다. 같은 네트워크인지 확인하세요.',
-    'version-mismatch': 'PS5의 Remote Play 버전이 이 앱이 아는 것과 다릅니다. 시스템 소프트웨어가 새로 올라갔을 수 있습니다.',
-    'invalid-response': 'PS5가 예상과 다른 응답을 보냈습니다.',
-    'not-registered': '이 컴퓨터에는 그 콘솔의 등록 정보가 없습니다.',
-  };
-  return `${hint[String(d.error ?? '')] ?? '확인하지 못했습니다.'}${d.message ? ` (${d.message})` : ''}`;
 }
 
 // ------------------------------------------------------------------ rendering
@@ -186,8 +153,8 @@ function renderSteps(): void {
     ['브리지', S.apiOk ? 'done' : 'now'],
     ['콘솔 발견', !c ? 'todo' : p === 'ready' || p === 'standby' ? 'done' : p === 'absent' ? 'now' : 'todo'],
     ['등록', c ? 'done' : S.apiOk ? 'now' : 'todo'],
-    ['연결 확인', c?.verifiedAt ? 'done' : c && p === 'ready' ? 'now' : 'todo'],
-    ['영상·입력', 'dev'],
+    ['연결', S.link.state === 'ready' ? 'done' : c && p === 'ready' ? 'now' : 'todo'],
+    ['화면·입력', S.link.state === 'ready' ? 'done' : 'todo'],
   ];
   const ol = $<HTMLElement>('ps5Steps');
   ol.textContent = '';
@@ -250,7 +217,7 @@ function renderStage(): void {
   const live = S.link.state === 'ready';
   $<HTMLElement>('ps5Overlay').hidden = live;
   $<HTMLElement>('ps5OverlayText').textContent =
-    S.link.state === 'connecting' ? '연결하는 중…' : S.link.state === 'closed' ? `끊어짐${S.link.detail ? ` · ${S.link.detail}` : ''}` : '연결하면 여기에 화면이 나옵니다';
+    S.link.state === 'connecting' ? (S.link.detail.startsWith('connecting: ') ? S.link.detail.slice(12) : '연결하는 중…') : S.link.state === 'closed' ? `끊어짐${S.link.detail ? ` · ${S.link.detail}` : ''}` : '연결하면 여기에 화면이 나옵니다';
   $<HTMLElement>('ps5Badge').textContent = S.link.name === 'core' ? 'gtp-core' : '실제 PS5';
 }
 

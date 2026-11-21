@@ -62,16 +62,89 @@ export class StreamResearch {
     return problems;
   }
 
+  /**
+   * What the page put on the screen, second by second: the other end of the same stream. `stream` below says how
+   * frames arrived at the bridge; this says what the viewer saw after the page paced them.
+   */
+  display: DisplayReport = emptyDisplay();
+
+  /** A new stream starts: its measurements start empty. */
+  begin(video: StreamVideoRequest): StreamStats {
+    this.state = 'connecting';
+    this.lastError = '';
+    this.video = video;
+    this.stats = new StreamStats();
+    this.display = emptyDisplay();
+    return this.stats;
+  }
+
+  /** One report from the page (untrusted: only known numbers are kept, within sane bounds). */
+  addDisplay(input: unknown): void {
+    if (typeof input !== 'object' || input === null) return;
+    const m = input as Record<string, unknown>;
+    const num = (key: string, max: number): number => {
+      const v = m[key];
+      return typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(0, v)) : 0;
+    };
+    const d = this.display;
+    const sample: DisplaySecond = {
+      t: this.stats ? Math.round(this.stats.snapshot(0).elapsedMs / 1000) : d.samples.length,
+      shown: num('shown', 1000), gapMaxMs: num('gapMaxMs', 600000), hitches: num('hitches', 1000), underruns: num('underruns', 1000),
+      skipped: num('skipped', 1000), lateMaxMs: num('lateMaxMs', 600000), delayMs: num('delayMs', 1000), waiting: num('waiting', 1000),
+    };
+    d.mode = m.mode === 'immediate' ? 'immediate' : 'smooth';
+    d.delayMs = sample.delayMs;
+    d.intervalMs = num('intervalMs', 1000);
+    d.worstLateMs = num('worstLateMs', 600000);
+    d.totals.shown += sample.shown;
+    d.totals.hitches += sample.hitches;
+    d.totals.underruns += sample.underruns;
+    d.totals.skipped += sample.skipped;
+    d.totals.maxGapMs = Math.max(d.totals.maxGapMs, sample.gapMaxMs);
+    d.totals.maxLateMs = Math.max(d.totals.maxLateMs, sample.lateMaxMs);
+    d.samples.push(sample);
+    if (d.samples.length > 600) d.samples.shift();
+  }
+
   snapshot(sampleCount?: number): Record<string, unknown> {
+    const d = this.display;
     return {
       state: this.state,
       lastError: this.lastError,
       video: this.video,
       tuning: this.tuning,
       stream: this.stats ? this.stats.snapshot(sampleCount) : null,
+      display: d.samples.length === 0 ? null : { ...d, totals: { ...d.totals }, samples: sampleCount === undefined ? [...d.samples] : sampleCount > 0 ? d.samples.slice(-sampleCount) : [] },
     };
   }
 }
+
+/** One second on the screen, as the page reported it. */
+export interface DisplaySecond {
+  /** Seconds since the stream started, by the bridge's clock. */
+  t: number;
+  shown: number;
+  gapMaxMs: number;
+  hitches: number;
+  underruns: number;
+  skipped: number;
+  lateMaxMs: number;
+  /** The delay the page was holding frames back by. */
+  delayMs: number;
+  /** Decoded frames waiting for their turn. */
+  waiting: number;
+}
+
+export interface DisplayReport {
+  mode: 'smooth' | 'immediate';
+  delayMs: number;
+  intervalMs: number;
+  worstLateMs: number;
+  totals: { shown: number; hitches: number; underruns: number; skipped: number; maxGapMs: number; maxLateMs: number };
+  samples: DisplaySecond[];
+}
+
+const emptyDisplay = (): DisplayReport => ({ mode: 'smooth', delayMs: 0, intervalMs: 0, worstLateMs: 0, totals: { shown: 0, hitches: 0, underruns: 0, skipped: 0, maxGapMs: 0, maxLateMs: 0 }, samples: [] });
 
 export interface Ps5LinkOptions {
   store: ConsoleStore;
@@ -83,7 +156,7 @@ export interface Ps5LinkOptions {
   createTransport?: (opts: { host: string; protocolVersion: number; log?: (line: string) => void }) => StreamTransport;
   /** How long to wait for each answer while the stream is set up. Default: the reference's 5000 ms. */
   streamTimeoutMs?: number;
-  /** How often to ask again when the console says Remote Play is in use, and how long to wait in between. Default: 5 times, 2000 ms. */
+  /** How often to ask again when the console says Remote Play is in use, and how long to wait in between. Default: 18 times, 2000 ms (the console holds an abandoned session for about 30 s). */
   inUseRetries?: number;
   inUseRetryWaitMs?: number;
 }
@@ -121,55 +194,65 @@ export class Ps5Link implements ConsoleLink {
       this.#cleanup();
       throw new Error(message);
     };
-    research.state = 'connecting';
-    research.lastError = '';
-    research.stats = new StreamStats();
-    research.video = { width: quality.width, height: quality.height, maxFps: quality.fps, bitrateKbps: quality.bitrateKbps, codec: quality.codec === 'hevc' ? 'h265' : 'h264' };
+    const video: StreamVideoRequest = { width: quality.width, height: quality.height, maxFps: quality.fps, bitrateKbps: quality.bitrateKbps, codec: quality.codec === 'hevc' ? 'h265' : 'h264' };
+    const stats = research.begin(video);
 
-    // 2. session request
-    step(`${name}에 세션을 요청하는 중`);
-    // A console holds on to a session for a few seconds after it was closed and answers "in use" meanwhile (seen on a
-    // real PS5: refused 3 s after a disconnect, accepted half a minute later). So that answer is asked again a few
-    // times before it is believed: reconnecting right after disconnecting should simply work.
-    const retries = this.#opts.inUseRetries ?? 5;
+    // 2 and 3. session request, then the control connection and the session id.
+    //
+    // Measured on a real PS5: after a connection ends the console answers "Remote Play is already in use" for about
+    // 6 s, and after a session request it accepted but that was not followed up, for about 30 s. So that answer is
+    // asked again for a little longer than that before it is believed. And when the console accepts the session but
+    // then does not answer on the control connection (seen once, cause unknown), the whole thing is tried once more:
+    // without that, the next attempt by hand runs into the 30 s of the failed one.
+    const retries = this.#opts.inUseRetries ?? 18;
     const retryWaitMs = this.#opts.inUseRetryWaitMs ?? 2000;
+    let asked = 0;
     let grant: SessionGrant;
-    for (let attempt = 0; ; attempt++) {
+    let ctrl: Pick<Ctrl, 'connect' | 'waitForSessionId' | 'close' | 'events'>;
+    let sessionId: string;
+    for (let attempt = 1; ; attempt++) {
+      step(attempt === 1 ? `${name}에 세션을 요청하는 중` : `${name}이(가) 제어 연결에 답하지 않아 처음부터 다시 연결하는 중`);
+      for (;;) {
+        try {
+          grant = await (this.#opts.session ?? requestSession)({ host: record.host, target: record.target, registKey, rpKey: Buffer.from(record.rpKey, 'hex'), log });
+          break;
+        } catch (e) {
+          if (!(e instanceof SessionError)) throw e;
+          if (e.reason !== APPLICATION_REASON.inUse) return fail(`${name}이(가) 세션을 받아들이지 않았습니다. ${e.message}`);
+          if (asked >= retries) return fail(`${name}에서 원격 플레이가 이미 사용 중입니다. 다른 기기의 연결을 끊은 뒤 다시 시도하세요.`);
+          asked++;
+          stats.event('session-in-use', `asking again (${asked} of ${retries})`);
+          step(`${name}이(가) 앞선 원격 플레이 연결을 정리하는 중입니다 (길면 30초쯤). 다시 시도합니다 (${asked}/${retries})`);
+          await new Promise((r) => setTimeout(r, retryWaitMs));
+          if (this.#stopped) return;
+        }
+      }
+      if (this.#stopped) return;
+      store.markVerified(record.mac, record.host);
+      stats.stage('session');
+
+      step(`${name}이(가) 세션 요청을 받아들였습니다. 제어 연결을 여는 중`);
+      const ctrlOptions = { host: record.host, target: record.target, crypt: grant.crypt, registKey, codec: video.codec, log, timeoutMs: attempt === 1 ? 5000 : 10000 };
+      ctrl = this.#opts.createCtrl ? this.#opts.createCtrl(ctrlOptions) : new Ctrl(ctrlOptions);
+      this.#ctrl = ctrl;
+      let pinAsked = false;
+      ctrl.events.onLoginPinRequest = () => (pinAsked = true);
       try {
-        grant = await (this.#opts.session ?? requestSession)({ host: record.host, target: record.target, registKey, rpKey: Buffer.from(record.rpKey, 'hex'), log });
+        await ctrl.connect();
+        sessionId = await ctrl.waitForSessionId(8000);
         break;
       } catch (e) {
-        if (!(e instanceof SessionError)) throw e;
-        if (e.reason !== APPLICATION_REASON.inUse) return fail(`${name}이(가) 세션을 받아들이지 않았습니다. ${e.message}`);
-        if (attempt >= retries) return fail(`${name}에서 원격 플레이가 이미 사용 중입니다. 다른 기기의 연결을 끊은 뒤 다시 시도하세요.`);
-        research.stats.event('session-in-use', `asking again (${attempt + 1} of ${retries})`);
-        step(`${name}이(가) 앞선 원격 플레이 연결을 정리하는 중입니다. 다시 시도합니다 (${attempt + 1}/${retries})`);
-        await new Promise((r) => setTimeout(r, retryWaitMs));
-        if (this.#stopped) return;
+        if (pinAsked) return fail(`${name}의 계정에 로그인 암호(PIN)가 걸려 있어 콘솔이 암호를 요구합니다. 아직 지원하지 않습니다.`);
+        if (!(e instanceof CtrlError)) throw e;
+        const silent = e.code === 'timeout' || e.code === 'network' || e.code === 'closed';
+        if (!silent || attempt >= 2 || this.#stopped) return fail(`${name}과(와) 제어 연결을 열지 못했습니다. ${e.message}`);
+        stats.event('control-retry', e.code);
+        ctrl.close();
+        this.#ctrl = null;
       }
     }
-    if (this.#stopped) return;
-    store.markVerified(record.mac, record.host);
-    research.stats.stage('session');
-
-    // 3. control connection and session id
-    step(`${name}이(가) 세션 요청을 받아들였습니다. 제어 연결을 여는 중`);
-    const ctrlOptions = { host: record.host, target: record.target, crypt: grant.crypt, registKey, codec: research.video.codec, log };
-    const ctrl = this.#opts.createCtrl ? this.#opts.createCtrl(ctrlOptions) : new Ctrl(ctrlOptions);
-    this.#ctrl = ctrl;
-    let pinAsked = false;
-    ctrl.events.onLoginPinRequest = () => (pinAsked = true);
-    let sessionId: string;
-    try {
-      await ctrl.connect();
-      sessionId = await ctrl.waitForSessionId(8000);
-    } catch (e) {
-      if (pinAsked) return fail(`${name}의 계정에 로그인 암호(PIN)가 걸려 있어 콘솔이 암호를 요구합니다. 아직 지원하지 않습니다.`);
-      if (e instanceof CtrlError) return fail(`${name}과(와) 제어 연결을 열지 못했습니다. ${e.message}`);
-      throw e;
-    }
     if (this.#stopped) return this.#cleanup();
-    research.stats.stage('control');
+    stats.stage('control');
     ctrl.events.onClose = (reason) => this.#ended(handlers, `제어 연결이 끊어졌습니다 (${reason})`);
 
     // 4. stream connection
@@ -178,7 +261,7 @@ export class Ps5Link implements ConsoleLink {
     const transport = this.#opts.createTransport ? this.#opts.createTransport({ host: record.host, protocolVersion, log }) : takionTransport({ host: record.host, protocolVersion, log });
     this.#startedAt = Date.now();
     const stream = new StreamConnection({
-      transport, target: record.target, sessionId, sessionCrypt: grant.crypt, video: research.video, tuning: research.tuning, stats: research.stats, log,
+      transport, target: record.target, sessionId, sessionCrypt: grant.crypt, video, tuning: research.tuning, stats, log,
       ...(this.#opts.streamTimeoutMs !== undefined ? { expectTimeoutMs: this.#opts.streamTimeoutMs } : {}),
       onFrame: (frame) => this.#frame(handlers, frame),
       onClosed: (reason) => this.#ended(handlers, reason),
