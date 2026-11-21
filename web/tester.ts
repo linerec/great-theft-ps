@@ -1425,6 +1425,51 @@ async function runSnap(): Promise<void> {
     lines.push(`canvas ${view.width}x${view.height}`);
     pass = player.decoded > 0;
     const before = shot();
+    // ?latency=N: from an input to the picture changing, N times. A d-pad press down, then up, and so on, on a screen
+    // where that moves a selection (a menu): the time until the first shown frame that differs from the one before
+    // the press. It contains everything a person waits for except the display's own scan-out: the page's input loop,
+    // the way to the console and back, the console itself, decoding and the playout delay.
+    const tries = Number(params.get('latency') ?? 0);
+    if (tries > 0 && pass) {
+      const probe = document.createElement('canvas');
+      probe.width = 96;
+      probe.height = 54;
+      const probeCtx = probe.getContext('2d', { willReadFrequently: true })!;
+      const grab = (): Uint8ClampedArray => {
+        probeCtx.drawImage(view, 0, 0, probe.width, probe.height);
+        return probeCtx.getImageData(0, 0, probe.width, probe.height).data;
+      };
+      const nextFrame = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => r()));
+      const times: number[] = [];
+      let missed = 0;
+      for (let i = 0; i < tries; i++) {
+        await sleep(700 + Math.random() * 300); // let the picture settle, and do not always start at the same moment of a frame
+        const base = grab();
+        let noise = 0;
+        for (let k = 0; k < 6; k++) {
+          await nextFrame();
+          noise = Math.max(noise, changed(base, grab()));
+        }
+        const code = i % 2 === 0 ? 'ArrowDown' : 'ArrowUp';
+        const t0 = performance.now();
+        engine.keyDown(code);
+        setTimeout(() => engine.keyUp(code), 100);
+        let t1 = 0;
+        while (performance.now() - t0 < 2000) {
+          await nextFrame();
+          if (changed(base, grab()) > noise + 0.4) {
+            t1 = performance.now();
+            break;
+          }
+        }
+        if (t1 > 0) times.push(t1 - t0);
+        else missed++;
+      }
+      times.sort((a, b) => a - b);
+      const at = (p: number): string => (times.length ? times[Math.min(times.length - 1, Math.floor(p * times.length))]!.toFixed(0) : '-');
+      lines.push(`input to picture, ${times.length} of ${tries} presses seen: median ${at(0.5)} ms, fastest ${at(0)} ms, 90% within ${at(0.9)} ms, slowest ${at(0.999)} ms${missed ? ` (${missed} presses changed nothing: is this a screen where the d-pad moves something?)` : ''}`);
+      lines.push(`  with playout '${player.playout.mode}', delay in use ${player.playout.delayMs.toFixed(0)} ms; the page's own round trip to the bridge ${client.rttMs.toFixed(0)} ms`);
+    }
     // ?watch=N: keep watching for N seconds. The page reports what went on the screen to the bridge once a second.
     const watch = Number(params.get('watch') ?? 0);
     if (watch > 0 && pass) {

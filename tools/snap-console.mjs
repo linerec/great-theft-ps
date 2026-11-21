@@ -6,6 +6,11 @@
 //
 //   node tools/snap-console.mjs [--out picture.jpg] [--nudge]
 //   node tools/snap-console.mjs --watch 60 [--playout smooth|immediate|<ms>] [--quality quality] [--stats run.json]
+//   node tools/snap-console.mjs --latency 20 [--link-sim lte-average]
+//
+// --latency presses the d-pad down and up that many times and measures the time from each press to the picture
+// changing. The console has to show a screen where the d-pad moves a selection (a menu); the selection ends where it
+// began when the number is even. --link-sim puts a simulated mobile network between the bridge and the page.
 //
 // --watch keeps the stream open for that many seconds and prints what went on the screen: frames shown, hitches (the
 // screen stood still for more than two and a half frame times), frames that came after their slot. Run it once with
@@ -24,6 +29,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Handover } from '../src/bridge/handover.ts';
+import { LINK_PROFILES, parseLinkSim } from '../src/bridge/linksim.ts';
 import { Ps5Link, StreamResearch } from '../src/bridge/ps5-link.ts';
 import { startBridge } from '../src/bridge/server.ts';
 import { ConsoleStore, defaultStorePath } from '../src/console/store.ts';
@@ -55,20 +61,28 @@ const research = new StreamResearch();
 // measuring, it lets go at once instead of keeping the console from them.
 const handover = new Handover({ store, name: 'measurement tool' });
 await handover.start();
+const arg = (name) => (process.argv.includes(`--${name}`) ? process.argv[process.argv.indexOf(`--${name}`) + 1] : undefined);
+const watchSeconds = Number(arg('watch') ?? 0);
+const latencyTries = Number(arg('latency') ?? 0);
+const linkSim = arg('link-sim') ? parseLinkSim(arg('link-sim')) : null;
+if (arg('link-sim') && !linkSim) {
+  console.error(`--link-sim must be one of ${Object.keys(LINK_PROFILES).join(', ')}, or five numbers: delay,jitter,stallMs,stallEveryMs,kbps`);
+  process.exit(2);
+}
 let resolveReport;
 const reported = new Promise((r) => (resolveReport = r));
 const lines = [];
 const bridge = await startBridge({
   host: '127.0.0.1', port: 0, root, store, research,
+  ...(linkSim ? { linkSim } : {}),
   log: (l) => lines.push(l),
   createLink: () => new Ps5Link({ store, research, handover, log: (l) => lines.push(l) }),
   onE2eReport: (r) => resolveReport(r),
 });
 
-const arg = (name) => (process.argv.includes(`--${name}`) ? process.argv[process.argv.indexOf(`--${name}`) + 1] : undefined);
-const watchSeconds = Number(arg('watch') ?? 0);
 const pageOptions = [
   watchSeconds > 0 ? `&watch=${watchSeconds}` : '',
+  latencyTries > 0 ? `&latency=${latencyTries}` : '',
   arg('playout') ? `&playout=${encodeURIComponent(arg('playout'))}` : '',
   arg('quality') ? `&quality=${encodeURIComponent(arg('quality'))}` : '',
 ].join('');
@@ -77,7 +91,8 @@ const child = spawn(chrome, ['--headless=new', ...(process.argv.includes('--no-g
 
 let exitCode = 1;
 try {
-  const limit = 60 + watchSeconds;
+  const limit = 60 + watchSeconds + latencyTries * 4;
+  if (linkSim) console.log(`simulated link: ${arg('link-sim')} (${linkSim.note})`);
   const report = await Promise.race([reported, new Promise((_, rej) => setTimeout(() => rej(new Error(`no report from the browser within ${limit} s`)), limit * 1000))]);
   for (const l of report.lines) console.log(l);
   const whole = research.snapshot();

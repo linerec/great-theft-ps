@@ -5,6 +5,7 @@
 //   node src/bridge/main.ts --link core --core <gtp-core executable> [--core-arg <arg> ...]
 // Options: --host 127.0.0.1  --port 8787  --token <string>  --no-handover  --name <what other clients see>
 //          --trust-host <name>   the HTTPS name a proxy on this computer gives the bridge (see below)
+//          --link-sim <profile>  put a simulated mobile network between the bridge and the page (linksim.ts)
 // On this computer (the default) no token is used. With --host set to anything else a token is required: if you do
 // not pass one, a random one is generated and added to the printed URL.
 
@@ -16,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { ConsoleStore, defaultStorePath } from '../console/store.ts';
 import { CoreLink } from './core-link.ts';
 import { Handover } from './handover.ts';
+import { LINK_PROFILES, parseLinkSim } from './linksim.ts';
 import { Ps5Link, StreamResearch } from './ps5-link.ts';
 import { startBridge } from './server.ts';
 
@@ -69,6 +71,12 @@ if (linkKind === 'core' && !args.core) {
   process.exit(2);
 }
 
+const linkSimName = args['link-sim']?.[0];
+const linkSim = linkSimName ? parseLinkSim(linkSimName) : null;
+if (linkSimName && !linkSim) {
+  console.error(`--link-sim must be one of ${Object.keys(LINK_PROFILES).join(', ')}, or five numbers: delay,jitter,stallMs,stallEveryMs,kbps`);
+  process.exit(2);
+}
 const store = new ConsoleStore(defaultStorePath());
 const research = new StreamResearch();
 // This project's clients hand the console over among themselves (handover.ts). That needs a listener on the local
@@ -81,6 +89,7 @@ const bridge = await startBridge({
   port,
   ...(token !== undefined ? { token } : {}),
   ...(trustHosts.length > 0 ? { trustedHosts: trustHosts } : {}),
+  ...(linkSim ? { linkSim } : {}),
   root,
   store,
   research,
@@ -100,6 +109,7 @@ for (const name of trustHosts) console.log(`From another device (through the HTT
 if (trustHosts.length > 0) console.log('Whoever can reach that address and has the token can press buttons on your console. The token stays the same between starts.');
 console.log(`Registered consoles are kept in ${store.file} (secrets: keep that file private).`);
 if (handover) console.log(handover.listening ? `Handover: other Great Theft P.S clients with the same console registration can ask this one to let go (UDP ${handover.port}, encrypted; lock it on the page, or start with --no-handover).` : `Handover: UDP ${handover.port} is not available here, so other clients cannot ask this one to let go.`);
+if (linkSim) console.log(`SIMULATED LINK between this bridge and the page: ${linkSimName} (${linkSim.note}). Each way ${linkSim.down.delayMs} ms + up to ${linkSim.down.jitterMs} ms, a ${linkSim.down.stallMs} ms stall about every ${Math.round(linkSim.down.stallEveryMs / 1000)} s, ${linkSim.down.kbps} kbit/s down.`);
 console.log('Ctrl+C to stop.\n');
 
 process.on('SIGINT', () => {

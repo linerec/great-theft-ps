@@ -21,6 +21,7 @@ import { DEFAULT_QUALITY, parseQuality, type QualityRequest } from './quality.ts
 import type { ConsoleStore } from '../console/store.ts';
 import { handleApi, type ApiOptions } from './api.ts';
 import type { Handover } from './handover.ts';
+import { DelayLine, type LinkSimProfile } from './linksim.ts';
 import type { StreamResearch } from './ps5-link.ts';
 import { portInUse } from './ports.ts';
 import { handleStatic, hostName, isLoopbackHost, originAllowed, send } from './static.ts';
@@ -51,6 +52,11 @@ export interface BridgeOptions {
   research?: StreamResearch;
   /** Handing the console over between this project's clients (see /api/handover). */
   handover?: Handover;
+  /**
+   * Put a stand-in for a worse network between this bridge and the page (linksim.ts): everything to and from the page
+   * is delayed, held up now and then, and limited in rate. For trying things at a desk; off in normal use.
+   */
+  linkSim?: LinkSimProfile;
   /** Replaces network discovery and registration. For tests. */
   api?: Pick<ApiOptions, 'discover' | 'register' | 'psn' | 'session' | 'network'>;
   log?: (line: string) => void;
@@ -116,6 +122,10 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
     let closed = false;
 
     const sendJson = (o: unknown): void => conn.sendText(JSON.stringify(o));
+    // With a simulated link, video and pongs go out through it and whatever the page sends comes in through it.
+    const down = opts.linkSim ? new DelayLine<Uint8Array>(opts.linkSim.down, (bytes) => void (closed || conn.sendBinary(bytes))) : null;
+    const up = opts.linkSim ? new DelayLine<string | Uint8Array>(opts.linkSim.up, (data) => received(data)) : null;
+    const sendBinary = (bytes: Uint8Array): void => (down ? down.push(bytes, bytes.length) : conn.sendBinary(bytes));
     const authTimer = setTimeout(() => {
       if (!authed) conn.close(4401, 'auth timeout');
     }, AUTH_TIMEOUT_MS);
@@ -131,6 +141,8 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
       if (closed) return;
       closed = true;
       connections.delete(conn);
+      down?.close();
+      up?.close();
       clearTimeout(authTimer);
       timers.forEach(clearInterval);
       release();
@@ -165,7 +177,7 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
               // The page is not taking frames as fast as they come. A frame that is left out breaks every frame after
               // it up to the next key frame (each one builds on the one before), so once one is dropped they all are,
               // and a key frame is asked for. Sending the later ones anyway would show a broken picture.
-              if (!f.header.key && (dropStreak || conn.bufferedBytes > BACKPRESSURE_BYTES)) {
+              if (!f.header.key && (dropStreak || conn.bufferedBytes + (down?.queuedBytes ?? 0) > BACKPRESSURE_BYTES)) {
                 counters.dropped++;
                 if (!dropStreak) link?.requestKeyframe();
                 dropStreak = true;
@@ -175,7 +187,7 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
               const bytes = encodeVideo(f.header, f.data);
               counters.frames++;
               counters.bytes += bytes.length;
-              conn.sendBinary(bytes);
+              sendBinary(bytes);
             },
             onStatus: (s) => {
               if (s.state !== 'closed') return sendJson({ type: 'status', state: s.state, detail: s.detail });
@@ -222,6 +234,11 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
     const lastPadWire = { buttons: 0, l2: 0, r2: 0, lx: 0, ly: 0, rx: 0, ry: 0 };
 
     conn.onMessage = (data) => {
+      // A message that waits in the simulated link must not share memory with the socket's buffer.
+      if (up) up.push(typeof data === 'string' ? data : Uint8Array.from(data), data.length);
+      else received(data);
+    };
+    function received(data: string | Uint8Array): void {
       if (closed) return;
       if (typeof data === 'string') {
         let msg: ClientControl;
@@ -272,9 +289,9 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
         link.sendPad(pad.seq, pad.state);
       } else if (data[0] === MSG.PING) {
         const t = decodePing(data);
-        if (t !== null) conn.sendBinary(encodePong(t, Date.now()));
+        if (t !== null) sendBinary(encodePong(t, Date.now()));
       }
-    };
+    }
   }
 
   if (opts.port !== 0) {
