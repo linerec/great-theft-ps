@@ -1,22 +1,23 @@
 # Great Theft P.S (GTP)
 
-A PlayStation Remote Play client, in early development. Goals:
+A PlayStation Remote Play client that runs in a web browser, in early development. Goals:
 
 1. Precise keyboard + mouse to controller mapping, including a configurable **speed limit** for mouse look.
 2. **Shareable per-game profiles.**
-3. Fine-grained **bandwidth / quality control**, down to very low traffic for small screens.
+3. A stream that **does not stutter**, with the measurements to find out why when it does, and fine-grained
+   **bandwidth / quality control**.
 4. Many devices: web browser first, then desktop and mobile.
 
-Architecture: `PS console <-> Remote Play (LAN) <-> bridge <-> WebSocket <-> browser`. The mapping engine runs in the
-browser client (TypeScript, shared by every client). The bridge is thin: it authenticates one client, relays pad state to a
-*console link* and video back, and lets go of every button when the client goes away. A console link is either the
-**simulated console** (for development and tests) or **gtp-core**, a native program on libchiaki (specified, not built:
-see `docs/gtp-core-contract.md`). WebSocket (TCP) is the first transport; WebRTC is planned for internet use.
+Architecture: `PS5 <-> Remote Play (LAN) <-> bridge <-> WebSocket <-> browser`. The bridge is a small Node program on a
+computer in the same network as the console. Its console side (`src/console/`) is a TypeScript port of the Remote Play
+protocol from [chiaki-ng](https://github.com/chiaki-ng/chiaki-ng): no native code, nothing to compile. The mapping engine
+runs in the browser. WebSocket (TCP) is the first transport between browser and bridge; WebRTC is planned for use over
+the internet.
 
-**Early development. It cannot stream from a real PlayStation yet.** What works today is the keyboard and mouse mapping
-engine, two test games, the browser client and bridge (against a simulated console), and console discovery on the local
-network. Nothing here has been run against real console hardware, and the status table below says exactly which parts
-are verified and how.
+**What works today, on a real PS5:** finding the console, registering with it, connecting, the picture in the browser
+(H.264, up to 1920x1080 at 60), and keyboard and mouse input reaching the console. **Not there yet:** sound, waking the
+console from rest mode with a button, the login PIN prompt, connecting from outside the home network. It has been used
+with one PS5 on one home network; expect rough edges.
 
 "GTP" is short for the project name. This is an unofficial, independent project. See `NOTICE.md` for what it is derived
 from and for trademark notes.
@@ -25,68 +26,107 @@ from and for trademark notes.
 
 | Part | State |
 |---|---|
-| Mapping engine + test beds (pad-only FPS, GTA V style third-person) | **working** (75 tests, browser self-test) |
-| Bridge: WebSocket server, auth, safety, simulated console, gtp-core contract (fake core) | **working** (25 tests) |
-| Browser client: video player (PNG and real H.264 via WebCodecs), pad sending, latency, quality presets | **working** (real-Chrome end-to-end check) |
-| Console link for a real PlayStation: TypeScript port of the Remote Play protocol (`src/console/`) | **Phase 0 done**: discovery confirmed on a real PS5 in rest mode (from macOS); wake-up not yet tried on hardware. **Phase 1a written**: console registration (`npm run register`, or the page), checked against chiaki-ng's test vectors and a simulated console, **not yet against a real console**. Session setup and everything after it (1b to 7) not started: `docs/ts-protocol-port.md` |
-| gtp-core (C, libchiaki), the alternative link | specified, not built (`docs/gtp-core-contract.md`) |
-| Profile sharing registry, WebRTC, desktop and mobile shells | not started |
+| Mapping engine + test beds (pad-only FPS, GTA V style third-person) | **working** (browser self-test) |
+| Console link, a TypeScript port of the Remote Play protocol (`src/console/`) | **working on a real PS5**: discovery, registration, session, control connection, Takion transport, video with error correction, input. Checked against chiaki-ng's own test vectors as well. Details and what is unverified: `docs/ts-protocol-port.md` |
+| Bridge: WebSocket server, safety, API, measurements | **working** |
+| Browser client: H.264 through WebCodecs, paced playout, pad sending, quality presets | **working** (Chrome; real-browser checks with and without a console) |
+| Handing the console over between your own clients, with a lock | **working** between two computers (signals checked both ways; see below) |
+| Sound (Opus), wake-up button, login PIN, touchpad, HEVC in the page, RTT/MTU test | not built |
+| Profile sharing registry, WebRTC, PSN (outside the home), desktop and mobile shells | not started |
+| gtp-core (C, libchiaki), an alternative console link | specified, not built (`docs/gtp-core-contract.md`) |
 
 ## Run
 
 Requires Node.js 24 or newer. No dependencies to install.
 
 ```sh
-npm test         # unit and integration tests (node --test): 158 tests
-npm run dev      # test beds (FPS, GTA style) at http://127.0.0.1:5173/, no console needed
 npm run bridge   # the bridge to your PS5; open the printed URL (no token needed on this computer)
-npm run e2e      # real-browser end-to-end check (headless Chrome <-> bridge <-> simulated console)
-npm run discover # look for PlayStation consoles on the local network (run it where the console is)
-npm run register -- --host <console IP>   # register with your console (see below); the page can do it too
-npm run consoles -- list|export|import   # see, back up and move registrations (see below)
+npm test         # unit and integration tests (node --test)
+npm run dev      # only the test beds (FPS, GTA style) at http://127.0.0.1:5173/, no console and no bridge
+npm run e2e      # real-browser end-to-end check (headless Chrome <-> bridge <-> a test double, no console)
+npm run discover # look for PlayStation consoles on the local network
+npm run register -- --host <console IP>   # register with your console (the page can do it too)
+npm run consoles -- list|export|import    # see, back up and move registrations
+npm run connect  # walk a connection to your console step by step and say where it stops (-- --stream 10 for video)
+npm run handover -- who|hold|ask          # try the handover between your clients
 ```
+
+### Play
+
+`npm run bridge`, open the address it prints, and on the **PS5** page press the one button: it registers a console when
+there is none and connects when there is one. Click the picture to lock the mouse (Esc releases it); keyboard and mouse
+then go to the console through the current profile (arrow keys are the d-pad). **연습장** holds two test games for trying
+the mapping without a console, and **설정** has the mapping, console management and advanced items.
+
+Above the picture:
+
+- **화질**: 640x360@30 to 1920x1080@60. A console fixes this when the stream starts, so changing it reconnects.
+- **표시**: how frames are paced onto the screen. *부드럽게* holds each frame back a little (as much as the latest frame
+  of the last minute needed, at most 100 ms) and shows frames on the console's own even pace, so that a frame arriving
+  40 ms late on Wi-Fi does not show as a freeze. *균형* does the same with at most 50 ms. *최소 지연* shows every frame the
+  moment it arrives. "표시 지연" is the delay in use, "화면 끊김" counts the hitches you actually saw.
+- **잠금**: see "Several computers, one console".
 
 ### Register your console (once)
 
-Run this on a computer on the same network as the console. The console must be **on** (not in rest mode) with **Settings >
-System > Remote Play > Link Device** open; it shows an 8 digit code. Either use the "콘솔 등록" part of the page that
-`npm run bridge` prints, or the command line above (it asks for the code and the account id, and says exactly why it failed
-when it does). The first registration also needs your PSN account id (a decimal number, or its 8 bytes in base64); it is
-remembered afterwards. If you do not know it, the page can fetch it: "PSN 계정 ID를 모르면 여기서 가져오기" opens Sony's own
-login page in your browser and reads the id from the address it redirects to. **Read the notice there:** this uses the client
-credentials of Sony's own Remote Play app (as chiaki-ng does), which is a grey area under Sony's terms; tokens are not kept.
-It is optional: typing the number in works without it. The result is saved in `~/.gtp/consoles.json` (set `GTP_HOME` to move it) and is never sent to the
-browser. That file lets a program control your console: keep it private and do not commit or share it.
-This part has been checked against chiaki-ng's test vectors and a simulated console only, **not yet against a real console**.
+On a computer in the same network as the console. The console must be **on** (not in rest mode) with **Settings > System >
+Remote Play > Link Device** open; it shows an 8 digit code. Use the page ("콘솔 등록하기") or `npm run register`; both say
+exactly why it failed when it does. The first registration also needs your PSN account id (a decimal number, or its 8
+bytes in base64); it is remembered afterwards. If you do not know it, the page can fetch it: it opens Sony's own login
+page in your browser and reads the id from the address it redirects to. **Read the notice there:** this uses the client
+credentials of Sony's own Remote Play app (as chiaki-ng does), which is a grey area under Sony's terms; tokens are not
+kept. It is optional: typing the number in works without it.
 
-The page has three places. **PS5** is the main one: your consoles, one button that moves you forward (register, check, connect), the
-route to the console (and a map of every route, inside the home and outside), and the picture. **연습장** holds the two test games that
-show what the keyboard and mouse do to a pad: click the game to lock the mouse (Esc releases it), W A S D move, the mouse looks, left
-click shoots, right click aims, Shift sprints. **설정** has the input mapping, console management and advanced items. The PS5 page talks to a real console only: there is no simulated picture. Until video receiving is built, connecting shows how far the connection gets and says where it stops.
+The result is saved in `~/.gtp/consoles.json` (set `GTP_HOME` to move it) and is never sent to the browser. That file
+lets a program control your console: keep it private and do not commit or share it.
 
 ### Move a registration to another computer (never register twice)
 
-A registration is kept in `~/.gtp/consoles.json`, so it survives restarts and updates. To use the same console from another
-computer without a new 8 digit code and without logging in to PSN again, make a passphrase-protected copy and import it there:
+To use the same console from another computer without a new 8 digit code and without logging in to PSN again, make a
+passphrase-protected copy and import it there:
 
 ```sh
 npm run consoles -- export gtp-consoles.gtpbackup     # on the computer that has the registration
 npm run consoles -- import gtp-consoles.gtpbackup     # on the other computer
 ```
 
-The copy is encrypted (scrypt + AES-256-GCM), but it holds the keys to your console: carry it by USB stick or a private channel and
-delete it after importing. Then open the PS5 page and press "연결 확인" once: that proves the console accepts the registration from
-the new computer. If it does not, register there normally.
+The copy is encrypted (scrypt + AES-256-GCM), but it holds the keys to your console: carry it by USB stick or a private
+channel and delete it after importing.
+
+### Several computers, one console
+
+A console serves one Remote Play client at a time and offers no way to end another client's session. So your own
+copies of this program agree on a rule among themselves:
+
+- A copy that is connected **lets go when another of your copies wants the console**, and that one takes over
+  (a few seconds: the console needs about six to free the session).
+- Tick **잠금** and the connection is kept instead: the other copy is told who has it, locked. The lock belongs to the
+  connection and ends with it.
+
+This works between computers that hold the **same registration** (moved with `npm run consoles`, above): the signal is a
+small UDP datagram on the local network (port 47876), encrypted and authenticated with a key derived from the
+registration, so nobody else can read it or make a copy let go. It cannot do anything about other programs (the official
+app, chiaki): they do not take part. `npm run handover -- who` shows which of your copies has the console; `--no-handover`
+on the bridge switches the whole thing off.
+
 ### Bridge safety
 
-It can press buttons on a console, so: it listens on loopback only unless you pass `--host`. On loopback there is no token to
-deal with: the WebSocket must be same-origin and the Host header must be loopback, so another web page (or a DNS rebinding trick)
-cannot drive it. A program already running as you on the same computer can still connect, which is no new power because it can
-already read your files. If you pass `--host` to listen on the network, a token becomes mandatory (random unless `--token`, and
-added to the printed URL). One client at a time; the pad
-is released when the client disconnects or goes silent for 2 s; messages are size and rate limited; video is dropped, not queued,
-when the client cannot keep up. It also refuses to start if another program already answers on the port (default 8787),
-because on some systems two programs can otherwise share a port and split traffic by address; pick another with `--port`.
+It can press buttons on a console, so: the page and its API listen on loopback only unless you pass `--host`. On loopback
+there is no token to deal with: the WebSocket must be same-origin and the Host header must be loopback, so another web
+page (or a DNS rebinding trick) cannot drive it. A program already running as you on the same computer can still connect,
+which is no new power because it can already read your files. If you pass `--host` to listen on the network, a token
+becomes mandatory (random unless `--token`, and added to the printed URL). One client at a time; the pad is released when
+the client disconnects or goes silent for 2 s; messages are size and rate limited. It refuses to start if another program
+already answers on the port (default 8787); pick another with `--port`.
+
+The one thing that listens on the network by default is the handover signal described above. All it can be made to do,
+and only by someone who holds your console's registration, is end this copy's stream.
+
+### Looking into stutter
+
+`docs/stream-research.md` has what was measured so far and how to measure it yourself: `GET /api/stream/stats` gives the
+stream as it arrives at the bridge and as it goes onto the screen, second by second, and there are tools to compare
+settings on your own network.
 
 ## The test bed
 
@@ -126,35 +166,28 @@ full acceleration and 209 deg at half. Prefer the game's lowest acceleration set
 ## Layout
 
 ```
-src/engine/      mapping engine (no dependencies, runs in browsers and Node)
-  types.ts         virtual pad state, button bits
-  calibration.ts   per-game stick -> turn-rate tables and their inverse
-  mouse.ts         mouse look: filter, stick conversion, virtual gyro
-  engine.ts        MappingEngine: events in, pad state out, tick(dt) and runFor() for per-frame input
-  profile.ts       shareable profile schema 0, validation, defaults
-src/testbed/     pad-only test bed games
-  fps.ts           first-person game logic (look model, movement, shooting, targets)
-  render.ts        raycasting renderer
-  tps.ts           GTA V style third-person game (camera, on foot, aiming, car)
-  tpsrender.ts     small software 3D renderer
-  measure.ts       black-box calibration of any game (stick table, vertical ratio, deadzone shape, aim scale)
+src/engine/      mapping engine (no dependencies, runs in browsers and Node): pad state, calibration, mouse look, profiles
+src/testbed/     the two pad-only test games and the black-box calibration
+src/console/     the console side: a TypeScript port of the Remote Play protocol (see NOTICE.md and docs/ts-protocol-port.md)
+  discovery.ts, regist.ts, session.ts, ctrl.ts     find, register, session request, control connection
+  rpcrypt.ts, rp-tables.ts, ecdh.ts, gkcrypt.ts    key schedules, key exchange, packet cipher and MACs
+  takion.ts, takionsendbuffer.ts, reorderqueue.ts, takion-proto.ts   the UDP transport and its protobuf messages
+  streamconnection.ts, launchspec.ts               stream set-up, heartbeat, loss reports, key frame requests
+  videoreceiver.ts, frameprocessor.ts, fec.ts, fec-gf256.ts, bitstream.ts   frames from packets, error correction
+  controller.ts, feedback.ts, feedbacksender.ts    input to the console
+  streamstats.ts                                   measurements of the stream (this project's own)
+  store.ts, backup.ts, psn-account.ts              registrations on disk, moving them, the PSN account id
 src/bridge/      the bridge
-  protocol.ts       wire format shared by browser and bridge (pad, video, ping, control JSON)
-  quality.ts        quality presets and validation (resolution, fps, bitrate, codec)
-  ws.ts             minimal RFC 6455 WebSocket server (no dependencies)
-  server.ts         static files + WebSocket relay, auth, single client, safety
-  console-link.ts   the seam between bridge and a console
-  mock-console.ts   simulated console (PNG frames of the pad it received)
-  core-link.ts      gtp-core process link and framing
-  h264.ts, png.ts   Annex B helpers, PNG writer
-  main.ts           command line entry (npm run bridge)
-src/dev-server.mjs zero-dependency dev server for the test beds
-web/             page, bridge client, video player
-tools/           fake-core.mjs (tests), e2e-browser.mjs (real-browser check)
-test/            engine, test bed, bridge and core-contract tests
-docs/            gtp-core-contract.md
+  main.ts, server.ts, ws.ts, static.ts, api.ts     command line entry, WebSocket relay and safety, the /api/ endpoints
+  ps5-link.ts, console-link.ts, core-link.ts       the link to a real PS5; the seam for other links
+  playout.ts                                       when to show each frame (used by the page)
+  handover.ts                                      handing the console over between your own clients
+  protocol.ts, quality.ts, h264.ts                 wire format shared with the page, quality presets, H.264 helpers
+web/             the page: PS5 view, test beds, settings, video player, bridge client
+tools/           connect, discover, register, consoles, handover, snap-console (real console + real browser), e2e-browser
+test/            tests, the reference's vectors, and test doubles (test/support/)
+docs/            ts-protocol-port.md, stream-research.md, gtp-core-contract.md
 ```
-
 ## How mouse look works
 
 A stick sets a turn *rate*, a mouse sets a turn *angle*, so a plain proportional mapping feels wrong.
