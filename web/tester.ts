@@ -16,6 +16,7 @@ import { CODEC } from '../src/bridge/protocol.ts';
 import { QUALITY_PRESETS, megabytesPerHour, type QualityPreset } from '../src/bridge/quality.ts';
 import { BridgeClient } from './bridge-client.ts';
 import { describeLayout, mountKeymap } from './keymap.ts';
+import { mountTouch, prefersTouch } from './touch.ts';
 import { VideoPlayer } from './video-player.ts';
 
 const TICK = 0.004;
@@ -238,10 +239,26 @@ export const setConsoleMac = (mac: string): void => {
   consoleMac = mac;
 };
 {
+  const local = location.hostname === '127.0.0.1' || location.hostname === 'localhost' || location.hostname === '[::1]';
   const fromHash = new URLSearchParams(location.hash.slice(1)).get('token');
   if (fromHash) {
     bridgeToken = fromHash;
-    history.replaceState(null, '', location.pathname + location.search);
+    // On the bridge's own computer the token is taken out of the address bar. On another device it stays: a phone's
+    // "Add to Home Screen" keeps the address as it is, and that is how the page opened from there gets the token.
+    if (local) history.replaceState(null, '', location.pathname + location.search);
+    else {
+      try {
+        localStorage.setItem('gtp.token', fromHash);
+      } catch {
+        /* then the address has to carry it every time */
+      }
+    }
+  } else if (!local) {
+    try {
+      bridgeToken = localStorage.getItem('gtp.token') ?? '';
+    } catch {
+      /* no storage */
+    }
   }
 }
 
@@ -491,6 +508,37 @@ playoutSelect.addEventListener('change', () => {
 
 /** Hitches the viewer saw since connecting. */
 let hitchesSeen = 0;
+// ---------------------------------------------------------------- playing by touch (a phone)
+const touchToggle = $<HTMLInputElement>('touchToggle');
+const touch = mountTouch($<HTMLElement>('touchLayer'), {
+  onDisconnect: () => client.disconnect(),
+  onHide: () => {
+    touchToggle.checked = false;
+    touchToggle.dispatchEvent(new Event('change'));
+  },
+});
+{
+  let saved = '';
+  try {
+    saved = localStorage.getItem('gtp.touch') ?? '';
+  } catch {
+    /* storage may be unavailable */
+  }
+  touchToggle.checked = saved === '1' || (saved === '' && prefersTouch());
+}
+/** The touch controls are up exactly while they are wanted and there is a console's picture to play on. */
+function applyTouch(): void {
+  touch.show(touchToggle.checked && mode === 'console' && client.state === 'ready');
+}
+touchToggle.addEventListener('change', () => {
+  try {
+    localStorage.setItem('gtp.touch', touchToggle.checked ? '1' : '0');
+  } catch {
+    /* not remembered */
+  }
+  applyTouch();
+});
+
 // A hidden tab is not being watched: do not decode for it and do not count what the browser does to it as hitches.
 document.addEventListener('visibilitychange', () => {
   player.setVisible(!document.hidden);
@@ -502,6 +550,7 @@ setInterval(() => {
   if (mode !== 'console' || client.state !== 'ready') return;
   hitchesSeen += sample.hitches;
   const delay = player.playout.delayMs;
+  touch.setStatus(`수신 ${client.fpsIn} fps · ${client.kbpsIn} kbps · 표시 지연 ${delay.toFixed(0)} ms · 화면 끊김 ${hitchesSeen}회`);
   $<HTMLElement>('cBuffer').textContent = player.playout.mode === 'immediate' ? `0 ms (늦은 프레임 최대 ${player.playout.worstLateMs.toFixed(0)} ms)` : `${delay.toFixed(0)} ms`;
   $<HTMLElement>('cHitch').textContent = `${hitchesSeen}회`;
   if (sample.shown === 0 && sample.underruns === 0) return;
@@ -679,6 +728,7 @@ client.onChange = () => {
   $<HTMLElement>('cRtt').textContent = client.rttMs > 0 ? `${client.rttMs.toFixed(1)} ms` : '-';
   $<HTMLElement>('cLatency').textContent = client.inputLatencyMs > 0 ? `${client.inputLatencyMs.toFixed(0)} ms (중앙값)` : '-';
   document.dispatchEvent(new CustomEvent('gtp:link', { detail: { state: client.state, detail: client.detail, link: String(client.serverStats.link ?? '') } }));
+  applyTouch();
 };
 
 $<HTMLSelectElement>('gameMode').addEventListener('change', (e) => setMode((e.target as HTMLSelectElement).value as Mode, true));
@@ -944,8 +994,23 @@ function frame(now: number): void {
   acc += Math.min(0.1, (now - last) / 1000);
   last = now;
   const steps = Math.min(25, Math.floor(acc / TICK + 1e-9));
+  if (touch.shown) {
+    const look = touch.pad.takeLook();
+    if (look.dx !== 0 || look.dy !== 0) feedMouse(look.dx, look.dy);
+  }
   if (steps > 0) {
     engine.runFor(steps * TICK, TICK, (s) => {
+      if (touch.shown) {
+        // Fingers on the screen add to whatever a keyboard is doing: buttons and triggers join, the stick takes over.
+        const t = touch.pad.output;
+        s.buttons |= t.buttons;
+        s.l2 = Math.max(s.l2, t.l2);
+        s.r2 = Math.max(s.r2, t.r2);
+        if (t.stickActive) {
+          s.leftX = t.leftX;
+          s.leftY = t.leftY;
+        }
+      }
       state = s;
       if (mode === 'console') client.sendPad(s, profile.mouse.target === 'gyro', now);
       else active().update(s, TICK);
@@ -1227,7 +1292,7 @@ async function runE2e(): Promise<void> {
     check('accepting the notice turns the button on', !psnGo.disabled);
     $<HTMLInputElement>('psnUrl').value = 'https://remoteplay.dl.playstation.net/remoteplay/redirect?code=E2ELoginCode-123&cid=x';
     psnGo.click();
-    await until(() => (regMsg.textContent ?? '').includes('저장했습니다'), 4000);
+    await until(() => (regMsg.textContent ?? '').includes('저장했습니다'), 12000); // generous: this is about the result, and a busy machine is slow
     check('the account id is fetched and saved through the page', (regMsg.textContent ?? '').includes('저장했습니다'), regMsg.textContent ?? '');
     check('the one-time login code is cleared from the page afterwards', $<HTMLInputElement>('psnUrl').value === '');
 
@@ -1269,6 +1334,43 @@ async function runE2e(): Promise<void> {
     check('a saved profile comes back with its changes', profile.layers[0]!.bindings.KeyG === 'tap:box' && profile.game.name === 'E2E game', profile.game.name);
     useProfile(defaultProfile());
     // Switching profiles lets go of everything, as it should. The checks that follow expect W and the left button held.
+    engine.keyDown('KeyW');
+    engine.mouseButton(0, true);
+    await sleep(200);
+
+    // Playing by touch: the controls come up over the picture, and fingers reach the console side as pad input.
+    engine.releaseAll();
+    touchToggle.checked = true;
+    touchToggle.dispatchEvent(new Event('change'));
+    const layer = $<HTMLElement>('touchLayer');
+    check('the touch controls come up while connected', !layer.hidden && document.body.classList.contains('touch-live') && layer.querySelectorAll('[data-c]').length === 18);
+    const finger = (type: string, id: number, x: number, y: number): void => void layer.dispatchEvent(new PointerEvent(type, { pointerId: id, clientX: x, clientY: y, bubbles: true, cancelable: true }));
+    const centre = (c: string): [number, number] => {
+      const r = layer.querySelector<HTMLElement>(`[data-c="${c}"]`)!.getBoundingClientRect();
+      return [r.left + r.width / 2, r.top + r.height / 2];
+    };
+    const seenPad = (): { buttons: number; ly: number; rx: number; r2: number } => (client.serverStats.lastPad ?? { buttons: 0, ly: 0, rx: 0, r2: 0 }) as { buttons: number; ly: number; rx: number; r2: number };
+    finger('pointerdown', 21, ...centre('cross'));
+    finger('pointerdown', 22, ...centre('r2'));
+    finger('pointerdown', 23, innerWidth * 0.15, innerHeight * 0.75); // empty space on the left: the stick
+    finger('pointermove', 23, innerWidth * 0.15, innerHeight * 0.75 - 70);
+    await until(() => (seenPad().buttons & BUTTON.cross) !== 0 && seenPad().r2 === 255 && seenPad().ly < -30000, 2500);
+    check('a finger on ✕ and on R2 and a thumb pushed up reach the console side', (seenPad().buttons & BUTTON.cross) !== 0 && seenPad().r2 === 255 && seenPad().ly < -30000, JSON.stringify(seenPad()));
+    check('the pressed button is drawn as pressed and the stick is shown under the thumb', layer.querySelector('[data-c="cross"]')!.classList.contains('on') && !layer.querySelector<HTMLElement>('.tc-stick-base')!.hidden);
+    let turned = 0;
+    finger('pointerdown', 24, innerWidth * 0.6, innerHeight * 0.45); // empty space on the right: the camera
+    for (let i = 1; i <= 20; i++) {
+      finger('pointermove', 24, innerWidth * 0.6 + i * 6, innerHeight * 0.45);
+      await sleep(16);
+      turned = Math.max(turned, Math.abs(state.rightX));
+    }
+    check('dragging on the right turns the camera', turned > 0.05, `right stick up to ${turned.toFixed(2)}`);
+    for (const id of [21, 22, 23, 24]) finger('pointerup', id, 0, 0);
+    await until(() => seenPad().buttons === 0 && seenPad().r2 === 0 && Math.abs(seenPad().ly) < 2000, 2500);
+    check('lifting the fingers lets go of everything', seenPad().buttons === 0 && seenPad().r2 === 0 && Math.abs(seenPad().ly) < 2000, JSON.stringify(seenPad()));
+    touchToggle.checked = false;
+    touchToggle.dispatchEvent(new Event('change'));
+    check('turning the touch controls off puts the page back', layer.hidden && !document.body.classList.contains('touch-live'));
     engine.keyDown('KeyW');
     engine.mouseButton(0, true);
     await sleep(200);
@@ -1361,6 +1463,8 @@ async function runSnap(): Promise<void> {
   client.sendJson({ type: 'e2e', pass, lines, frames: fits ? frames : frames.slice(0, 1) });
 }
 
+// ?touchpreview=1 shows the touch controls without a console, for looking at the layout on a phone or in a small window.
+if (params.has('touchpreview')) touch.show(true);
 if (params.has('snap')) void runSnap();
 if (params.has('e2e')) void runE2e();
 if (params.has('autoconnect') && mode === 'console') connectConsole();

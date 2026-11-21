@@ -260,3 +260,53 @@ summary { cursor: pointer; font-weight: 600; font-size: .9rem; }
 .layout-list dt { min-width: 4.5em; font-weight: 600; }
 .layout-list dd { margin: 0; color: var(--muted); }
 #layoutLegend summary { cursor: pointer; font-weight: 600; }
+
+/* ------------------------------------------------------------ the pad on a touch screen (touch.ts) */
+/* While playing by touch the picture fills the screen and everything else is out of the way. */
+body.touch-live { overflow: hidden; overscroll-behavior: none; }
+body.touch-live #ps5Stage { position: fixed; inset: 0; z-index: 40; background: #000; border-radius: 0; }
+body.touch-live #stageBox { width: 100%; height: 100%; border-radius: 0; border: 0; }
+body.touch-live #game { width: 100%; height: 100%; aspect-ratio: auto; object-fit: contain; background: #000; }
+body.touch-live #stageBox .hint, body.touch-live #ps5Overlay { display: none; }
+.touch-layer { position: fixed; inset: 0; z-index: 41; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  --b: clamp(44px, 14vh, 76px); --g: calc(var(--b) * .16);
+  --l: max(14px, env(safe-area-inset-left, 0px)); --r: max(14px, env(safe-area-inset-right, 0px));
+  --t: max(10px, env(safe-area-inset-top, 0px)); --btm: max(14px, env(safe-area-inset-bottom, 0px));
+  --dy: calc(var(--t) + var(--b) * .8 + var(--g) * 2); --d: calc(var(--b) * .82); }
+.touch-layer[hidden] { display: none; }
+.tc { position: absolute; display: grid; place-items: center; color: #fff; font: 700 1rem/1 system-ui, sans-serif; text-shadow: 0 1px 2px rgba(0, 0, 0, .6);
+  background: rgba(255, 255, 255, .13); border: 1.5px solid rgba(255, 255, 255, .42); box-shadow: 0 1px 4px rgba(0, 0, 0, .35); }
+.tc.on { background: rgba(255, 255, 255, .5); border-color: #fff; }
+.tc-shoulder { top: var(--t); width: calc(var(--b) * 1.5); height: calc(var(--b) * .8); border-radius: 12px; }
+.tc-l2 { left: var(--l); } .tc-l1 { left: calc(var(--l) + var(--b) * 1.5 + var(--g)); }
+.tc-r2 { right: var(--r); } .tc-r1 { right: calc(var(--r) + var(--b) * 1.5 + var(--g)); }
+.tc-dpad { width: var(--d); height: var(--d); border-radius: 10px; font-size: .8rem; }
+.tc-du { left: calc(var(--l) + var(--d)); top: var(--dy); }
+.tc-dl { left: var(--l); top: calc(var(--dy) + var(--d)); }
+.tc-dr { left: calc(var(--l) + var(--d) * 2); top: calc(var(--dy) + var(--d)); }
+.tc-dd { left: calc(var(--l) + var(--d)); top: calc(var(--dy) + var(--d) * 2); }
+.tc-face { width: var(--b); height: var(--b); border-radius: 50%; font-size: 1.25rem; }
+.tc-fd { right: calc(var(--r) + var(--b)); bottom: var(--btm); }
+.tc-fl { right: calc(var(--r) + var(--b) * 2); bottom: calc(var(--btm) + var(--b)); }
+.tc-fr { right: var(--r); bottom: calc(var(--btm) + var(--b)); }
+.tc-fu { right: calc(var(--r) + var(--b)); bottom: calc(var(--btm) + var(--b) * 2); }
+.tc-small { bottom: var(--btm); width: calc(var(--b) * .8); height: calc(var(--b) * .8); border-radius: 50%; font-size: .75rem; }
+.tc-l3 { left: calc(var(--l) + var(--b) * 3.2); } .tc-r3 { right: calc(var(--r) + var(--b) * 3.3); }
+.tc-pill { top: var(--t); height: calc(var(--b) * .55); padding: 0 10px; border-radius: 999px; font-size: .68rem; letter-spacing: .03em; }
+.tc-create { left: calc(50% - var(--b) * 2.7); } .tc-touchpad { left: calc(50% - var(--b) * 1.15); width: calc(var(--b) * 1.1); }
+.tc-options { left: calc(50% + var(--b) * .15); } .tc-ps { left: calc(50% + var(--b) * 1.85); }
+.tc-menu { position: absolute; top: var(--t); left: calc(50% + var(--b) * 2.75); width: calc(var(--b) * .7); height: calc(var(--b) * .55); border-radius: 999px;
+  color: #fff; font-weight: 700; background: rgba(16, 20, 28, .6); border: 1.5px solid rgba(255, 255, 255, .42); }
+.tc-stick-base { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; pointer-events: none;
+  background: rgba(255, 255, 255, .07); border: 1.5px solid rgba(255, 255, 255, .35); }
+.tc-stick-base[hidden] { display: none; }
+.tc-stick-knob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: rgba(255, 255, 255, .45); }
+.tc-panel { position: absolute; top: calc(var(--t) + var(--b) * .7); left: 50%; transform: translateX(-50%); width: min(92vw, 430px); padding: 12px 14px; border-radius: 14px;
+  color: #e8edf5; background: rgba(16, 20, 28, .94); border: 1px solid rgba(255, 255, 255, .2); user-select: none; -webkit-user-select: none; }
+.tc-panel[hidden] { display: none; }
+.tc-status, .tc-tip { margin: 0 0 8px; font-size: .82rem; line-height: 1.4; }
+.tc-tip { margin: 8px 0 0; color: #9aa5b8; }
+.tc-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 6px; }
+.touch-turn { display: none; position: absolute; left: 50%; bottom: 45%; transform: translateX(-50%); margin: 0; padding: 6px 12px; border-radius: 999px;
+  color: #fff; background: rgba(16, 20, 28, .7); font-size: .8rem; pointer-events: none; }
+@media (orientation: portrait) { .touch-turn { display: block; } }
