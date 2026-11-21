@@ -196,8 +196,11 @@ describe('display meter: what the viewer saw', () => {
     m.arrived({ dueAt: 0, lateMs: 48.123, underrun: true });
     m.arrived({ dueAt: 0, lateMs: 2, underrun: false });
     m.skipped(2);
-    assert.deepEqual(m.take(), { shown: 5, gapMaxMs: 61.6, hitches: 1, underruns: 1, skipped: 2, lateMaxMs: 48.12 });
-    assert.deepEqual(m.take(), { shown: 0, gapMaxMs: 0, hitches: 0, underruns: 0, skipped: 0, lateMaxMs: 0 });
+    m.decoded(3.456, 2);
+    m.decoded(1, 5);
+    m.resync();
+    assert.deepEqual(m.take(), { shown: 5, gapMaxMs: 61.6, hitches: 1, underruns: 1, skipped: 2, lateMaxMs: 48.12, decodeMaxMs: 3.46, decodeQueueMax: 5, resyncs: 1 });
+    assert.deepEqual(m.take(), { shown: 0, gapMaxMs: 0, hitches: 0, underruns: 0, skipped: 0, lateMaxMs: 0, decodeMaxMs: 0, decodeQueueMax: 0, resyncs: 0 });
     // The gap across two windows still counts, in the window where it ended.
     m.shown(200, 16.68);
     assert.equal(m.take().hitches, 1);

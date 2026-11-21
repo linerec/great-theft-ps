@@ -68,7 +68,7 @@ const pageOptions = [
   arg('quality') ? `&quality=${encodeURIComponent(arg('quality'))}` : '',
 ].join('');
 const profileDir = mkdtempSync(path.join(tmpdir(), 'gtp-snap-'));
-const child = spawn(chrome, ['--headless=new', '--disable-gpu', '--no-first-run', `--user-data-dir=${profileDir}`, `${bridge.url}?snap=1${process.argv.includes('--nudge') ? '&nudge=1' : ''}${pageOptions}`], { stdio: 'ignore', windowsHide: true });
+const child = spawn(chrome, ['--headless=new', ...(process.argv.includes('--no-gpu') ? ['--disable-gpu'] : []), '--no-first-run', `--user-data-dir=${profileDir}`, `${bridge.url}?snap=1${process.argv.includes('--nudge') ? '&nudge=1' : ''}${pageOptions}`], { stdio: 'ignore', windowsHide: true });
 
 let exitCode = 1;
 try {
@@ -80,8 +80,9 @@ try {
     // What the viewer saw, second by second, as the page reported it.
     const d = whole.display;
     console.log(`screen: ${d.totals.shown} frames shown, ${d.totals.hitches} hitches, ${d.totals.underruns} frames after their slot, ${d.totals.skipped} skipped, longest standstill ${d.totals.maxGapMs} ms, latest frame ${d.totals.maxLateMs} ms`);
+    console.log(`decoder: slowest frame ${d.totals.maxDecodeMs} ms, restarts from a key frame because it fell behind: ${d.totals.resyncs}`);
     const rough = d.samples.filter((x) => x.hitches > 0 || x.underruns > 0 || x.lateMaxMs > 25);
-    for (const x of rough.slice(0, 40)) console.log(`  second ${String(x.t).padStart(3)}: shown ${x.shown}, longest standstill ${x.gapMaxMs} ms, hitches ${x.hitches}, after slot ${x.underruns}, latest ${x.lateMaxMs} ms, delay ${x.delayMs} ms`);
+    for (const x of rough.slice(0, 40)) console.log(`  second ${String(x.t).padStart(3)}: shown ${x.shown}, longest standstill ${x.gapMaxMs} ms, hitches ${x.hitches}, after slot ${x.underruns}, latest ${x.lateMaxMs} ms, delay ${x.delayMs} ms, decode ${x.decodeMaxMs} ms (queue ${x.decodeQueueMax})`);
   }
   if (arg('stats')) {
     writeFileSync(arg('stats'), JSON.stringify(whole, null, 1));

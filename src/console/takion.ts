@@ -53,6 +53,14 @@ import { TAKION_SEND_BUFFER_SIZE, TakionSendBuffer, TakionSendBufferError } from
 // ------------------------------------------------------------------ constants
 
 export const TAKION_A_RWND = 0x19000;
+/**
+ * The size asked of the operating system for the socket's receive buffer. The reference asks for TAKION_A_RWND
+ * (102 KiB), which is what it also tells the console as its window. Here the two are separate: the window told to the
+ * console stays the reference's, the buffer is larger. A key frame at 1080p arrives as a burst of several hundred
+ * packets, and packets that find the buffer full while this process is busy are simply gone: loss made at home.
+ * The operating system may give less than is asked.
+ */
+export const TAKION_SOCKET_RECV_BUFFER = 4 * 1024 * 1024;
 export const TAKION_OUTBOUND_STREAMS = 0x64;
 export const TAKION_INBOUND_STREAMS = 0x64;
 
@@ -1044,12 +1052,12 @@ export class Takion {
       }
       if (!isConnected) await this.connectSocket(sock, info); // also binds it if it was not bound
       try {
-        sock.setRecvBufferSize(this.aRwnd);
+        sock.setRecvBufferSize(Math.max(this.aRwnd, TAKION_SOCKET_RECV_BUFFER));
       } catch (e) {
         throw new TakionError('network', `Takion failed to setsockopt SO_RCVBUF: ${(e as Error).message}`);
       }
     } else {
-      const sock = dgram.createSocket({ type: net.isIP(info.host) === 6 ? 'udp6' : 'udp4', recvBufferSize: this.aRwnd });
+      const sock = dgram.createSocket({ type: net.isIP(info.host) === 6 ? 'udp6' : 'udp4', recvBufferSize: Math.max(this.aRwnd, TAKION_SOCKET_RECV_BUFFER) });
       this.sock = sock;
       sock.on('message', this.onMessage);
       sock.on('error', this.onSocketError);

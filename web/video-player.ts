@@ -11,8 +11,16 @@ import { findSpsCodec } from '../src/bridge/h264.ts';
 import { DisplayMeter, Playout, type PlayoutOptions } from '../src/bridge/playout.ts';
 import { CODEC, type VideoHeader } from '../src/bridge/protocol.ts';
 
-/** Frames waiting in the decoder above this count mean we are falling behind: drop and ask for a keyframe. */
-const MAX_QUEUE = 6;
+/**
+ * How far the decoder may fall behind before the stream is cut and started again from a key frame, in ms of stream.
+ * That restart is the last resort, because it costs more than what it cures: measured on a real PS5, the key frame
+ * comes 0.85 to 0.95 s after it is asked for, and the picture stands still until then. After a stall on the network
+ * all the frames that were held up arrive at once, and a decoder works through them in a fraction of the time they
+ * cover, so the right answer to a backlog is almost always to let it. (This limit was 6 frames, then half a second:
+ * both turned stalls of 0.1 to 0.7 s into freezes of a second.) Only a decoder that cannot keep up at all gets here.
+ */
+const MAX_BEHIND_MS = 2000;
+const MIN_QUEUE = 30;
 /** Decoded frames waiting for their turn above this count: the oldest goes (a hidden tab draws nothing). */
 const MAX_WAITING = 12;
 
@@ -44,7 +52,9 @@ export class VideoPlayer {
   #codec = '';
   #waitKey = true;
   #busy = false;
-  #pending = new Map<number, VideoHeader>();
+  #pending = new Map<number, { header: VideoHeader; at: number }>();
+  /** Times the decoder fell so far behind that the stream had to restart from a key frame. Several in a row mean this device cannot decode this quality in time. */
+  resyncs = 0;
   #playoutOptions: PlayoutOptions = {};
   #waiting: Waiting[] = [];
   #raf = 0;
@@ -181,9 +191,10 @@ export class VideoPlayer {
     this.#codec = codec;
     const decoder = new VideoDecoder({
       output: (frame) => {
-        const header = this.#pending.get(frame.timestamp);
+        const sent = this.#pending.get(frame.timestamp);
         this.#pending.delete(frame.timestamp);
-        this.#ready(frame, header);
+        if (sent) this.meter.decoded(performance.now() - sent.at, decoder.decodeQueueSize);
+        this.#ready(frame, sent?.header);
       },
       error: (e) => {
         this.error = String(e);
@@ -216,15 +227,19 @@ export class VideoPlayer {
       this.dropped++;
       return;
     }
-    if (this.#decoder.decodeQueueSize > MAX_QUEUE && !header.key) {
+    const interval = this.playout.intervalMs || 1000 / 30;
+    if (this.#decoder.decodeQueueSize > Math.max(MIN_QUEUE, MAX_BEHIND_MS / interval) && !header.key) {
       this.dropped++;
+      this.resyncs++;
+      this.meter.resync();
+      this.playout = new Playout(this.#playoutOptions); // what follows the key frame is paced afresh
       this.#waitKey = true;
       this.onNeedKeyframe();
       return;
     }
     if (header.key) this.#waitKey = false;
     const timestamp = Math.round(header.ptsMs * 1000);
-    this.#pending.set(timestamp, header);
+    this.#pending.set(timestamp, { header, at: performance.now() });
     if (this.#pending.size > 64) this.#pending.delete(this.#pending.keys().next().value as number);
     this.#decoder.decode(new EncodedVideoChunk({ type: header.key ? 'key' : 'delta', timestamp, data }));
   }

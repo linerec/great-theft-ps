@@ -91,6 +91,7 @@ export class StreamResearch {
       t: this.stats ? Math.round(this.stats.snapshot(0).elapsedMs / 1000) : d.samples.length,
       shown: num('shown', 1000), gapMaxMs: num('gapMaxMs', 600000), hitches: num('hitches', 1000), underruns: num('underruns', 1000),
       skipped: num('skipped', 1000), lateMaxMs: num('lateMaxMs', 600000), delayMs: num('delayMs', 1000), waiting: num('waiting', 1000),
+      decodeMaxMs: num('decodeMaxMs', 600000), decodeQueueMax: num('decodeQueueMax', 10000), resyncs: num('resyncs', 1000),
     };
     d.mode = m.mode === 'immediate' ? 'immediate' : 'smooth';
     d.delayMs = sample.delayMs;
@@ -102,6 +103,8 @@ export class StreamResearch {
     d.totals.skipped += sample.skipped;
     d.totals.maxGapMs = Math.max(d.totals.maxGapMs, sample.gapMaxMs);
     d.totals.maxLateMs = Math.max(d.totals.maxLateMs, sample.lateMaxMs);
+    d.totals.maxDecodeMs = Math.max(d.totals.maxDecodeMs, sample.decodeMaxMs);
+    d.totals.resyncs += sample.resyncs;
     d.samples.push(sample);
     if (d.samples.length > 600) d.samples.shift();
   }
@@ -133,6 +136,10 @@ export interface DisplaySecond {
   delayMs: number;
   /** Decoded frames waiting for their turn. */
   waiting: number;
+  /** The longest a frame spent in the decoder, the most frames inside it, and restarts from a key frame because it was too far behind. */
+  decodeMaxMs: number;
+  decodeQueueMax: number;
+  resyncs: number;
 }
 
 export interface DisplayReport {
@@ -140,11 +147,11 @@ export interface DisplayReport {
   delayMs: number;
   intervalMs: number;
   worstLateMs: number;
-  totals: { shown: number; hitches: number; underruns: number; skipped: number; maxGapMs: number; maxLateMs: number };
+  totals: { shown: number; hitches: number; underruns: number; skipped: number; maxGapMs: number; maxLateMs: number; maxDecodeMs: number; resyncs: number };
   samples: DisplaySecond[];
 }
 
-const emptyDisplay = (): DisplayReport => ({ mode: 'smooth', delayMs: 0, intervalMs: 0, worstLateMs: 0, totals: { shown: 0, hitches: 0, underruns: 0, skipped: 0, maxGapMs: 0, maxLateMs: 0 }, samples: [] });
+const emptyDisplay = (): DisplayReport => ({ mode: 'smooth', delayMs: 0, intervalMs: 0, worstLateMs: 0, totals: { shown: 0, hitches: 0, underruns: 0, skipped: 0, maxGapMs: 0, maxLateMs: 0, maxDecodeMs: 0, resyncs: 0 }, samples: [] });
 
 export interface Ps5LinkOptions {
   store: ConsoleStore;

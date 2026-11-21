@@ -160,7 +160,10 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
           {
             onVideo: (f) => {
               if (closed) return;
-              if (conn.bufferedBytes > BACKPRESSURE_BYTES && !f.header.key) {
+              // The page is not taking frames as fast as they come. A frame that is left out breaks every frame after
+              // it up to the next key frame (each one builds on the one before), so once one is dropped they all are,
+              // and a key frame is asked for. Sending the later ones anyway would show a broken picture.
+              if (!f.header.key && (dropStreak || conn.bufferedBytes > BACKPRESSURE_BYTES)) {
                 counters.dropped++;
                 if (!dropStreak) link?.requestKeyframe();
                 dropStreak = true;

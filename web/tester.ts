@@ -437,9 +437,11 @@ $<HTMLButtonElement>('bridgeConnect').addEventListener('click', connectConsole);
 const playoutSelect = $<HTMLSelectElement>('playoutMode');
 function applyPlayout(value: string): void {
   const fixed = /^\d+(\.\d+)?$/.test(value) ? Number(value) : undefined;
-  const mode = value === 'immediate' ? 'immediate' : 'smooth';
-  player.setPlayout(fixed !== undefined ? { mode: 'smooth', fixedDelayMs: fixed } : { mode });
-  playoutSelect.value = mode;
+  const choice = value === 'immediate' || value === 'balanced' ? value : 'smooth';
+  if (fixed !== undefined) player.setPlayout({ mode: 'smooth', fixedDelayMs: fixed });
+  else if (choice === 'immediate') player.setPlayout({ mode: 'immediate' });
+  else player.setPlayout({ mode: 'smooth', maxDelayMs: choice === 'balanced' ? 50 : 100 });
+  playoutSelect.value = choice;
 }
 {
   let saved = '';
@@ -448,7 +450,7 @@ function applyPlayout(value: string): void {
   } catch {
     /* storage may be unavailable */
   }
-  applyPlayout(params.get('playout') ?? (saved === 'immediate' ? 'immediate' : 'smooth'));
+  applyPlayout(params.get('playout') ?? (saved === 'immediate' || saved === 'balanced' ? saved : 'smooth'));
 }
 playoutSelect.addEventListener('change', () => {
   applyPlayout(playoutSelect.value);

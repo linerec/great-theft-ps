@@ -268,9 +268,15 @@ export interface DisplaySample {
   skipped: number;
   /** The latest a frame arrived, in ms. */
   lateMaxMs: number;
+  /** The longest a frame took from being handed to the decoder to coming out of it, in ms. */
+  decodeMaxMs: number;
+  /** The most frames that were waiting inside the decoder. */
+  decodeQueueMax: number;
+  /** Times the decoder was so far behind that everything was dropped up to the next key frame (each one is a freeze). */
+  resyncs: number;
 }
 
-const emptySample = (): DisplaySample => ({ shown: 0, gapMaxMs: 0, hitches: 0, underruns: 0, skipped: 0, lateMaxMs: 0 });
+const emptySample = (): DisplaySample => ({ shown: 0, gapMaxMs: 0, hitches: 0, underruns: 0, skipped: 0, lateMaxMs: 0, decodeMaxMs: 0, decodeQueueMax: 0, resyncs: 0 });
 
 /** What the viewer saw: counted where frames are put on the screen, and handed out one window at a time. */
 export class DisplayMeter {
@@ -297,6 +303,17 @@ export class DisplayMeter {
 
   skipped(count = 1): void {
     this.#window.skipped += count;
+  }
+
+  /** A frame came out of the decoder `ms` after it went in, with `queued` more still inside. */
+  decoded(ms: number, queued: number): void {
+    const w = this.#window;
+    if (ms > w.decodeMaxMs) w.decodeMaxMs = round(ms);
+    if (queued > w.decodeQueueMax) w.decodeQueueMax = queued;
+  }
+
+  resync(): void {
+    this.#window.resyncs++;
   }
 
   /** Forget the last frame: the next gap is not measured (a new connection, or the picture was stopped on purpose). */

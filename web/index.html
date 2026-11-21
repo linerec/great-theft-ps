@@ -67,9 +67,10 @@
               </select>
             </label>
             <span id="qualityNote" class="muted small"></span>
-            <label class="inline" title="부드럽게: 늦게 도착한 프레임이 멈춤으로 보이지 않도록, 최근에 본 지연만큼만 늦춰 일정한 박자로 표시합니다. 최소 지연: 도착하는 대로 표시합니다.">표시
+            <label class="inline" title="부드럽게: 늦게 도착한 프레임이 멈춤으로 보이지 않도록, 최근 1분 동안 본 지연만큼만 늦춰 일정한 박자로 표시합니다. 균형: 같은 방식이되 덜 늦춥니다. 최소 지연: 도착하는 대로 표시합니다.">표시
               <select id="playoutMode">
-                <option value="smooth" selected>부드럽게</option>
+                <option value="smooth" selected>부드럽게 (최대 +100ms)</option>
+                <option value="balanced">균형 (최대 +50ms)</option>
                 <option value="immediate">최소 지연</option>
               </select>
             </label>

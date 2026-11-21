@@ -350,7 +350,7 @@ describe('what the page reports about its screen', () => {
     research.addDisplay('not an object');
     const d = research.snapshot().display as { mode: string; totals: Record<string, number>; samples: Array<Record<string, number>> };
     assert.equal(d.mode, 'smooth');
-    assert.deepEqual(d.totals, { shown: 119, hitches: 1, underruns: 1, skipped: 2, maxGapMs: 600000, maxLateMs: 44 });
+    assert.deepEqual(d.totals, { shown: 119, hitches: 1, underruns: 1, skipped: 2, maxGapMs: 600000, maxLateMs: 44, maxDecodeMs: 0, resyncs: 0 });
     assert.equal(d.samples.length, 3);
     assert.deepEqual([d.samples[2]!.shown, d.samples[2]!.hitches, d.samples[2]!.delayMs], [0, 0, 0]);
     assert.equal((research.snapshot(1).display as { samples: unknown[] }).samples.length, 1);
