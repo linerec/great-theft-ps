@@ -27,14 +27,34 @@ export interface LookStep {
 export class LookFilter {
   #sx = 0;
   #sy = 0;
+  /**
+   * The angle the camera still owes the hand, in degrees. A mouse says how far to turn; a stick can only say how fast.
+   * When the hand moves faster than the camera may turn, the part that did not fit is kept here and paid off while
+   * the hand slows down or after it has stopped, instead of being thrown away. Without this a quick swipe turns the
+   * camera by a fraction of what the hand asked for (measured: 37% for 10 cm in 0.3 s), and feels like the view turns
+   * a little and then stands still.
+   */
+  #owedX = 0;
+  #owedY = 0;
 
   reset(): void {
     this.#sx = 0;
     this.#sy = 0;
+    this.#owedX = 0;
+    this.#owedY = 0;
   }
 
-  /** `dx`/`dy` are mouse counts accumulated over `dt` seconds. Call every tick, also with zeros, so smoothing decays. */
-  step(cfg: MouseConfig, dx: number, dy: number, dt: number): LookStep {
+  /** How much turning is still owed, in degrees. */
+  get owed(): number {
+    return Math.hypot(this.#owedX, this.#owedY);
+  }
+
+  /**
+   * `dx`/`dy` are mouse counts accumulated over `dt` seconds. Call every tick, also with zeros, so smoothing decays
+   * and what is owed gets paid. `limit`: the fastest the camera can turn right now, in deg/s, when that is less than
+   * the profile's own speed limit (the game's turn rate at full stick).
+   */
+  step(cfg: MouseConfig, dx: number, dy: number, dt: number, limit = Infinity): LookStep {
     const perSecond = cfg.degPerCount / dt;
     const wantX = dx * perSecond;
     const wantY = (cfg.invertY ? -dy : dy) * perSecond * cfg.verticalScale;
@@ -49,12 +69,32 @@ export class LookFilter {
       this.#sy = 0;
       magnitude = 0;
     }
-    if (magnitude === 0) return { rateX: 0, rateY: 0, capped: false };
-
-    const shaped = cfg.maxTurnRate * Math.pow(magnitude / cfg.maxTurnRate, cfg.curve);
-    const limited = Math.min(shaped, cfg.maxTurnRate);
-    const scale = limited / magnitude;
-    return { rateX: this.#sx * scale, rateY: this.#sy * scale, capped: shaped > cfg.maxTurnRate };
+    const max = Math.min(cfg.maxTurnRate, limit);
+    // What the hand asks for in this tick, plus what is still owed, as an angle.
+    const shaped = magnitude === 0 ? 0 : cfg.maxTurnRate * Math.pow(magnitude / cfg.maxTurnRate, cfg.curve);
+    const k = magnitude === 0 ? 0 : (shaped / magnitude) * dt;
+    const wantedX = this.#sx * k + this.#owedX;
+    const wantedY = this.#sy * k + this.#owedY;
+    let rateX = wantedX / dt;
+    let rateY = wantedY / dt;
+    const rate = Math.hypot(rateX, rateY);
+    const capped = rate > max + 1e-9;
+    if (capped) {
+      rateX *= max / rate;
+      rateY *= max / rate;
+    }
+    // What did not fit is owed, up to what the camera can pay within the carry time. Beyond that it is lost, as before.
+    this.#owedX = wantedX - rateX * dt;
+    this.#owedY = wantedY - rateY * dt;
+    const most = (max * cfg.carryMs) / 1000;
+    const owed = Math.hypot(this.#owedX, this.#owedY);
+    if (owed > most) {
+      const keep = owed === 0 ? 0 : most / owed;
+      this.#owedX *= keep;
+      this.#owedY *= keep;
+    }
+    if (Math.hypot(rateX, rateY) < RATE_EPSILON) return { rateX: 0, rateY: 0, capped: false };
+    return { rateX, rateY, capped };
   }
 }
 

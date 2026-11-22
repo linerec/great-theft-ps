@@ -294,10 +294,19 @@ describe('frame-batched mouse input', () => {
     assert.ok(peak > 180, `peak ${peak} deg/s`);
   });
 
-  it('without smoothing, naive batching clips at the speed limit and loses angle', () => {
-    const r = rig((p) => (p.mouse.smoothingMs = 0));
+  it('without smoothing and without carry-over, naive batching clips at the speed limit and loses angle', () => {
+    const r = rig((p) => {
+      p.mouse.smoothingMs = 0;
+      p.mouse.carryMs = 0; // what does not fit under the speed limit is thrown away
+    });
     naive(r);
     assert.ok(r.game.yawTotal < 100, `naive turned ${r.game.yawTotal} (124 without loss)`);
+  });
+
+  it('with carry-over (the default) the clipped part is turned afterwards, so the angle is right even then', () => {
+    const r = rig((p) => (p.mouse.smoothingMs = 0));
+    naive(r);
+    assert.ok(Math.abs(r.game.yawTotal - 124) < 1.5, `naive turned ${r.game.yawTotal}`);
   });
 
   it('runFor keeps the speed steady and the angle right, with or without smoothing', () => {

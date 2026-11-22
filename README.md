@@ -186,7 +186,7 @@ src/bridge/      the bridge
 web/             the page: PS5 view, test beds, settings, video player, bridge client
 tools/           connect, discover, register, consoles, handover, snap-console (real console + real browser), e2e-browser
 test/            tests, the reference's vectors, and test doubles (test/support/)
-docs/            keyboard-mouse-mapping.md, stream-research.md, ts-protocol-port.md, gtp-core-contract.md
+docs/            status-and-next.md (start here), keyboard-mouse-mapping.md, stream-research.md, ts-protocol-port.md, gtp-core-contract.md
 ```
 ## How mouse look works
 

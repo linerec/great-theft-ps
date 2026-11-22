@@ -124,6 +124,71 @@ look acceleration or smoothing off where the game has such options. The first is
 two follow from how the translation works (the dead zone is compensated here, and acceleration that depends on time
 cannot be undone by any translator). Then set the sensitivity in this program.
 
+## Mouse look: distance against speed
+
+A mouse says how far to turn; a stick can only say how fast. When the hand moves faster than the camera may turn (the
+profile's speed limit, or the game's own turn rate at full stick), something has to give. This project used to throw
+the excess away, as the usual advice for console adapters implies ("you cannot turn faster than the game does"). The
+effect, reported from a real game and reproduced in `tools/research/swipe-sim.mjs`: a long quick swipe turns the view a
+little and then it stands still. 10 cm in 0.3 s at 1600 DPI asked for 315 degrees and got 116 (37%) even if the game
+matched the profile exactly.
+
+Now the excess is carried over (`mouse.carryMs`, default 300): the camera goes on turning at its top speed after the
+hand has slowed or stopped, until what was asked has been turned, for at most that long. The same swipe gets 224
+degrees (71%), a 5 cm flick 98% instead of 29%. The price is that the camera moves for up to 0.3 s after the hand has
+stopped. Turning the hand back cancels what is owed. 0 restores the old behaviour.
+
+Two things make it better still, and neither is done by the program:
+
+- Raise the game's own look sensitivity to its maximum. That raises the ceiling itself, and it is what XIM requires.
+- Tell the profile what the game really does (`inGame.maxTurnRateAtFullStick`, `innerDeadzone`). The defaults (360
+  deg/s, 10%) are guesses. If the game turns 150 deg/s at full stick, the same mouse movement turns the camera 2.4
+  times less than the profile promises, and slow movements may sit inside the game's dead zone and do nothing.
+  Steam's documentation names the same two problems for its mouse-as-joystick mode (a minimum output, and "if the game
+  has no stick sensitivity settings, there is not much you can do").
+
+**Not built, and the next thing to build for this:** measuring those two numbers on a real console, with the player's
+eyes as the sensor. Design: (1) the program holds the right stick fully to one side and the player presses a key
+each time the view has gone round once; two or three rounds give the turn rate with the game's own ramp-up averaged
+out. (2) The program raises the stick slowly from zero and the player presses a key when the view starts to move: the
+dead zone. (3) Optionally the same as (1) at half stick, which gives the response curve. The test beds can already
+measure themselves (`src/testbed/measure.ts`); a real game cannot be read, so it has to be done this way.
+
+## Analog values from keys
+
+A pad's sticks and triggers are analog; a key is on or off. What can stand in for depth:
+
+| Way | What it gives | Cost |
+|---|---|---|
+| A modifier key (hold it: everything is scaled down) | exact, instant levels (walk at 45%) | one more key to hold; a few fixed levels only |
+| Time (the value grows while the key is held) | any level, with one key | needs timing; delays the full value |
+| Tapping (press and release quickly, repeatedly) | an average level | uneven; depends on how the game smooths |
+| An analog keyboard (Hall-effect or optical switches) | real depth per key | special hardware; Chrome and Edge only |
+| The mouse as an axis (position, or the wheel as a level) | a real analog axis | the mouse is then not the camera |
+
+What exists elsewhere: emulators use the modifier key (Dolphin's halves the stick), because keyboard keys are "a flat
+on/off check". PC versions of pad games add a walk key. Analog keyboards exist (Wooting and others), and a browser can
+read their key depth through WebHID (0 to 255 per key), in Chrome and Edge only.
+
+What this project has: the modifier (a layer with `leftStickScale`, the X key by default), fixed amounts per binding
+(`stick:left:up:0.5`, `trigger:r2:0.5`), and a short linear ramp on stick keys (`keys.rampUpMs`, 30 ms) that only
+smooths. Triggers from keys are all or nothing.
+
+Recommended, in this order (none of it built yet):
+
+1. **Modifier for triggers too** (a layer property like `triggerScale`), so that a held key gives a light pull.
+   Exact and instant: the right tool where a game has a half-press.
+2. **Time as depth, for a layer** (driving): the trigger value grows while the key is held, over about 250 ms, and
+   falls quickly on release. Not linearly: with a linear ramp a 50 ms tap is already 20%, so the low end, where
+   control matters, has only a few steps a hand can hit. With the value growing as the square of the time, the same
+   taps give 4%, 16%, 36%: fine at the low end, and full value at the same moment. Never as a default for shooters,
+   where a trigger must act at once.
+3. **The mouse as the steering axis while driving** (a layer where the mouse drives the left stick with a return to
+   centre). It is the one analog device a desk has.
+4. **Analog keyboards through WebHID**, as an optional input source, for those who have one.
+
+On a touch screen none of this is needed: the stick is a real distance already (see `src/engine/touchpad.ts`).
+
 ## Not built
 
 - The mouse wheel as a pulse to a button works (bind `WheelUp`), but there is no default for it.
@@ -143,3 +208,6 @@ cannot be undone by any translator). Then set the sensitivity in this program.
 - God of War on PC, default keys: https://shacknews.com/article/128344/god-of-war-pc-keybindings-controls
 - GTA V on PC, default keys: https://defkey.com/nl/grand-theft-auto-v-gta-5-shortcuts and https://www.bisecthosting.com/blog/gta-v-controls-guide-pc-playstation-xbox-keyboard-mouse-gamepad
 - chiaki-ng's default keyboard map: `gui/src/settings.cpp` in its source
+- Dolphin, the modifier key for keyboard-bound sticks: https://bugs.dolphin-emu.org/issues/9218 and https://forums.dolphin-emu.org/Thread-dolphin-gamepad-configuration?pid=241575
+- Analog key depth in a browser (WebHID): https://developer.chrome.com/docs/capabilities/hid and https://www.npmjs.com/package/wooting-js
+- Steam Input, mouse as joystick and its limits: https://www.pcgamer.com/steam-controller-setup-guide/3/ and https://partner.steamgames.com/doc/features/steam_controller/input_source_modes

@@ -80,6 +80,8 @@ export class MappingEngine {
     left: { up: 0, down: 0, left: 0, right: 0 },
     right: { up: 0, down: 0, left: 0, right: 0 },
   };
+  /** The fastest the game turns the camera, at full stick, according to the profile (deg/s). */
+  #fullStickRate = Infinity;
   #look = new LookFilter();
   #gyro = new VirtualGyro();
   #diag: LookDiagnostics & { stickMagnitude: number } = { rateX: 0, rateY: 0, capped: false, stickMagnitude: 0 };
@@ -195,6 +197,7 @@ export class MappingEngine {
     const vertical =
       p.calibration.vertical ?? horizontal.map(([stick, rate]): [number, number] => [stick, rate * g.verticalRateRatio]);
     this.#model = { shape: g.deadzoneShape, verticalRatio: g.verticalRateRatio, horizontal, vertical };
+    this.#fullStickRate = horizontal.reduce((most, [, rate]) => Math.max(most, rate), 0);
   }
 
   #isHeld(code: string): boolean {
@@ -431,7 +434,10 @@ export class MappingEngine {
       this.#look.reset();
       this.#gyro.reset();
     } else {
-      const step = this.#look.step(m, dx, dy, dt);
+      // With a stick, the camera cannot turn faster than the game does at full deflection: movement beyond that is
+      // carried over like movement beyond the speed limit. (A gyro has no such ceiling here.)
+      const ceiling = m.target === 'right_stick' && this.#fullStickRate > 0 ? this.#fullStickRate * lookScale : Infinity;
+      const step = this.#look.step(m, dx, dy, dt, ceiling);
       rateX = step.rateX;
       rateY = step.rateY;
       capped = step.capped;

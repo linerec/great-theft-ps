@@ -92,6 +92,7 @@ const FIELDS: Field[] = [
   pf('curve', () => profile.mouse.curve, (v) => (profile.mouse.curve = v), 2),
   pf('smoothingMs', () => profile.mouse.smoothingMs, (v) => (profile.mouse.smoothingMs = v), 0),
   pf('maxTurnRate', () => profile.mouse.maxTurnRate, (v) => (profile.mouse.maxTurnRate = v), 0),
+  pf('carryMs', () => profile.mouse.carryMs, (v) => (profile.mouse.carryMs = v), 0),
   pf('maxDeflection', () => profile.mouse.maxDeflection, (v) => (profile.mouse.maxDeflection = v), 2),
   pf('verticalScale', () => profile.mouse.verticalScale, (v) => (profile.mouse.verticalScale = v), 2),
   pf('innerDeadzone', () => profile.inGame.innerDeadzone, (v) => (profile.inGame.innerDeadzone = v), 2),

@@ -31,6 +31,13 @@ export interface MouseConfig {
   smoothingMs: number;
   /** Hard cap on the camera turn rate, deg/s. This is the "speed limit". */
   maxTurnRate: number;
+  /**
+   * When the hand moves faster than the camera may turn, the turning that did not fit is carried over and done
+   * afterwards, for at most this long (ms at the top speed). 0: it is thrown away, and a quick swipe turns less than
+   * a slow one over the same distance. More: distance is kept better, and the camera goes on turning that much longer
+   * after the hand has stopped.
+   */
+  carryMs: number;
   /** Cap on stick deflection, 0..1. */
   maxDeflection: number;
   /** Vertical turn rate relative to horizontal. */
@@ -253,6 +260,7 @@ export function defaultProfile(): Profile {
       curve: 1,
       smoothingMs: 12,
       maxTurnRate: 360,
+      carryMs: 300,
       maxDeflection: 1,
       verticalScale: 1,
       invertY: false,
@@ -510,6 +518,7 @@ export function validateProfile(input: unknown): ParseResult {
     curve: c.num(mSrc, 'curve', 'mouse', 0.5, 3, dm.curve),
     smoothingMs: c.num(mSrc, 'smoothingMs', 'mouse', 0, 200, dm.smoothingMs),
     maxTurnRate: c.num(mSrc, 'maxTurnRate', 'mouse', 1, 5000, dm.maxTurnRate),
+    carryMs: c.num(mSrc, 'carryMs', 'mouse', 0, 2000, dm.carryMs),
     maxDeflection: c.num(mSrc, 'maxDeflection', 'mouse', 0.05, 1, dm.maxDeflection),
     verticalScale: c.num(mSrc, 'verticalScale', 'mouse', 0.1, 4, dm.verticalScale),
     invertY: c.bool(mSrc, 'invertY', 'mouse', dm.invertY),
