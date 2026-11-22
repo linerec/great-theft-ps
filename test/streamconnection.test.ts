@@ -33,6 +33,8 @@ class FakeConsole implements StreamTransport {
   big: TakionMessage | null = null;
   clientLocal: GKCrypt | null = null;
   consoleExpectsClientKey: Buffer | null = null;
+  /** What the console encrypts its audio and video with (the client decrypts with the same cipher). */
+  consoleCipher: GKCrypt | null = null;
   congestion: Array<[number, number]> = [];
   states: Uint8Array[] = [];
   history: Array<{ payload: Uint8Array; count: number }> = [];
@@ -69,6 +71,19 @@ class FakeConsole implements StreamTransport {
   toClient(msg: TakionMessage): void {
     queueMicrotask(() => this.events.onProtobuf?.(encodeTakionMessage(msg)));
   }
+  /** An audio packet as the console sends it: Opus frames (source units, then copies of the frames before them), encrypted. */
+  sendAudio(frameIndex: number, sourceFrames: Uint8Array[], copies: Uint8Array[] = [], over: Partial<TakionAvPacket> = {}): void {
+    const units = [...sourceFrames, ...copies];
+    const unitSize = units[0]!.length;
+    const data = Uint8Array.from(units.flatMap((u) => [...u]));
+    const keyPos = 4096n;
+    this.consoleCipher!.encrypt(keyPos + 16n, data); // the client decrypts at keyPos + one block
+    this.events.onAv?.({
+      packetIndex: 0, frameIndex, usesNaluInfoStructs: false, isVideo: false, isHaptics: false, unitIndex: 0,
+      unitsInFrameTotal: units.length, unitsInFrameFec: (unitSize << 8) | (copies.length << 4) | sourceFrames.length,
+      codec: 5, wordAt0x18: 0, adaptiveStreamIndex: 0, byteAt0x2c: 0, keyPos, data, ...over,
+    });
+  }
   #piece(flags: number, channel: number, payload: Uint8Array): void {
     this.#partial.push(Buffer.from(payload));
     if (flags !== 1) return;
@@ -98,6 +113,7 @@ class FakeConsole implements StreamTransport {
     const mine = ecdh.getLocalPubKey(handshakeKey);
     const secret = ecdh.deriveSecret(b.ecdhPubKey!, handshakeKey, b.ecdhSig!);
     this.consoleExpectsClientKey = new GKCrypt(2, handshakeKey, secret).keyBase;
+    this.consoleCipher = new GKCrypt(3, handshakeKey, secret);
     this.toClient({
       type: TAKION_PAYLOAD_TYPE.BANG,
       bangPayload: { serverVersion: 12, token: 0, encryptedKeyAccepted: true, versionAccepted: this.mode !== 'refuse-version', sessionKey: b.sessionKey, ecdhPubKey: mine.publicKey, ecdhSig: mine.signature },
@@ -270,5 +286,79 @@ describe('stream connection: while streaming', () => {
     await started;
     fake.events.onAv?.(packet);
     assert.equal(c.stats.totals.frames, 0);
+  });
+});
+
+describe('stream connection: the console\'s sound', () => {
+  const frame = (n: number): Uint8Array => Uint8Array.from([n, 0xaa, 0xbb, 0xcc]);
+
+  it('reports the audio header once and hands out the Opus frames in order, decrypted, with the counts in the statistics', async () => {
+    const fake = new FakeConsole();
+    const headers: unknown[] = [];
+    const out: Array<number[] | null> = [];
+    const c = connection(fake, { onAudioHeader: (h) => headers.push(h), onAudio: (f) => out.push(f ? [...f] : null) });
+    await c.start();
+    try {
+      assert.deepEqual(headers, [{ channels: 7, bits: 7, rate: 0x07070707, frameSize: 0x07070707, unknown: 0x07070707 }], 'what the stream info carried (the fake fills it with 7)');
+      assert.deepEqual(c.stats.snapshot().audio.header, { channels: 7, bits: 7, rate: 0x07070707, frameSize: 0x07070707 });
+      for (const n of [0, 1, 2]) fake.sendAudio(n, [frame(n)]);
+      assert.deepEqual(out, [[0, 0xaa, 0xbb, 0xcc], [1, 0xaa, 0xbb, 0xcc], [2, 0xaa, 0xbb, 0xcc]], 'decrypted and in order');
+      // Packet 3 is lost; packet 5 carries a copy of 3 (and 4, which it also covers).
+      fake.sendAudio(4, [frame(4)]);
+      fake.sendAudio(5, [frame(5)]);
+      const a = c.stats.snapshot().audio;
+      assert.equal(a.frames, 5);
+      assert.equal(a.concealed, 1, 'frame 3 never came and was announced as lost');
+      assert.equal(a.bytes, 5 * 4);
+      assert.deepEqual(out.map((f) => (f ? f[0] : null)), [0, 1, 2, null, 4, 5]);
+    } finally {
+      c.stop();
+    }
+  });
+
+  it('makes a lost packet good from the copies in the next one', async () => {
+    const fake = new FakeConsole();
+    const out: Array<number | null> = [];
+    const c = connection(fake, { onAudio: (f) => out.push(f ? f[0]! : null) });
+    await c.start();
+    try {
+      for (const n of [0, 1, 2]) fake.sendAudio(n, [frame(n)]);
+      fake.sendAudio(5, [frame(5)], [frame(3), frame(4)]); // 3 and 4 were lost
+      assert.deepEqual(out, [0, 1, 2, 3, 4, 5]);
+      assert.equal(c.stats.snapshot().audio.concealed, 0);
+    } finally {
+      c.stop();
+    }
+  });
+
+  it('does not play the controller\'s vibration channel, and refuses a packet whose sizes do not add up', async () => {
+    const fake = new FakeConsole();
+    const out: unknown[] = [];
+    const lines: string[] = [];
+    const c = connection(fake, { onAudio: (f) => out.push(f), log: (l) => lines.push(l) });
+    await c.start();
+    try {
+      for (const n of [0, 1, 2]) fake.sendAudio(n, [frame(n)], [], { isHaptics: true });
+      assert.deepEqual(out, []);
+      fake.sendAudio(0, [frame(0)], [], { unitsInFrameTotal: 3 });
+      assert.deepEqual(out, []);
+      assert.ok(lines.some((l) => /audio: .*do not add up/.test(l)));
+    } finally {
+      c.stop();
+    }
+  });
+
+  it('counts the audio packets in the congestion report the console gets, as the reference does', async () => {
+    const fake = new FakeConsole();
+    const c = connection(fake);
+    await c.start();
+    try {
+      for (const n of [0, 1, 2, 3, 4]) fake.sendAudio(n, [frame(n)]);
+      await sleep(80);
+      assert.ok(fake.congestion.length > 0, 'a report was sent');
+      assert.ok(fake.congestion.some(([received]) => received > 0), 'and it counts the audio packets that arrived');
+    } finally {
+      c.stop();
+    }
   });
 });

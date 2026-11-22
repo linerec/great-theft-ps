@@ -98,6 +98,14 @@ export class FakeLink implements ConsoleLink {
     this.#schedule();
   }
 
+  /** A test pushes the console's sound: the format once, then Opus frames (null stands for a frame that never came). */
+  audioHeader(h = { channels: 2, bits: 16, rate: 48000, frameSize: 480 }): void {
+    this.#handlers?.onAudioHeader?.(h);
+  }
+  audio(frame: Uint8Array | null): void {
+    this.#handlers?.onAudio?.(frame);
+  }
+
   sendPad(seq: number, state: VirtualPadState): void {
     this.#pad = state;
     this.#seq = seq;

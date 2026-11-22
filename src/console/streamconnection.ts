@@ -29,6 +29,7 @@ import { monitorEventLoopDelay, type IntervalHistogram } from 'node:perf_hooks';
 
 import type { VirtualPadState } from '../engine/types.ts';
 import type { TakionAvPacket } from './av-packet.ts';
+import { AudioReceiver, parseAudioHeader, type AudioHeader } from './audioreceiver.ts';
 import { controllerStateFromPad, createIdleControllerState, type ControllerState } from './controller.ts';
 import { Ecdh } from './ecdh.ts';
 import { FeedbackSender } from './feedbacksender.ts';
@@ -130,6 +131,10 @@ export interface StreamConnectionOptions {
   /** The reference never checks the console's ECDH signature. Off by default for that reason. */
   verifyEcdhSignature?: boolean;
   onFrame?: (frame: StreamFrame) => void;
+  /** The console's audio header (Opus: channels, sample rate, samples per frame), once, when the stream info arrives. */
+  onAudioHeader?: (header: AudioHeader) => void;
+  /** The next Opus frame in order, or null for one that was lost (the player conceals it). Frames are copies: keep them. */
+  onAudio?: (frame: Uint8Array | null) => void;
   /** The stream ended after it had started (the console disconnected, or the transport closed). */
   onClosed?: (reason: string) => void;
   /** Progress lines. Never contains a key, the session id or the launch spec. */
@@ -158,6 +163,7 @@ export class StreamConnection {
   #gkRemote: GKCrypt | null = null;
   #packetStats = new PacketStats();
   #video: VideoReceiver;
+  #audio: AudioReceiver;
   #feedback: FeedbackSender | null = null;
   #controller: ControllerState = createIdleControllerState();
   #timers: Array<ReturnType<typeof setInterval>> = [];
@@ -185,6 +191,22 @@ export class StreamConnection {
       onCorruptFrames: (start, end) => this.#send(2, { type: TAKION_PAYLOAD_TYPE.CORRUPTFRAME, corruptPayload: { start, end } }, () => this.stats.corruptReport(start, end)),
       onIdrRequest: () => this.#send(2, { type: TAKION_PAYLOAD_TYPE.IDRREQUEST }, () => this.stats.idrRequest()),
       onFecFailure: (e) => this.stats.event('fec-failure', `frame ${e.frameIndex}${e.idrRequestSent ? ', key frame requested' : ''}`),
+    });
+    this.#audio = new AudioReceiver({
+      packetStats: this.#packetStats,
+      onHeader: (h) => {
+        this.stats.audio.header = { channels: h.channels, bits: h.bits, rate: h.rate, frameSize: h.frameSize };
+        this.#log(`audio: ${h.channels} channel${h.channels === 1 ? '' : 's'}, ${h.rate} Hz, ${h.frameSize} samples a frame`);
+        this.#o.onAudioHeader?.(h);
+      },
+      onFrame: (frame) => {
+        if (frame) {
+          this.stats.audio.frames++;
+          this.stats.audio.bytes += frame.length;
+        } else this.stats.audio.concealed++;
+        this.#o.onAudio?.(frame);
+      },
+      log: (line) => this.#log(`audio: ${line}`),
     });
     const t = o.transport;
     t.events.onProtobuf = (payload) => this.#protobuf(payload);
@@ -417,6 +439,7 @@ export class StreamConnection {
     if (s.audioHeader.length !== AUDIO_HEADER_SIZE) return this.#stageFailed(new StreamError('invalid-response', 'The console sent an audio header of the wrong size'));
     this.profiles = s.resolution.filter((r) => r.videoHeader.length > 0).map((r) => ({ width: r.width, height: r.height, header: Uint8Array.from(r.videoHeader) }));
     this.#video.streamInfo(this.profiles);
+    this.#audio.streamInfo(parseAudioHeader(Uint8Array.from(s.audioHeader)));
     // The acknowledgement goes on channel 9; the controller and the audio header on channel 1, as in the reference.
     this.#send(9, { type: TAKION_PAYLOAD_TYPE.STREAMINFOACK });
     const ok =
@@ -436,8 +459,10 @@ export class StreamConnection {
         this.#firstUnitAt.set(packet.frameIndex, performance.now());
       }
       this.#video.avPacket(packet);
+    } else {
+      // Audio. The haptics channel (the controller's vibration) is dropped by the receiver.
+      this.#audio.avPacket(packet);
     }
-    // Audio and haptics are not handled yet.
   }
 
   #frame(frame: Uint8Array, info: VideoFrameInfo): boolean {

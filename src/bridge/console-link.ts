@@ -18,9 +18,23 @@ export interface LinkStatus {
   detail?: string;
 }
 
+/** What the page needs to play the console's sound (Opus). */
+export interface LinkAudioHeader {
+  channels: number;
+  bits: number;
+  /** Samples per second. */
+  rate: number;
+  /** Samples per channel in one Opus frame. */
+  frameSize: number;
+}
+
 export interface LinkHandlers {
   onVideo(frame: LinkFrame): void;
   onStatus(status: LinkStatus): void;
+  /** The sound is Opus; this says how many channels, which rate and how long a frame is. Once, before the first frame. */
+  onAudioHeader?(header: LinkAudioHeader): void;
+  /** The next Opus frame in order, or null for a frame that was lost (the page conceals it). Optional: a link without sound leaves it out. */
+  onAudio?(frame: Uint8Array | null): void;
 }
 
 export interface LinkStartOptions {

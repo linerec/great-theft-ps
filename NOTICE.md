@@ -38,6 +38,7 @@ with an additional permission concerning OpenSSL. That is why this project is AG
 | `src/console/frameprocessor.ts` | `lib/src/frameprocessor.c` |
 | `src/console/packetstats.ts` | `lib/src/packetstats.c` |
 | `src/console/videoreceiver.ts` | `lib/src/videoreceiver.c` |
+| `src/console/audioreceiver.ts` | `lib/src/audioreceiver.c`, `lib/src/audio.c` (the audio header); the dispatch is `stream_connection_takion_av()` in `lib/src/streamconnection.c`. Differs on purpose: haptics packets are dropped, and the copies in a packet are taken before its own frames (see the header of the file) |
 | tests and vectors: `test/regist.test.ts`, `test/gkcrypt.test.ts`, `test/seqnum.test.ts`, `test/reorderqueue.test.ts`, `test/takion.test.ts`, `test/takion.fixture.ts`, `test/bitstream.test.ts`, `test/fec.test.ts`, `test/fec.test-vectors.ts` | `test/rpcrypt.c`, `test/regist.c`, `test/gkcrypt.c`, `test/keystate.c`, `test/seqnum.c`, `test/reorderqueue.c`, `test/takion.c`, `test/takion_av_packet_parse_real_video.inl`, `test/bitstream.c`, `test/fec.c`, `test/fec_test_cases.inl` |
 | `src/engine/types.ts` (button bit positions, gyro limit) | `lib/include/chiaki/controller.h`, `lib/src/feedback.c` |
 

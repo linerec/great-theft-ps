@@ -73,6 +73,8 @@ export class StreamStats {
   stages: Record<string, number> = {};
   samples: StreamSample[] = [];
   events: StreamEvent[] = [];
+  /** The sound: what the console announced, and how many Opus frames arrived or had to be given up as lost. */
+  audio: { header: { channels: number; bits: number; rate: number; frameSize: number } | null; frames: number; concealed: number; bytes: number } = { header: null, frames: 0, concealed: 0, bytes: 0 };
   /** A gap between frames longer than this counts as a stutter. Default: 2.5 frame times at 60 fps; the stream connection sets it from the frame rate it asks for. */
   stutterThresholdMs = 42;
   /** Asked once per window for the longest event loop delay since the last call, in ms. Set by the owner of the stream. */
@@ -196,11 +198,12 @@ export class StreamStats {
   }
 
   /** Everything, as plain data. `sampleCount` limits the series to the most recent windows. */
-  snapshot(sampleCount = SAMPLES_KEPT): { elapsedMs: number; totals: StreamTotals; stages: Record<string, number>; samples: StreamSample[]; events: StreamEvent[]; stutterThresholdMs: number } {
+  snapshot(sampleCount = SAMPLES_KEPT): { elapsedMs: number; totals: StreamTotals; audio: StreamStats['audio']; stages: Record<string, number>; samples: StreamSample[]; events: StreamEvent[]; stutterThresholdMs: number } {
     this.tick();
     return {
       elapsedMs: Math.round(this.#elapsed()),
       totals: { ...this.totals },
+      audio: { ...this.audio, header: this.audio.header ? { ...this.audio.header } : null },
       stages: { ...this.stages },
       samples: sampleCount > 0 ? this.samples.slice(-sampleCount) : [],
       events: [...this.events],

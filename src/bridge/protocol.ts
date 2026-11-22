@@ -7,6 +7,7 @@
 //   PAD   (client -> bridge)  1 + u32 seq + u16 buttons + u8 l2 + u8 r2 + 4 x i16 sticks + u8 flags [+ 10 x f32 motion]
 //   PING  (client -> bridge)  1 + f64 client time
 //   VIDEO (bridge -> client)  1 + u8 codec + u8 flags + u32 frameId + u32 inputSeq + f64 ptsMs + payload
+//   AUDIO (bridge -> client)  1 + u8 flags (bit 0: lost, no payload follows) + payload (one Opus frame)
 //   PONG  (bridge -> client)  1 + f64 client time + f64 bridge time
 
 import { emptyPadState, type VirtualPadState } from '../engine/types.ts';
@@ -90,6 +91,23 @@ export function encodeVideo(h: VideoHeader, payload: Uint8Array): Uint8Array {
   v.setFloat64(11, h.ptsMs, true);
   out.set(payload, VIDEO_HEADER);
   return out;
+}
+
+/** One Opus frame of the console's sound, or (lost) the news that a frame never came and the player should conceal it. */
+export function encodeAudio(frame: Uint8Array | null): Uint8Array {
+  const out = new Uint8Array(2 + (frame ? frame.length : 0));
+  out[0] = MSG.AUDIO;
+  out[1] = frame ? 0 : 1;
+  if (frame) out.set(frame, 2);
+  return out;
+}
+
+export function decodeAudio(buf: Uint8Array): { lost: boolean; payload: Uint8Array } | null {
+  if (buf[0] !== MSG.AUDIO || buf.length < 2) return null;
+  const lost = (buf[1]! & 1) === 1;
+  if (lost && buf.length !== 2) return null;
+  if (!lost && buf.length === 2) return null; // a frame without bytes is nothing to decode
+  return { lost, payload: buf.subarray(2) };
 }
 
 export function decodeVideo(buf: Uint8Array): { header: VideoHeader; payload: Uint8Array } | null {

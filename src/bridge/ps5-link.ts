@@ -325,6 +325,8 @@ export class Ps5Link implements ConsoleLink {
       transport, target: record.target, sessionId, sessionCrypt: grant.crypt, video, tuning: research.tuning, stats, log,
       ...(this.#opts.streamTimeoutMs !== undefined ? { expectTimeoutMs: this.#opts.streamTimeoutMs } : {}),
       onFrame: (frame) => this.#frame(handlers, frame),
+      onAudioHeader: (h) => !this.#stopped && handlers.onAudioHeader?.({ channels: h.channels, bits: h.bits, rate: h.rate, frameSize: h.frameSize }),
+      onAudio: (frame) => !this.#stopped && handlers.onAudio?.(frame),
       onClosed: (reason) => this.#ended(handlers, reason),
     });
     this.#stream = stream;

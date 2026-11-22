@@ -17,7 +17,7 @@ import type { AddressInfo } from 'node:net';
 
 import { emptyPadState, type VirtualPadState } from '../engine/types.ts';
 import type { ConsoleLink } from './console-link.ts';
-import { decodePad, decodePing, encodePong, encodeVideo, isNeutral, MSG, type ClientControl } from './protocol.ts';
+import { decodePad, decodePing, encodeAudio, encodePong, encodeVideo, isNeutral, MSG, type ClientControl } from './protocol.ts';
 import { DEFAULT_QUALITY, parseQuality, type QualityRequest } from './quality.ts';
 import type { ConsoleStore } from '../console/store.ts';
 import { handleApi, type ApiOptions } from './api.ts';
@@ -198,6 +198,17 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
               counters.frames++;
               counters.bytes += bytes.length;
               sendBinary(bytes);
+            },
+            // The sound: Opus, one small message per frame (about 10 ms of sound). The page is told the format once.
+            onAudioHeader: (h) => {
+              if (!closed) sendJson({ type: 'audio', channels: h.channels, bits: h.bits, rate: h.rate, frameSize: h.frameSize });
+            },
+            onAudio: (frame) => {
+              if (closed) return;
+              // A gap in the sound is heard at once and a late frame of the picture is not, so the sound goes out unless
+              // the page is far behind (then it could not play it in time anyway).
+              if (conn.bufferedBytes + (down?.queuedBytes ?? 0) > BACKPRESSURE_BYTES) return;
+              sendBinary(encodeAudio(frame));
             },
             onStatus: (s) => {
               if (s.state !== 'closed') return sendJson({ type: 'status', state: s.state, detail: s.detail });
