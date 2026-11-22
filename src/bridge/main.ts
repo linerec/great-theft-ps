@@ -4,8 +4,12 @@
 //   node src/bridge/main.ts                          a real PS5 through this project's TypeScript port
 //   node src/bridge/main.ts --link core --core <gtp-core executable> [--core-arg <arg> ...]
 // Options: --host 127.0.0.1  --port 8787  --token <string>  --no-handover  --name <what other clients see>
-//          --trust-host <name>   the HTTPS name a proxy on this computer gives the bridge (see below)
+//          --trust-host <name>   the HTTPS name another device reaches the bridge under (see below)
+//          --tls-cert <file> --tls-key <file>   serve HTTPS itself, with the files `tailscale cert <name>` writes
 //          --link-sim <profile>  put a simulated mobile network between the bridge and the page (linksim.ts)
+// A phone over Tailscale, without any proxy:
+//   tailscale cert --cert-file c.crt --key-file c.key <name>.<tailnet>.ts.net
+//   node src/bridge/main.ts --host <this computer's tailnet address> --tls-cert c.crt --tls-key c.key --trust-host <name>.<tailnet>.ts.net
 // On this computer (the default) no token is used. With --host set to anything else a token is required: if you do
 // not pass one, a random one is generated and added to the printed URL.
 
@@ -20,6 +24,7 @@ import { Handover } from './handover.ts';
 import { LINK_PROFILES, parseLinkSim } from './linksim.ts';
 import { Ps5Link, StreamResearch } from './ps5-link.ts';
 import { startBridge } from './server.ts';
+import { describeExpiry, loadTls, namesNotCovered, type TlsMaterial } from './tls.ts';
 
 function parseArgs(argv: string[]): Record<string, string[]> {
   const out: Record<string, string[]> = {};
@@ -37,12 +42,33 @@ const host = first('host', '127.0.0.1');
 const port = Number(first('port', '8787'));
 const loopback = host === '127.0.0.1' || host === 'localhost' || host === '::1';
 /**
- * Host names the bridge is reached under through an HTTPS proxy on this computer (--trust-host, repeatable). This is
- * how another device uses it without the bridge leaving loopback: `tailscale serve` gives this computer an HTTPS
- * address inside the tailnet and passes requests on to 127.0.0.1. HTTPS matters: a browser decodes video only on a
- * secure page, and only localhost counts as one without it.
+ * Host names the bridge is reached under from another device (--trust-host, repeatable). Two ways to get HTTPS there:
+ *  - the bridge serves it itself (--tls-cert, --tls-key) and is bound to this computer's tailnet address (--host);
+ *  - an HTTPS proxy on this computer passes requests on to 127.0.0.1 (`tailscale serve`). Careful on a computer that
+ *    already publishes things with Tailscale Funnel: a serve command can change what Funnel serves.
+ * HTTPS matters: a browser decodes video only on a secure page, and only localhost counts as one without it.
  */
 const trustHosts = (args['trust-host'] ?? []).filter((h) => h !== 'true');
+const tlsCertFile = args['tls-cert']?.[0];
+const tlsKeyFile = args['tls-key']?.[0];
+if ((tlsCertFile === undefined) !== (tlsKeyFile === undefined) || tlsCertFile === 'true' || tlsKeyFile === 'true') {
+  console.error('--tls-cert <file> and --tls-key <file> go together: they are the two files `tailscale cert <name>` writes');
+  process.exit(2);
+}
+let tls: TlsMaterial | undefined;
+if (tlsCertFile !== undefined && tlsKeyFile !== undefined) {
+  try {
+    tls = loadTls(tlsCertFile, tlsKeyFile);
+  } catch (error) {
+    console.error(`Could not use the TLS files: ${(error as Error).message}`);
+    process.exit(1);
+  }
+  const expiry = describeExpiry(tls.notAfter);
+  if (expiry.level === 'expired') {
+    console.error(`Could not use the TLS files: ${expiry.text}. Run \`tailscale cert <name>\` again, then start the bridge again.`);
+    process.exit(1);
+  }
+}
 /** A token that stays the same between starts, so that the address on the other device keeps working. */
 function keptToken(): string {
   const file = path.join(path.dirname(defaultStorePath()), 'bridge-token');
@@ -89,6 +115,7 @@ const bridge = await startBridge({
   port,
   ...(token !== undefined ? { token } : {}),
   ...(trustHosts.length > 0 ? { trustedHosts: trustHosts } : {}),
+  ...(tls ? { tls: { cert: tls.cert, key: tls.key } } : {}),
   ...(linkSim ? { linkSim } : {}),
   root,
   store,
@@ -105,7 +132,13 @@ const bridge = await startBridge({
 console.log(`\nGreat Theft P.S bridge (${linkKind === 'ps5' ? 'PS5, TypeScript port' : 'gtp-core'})`);
 console.log(`Open:  ${bridge.url}${token ? `#token=${token}` : ''}`);
 if (!loopback) console.log('WARNING: listening beyond this computer. Anyone on the network who has the token can press buttons on your console.');
-for (const name of trustHosts) console.log(`From another device (through the HTTPS proxy on this computer):  https://${name}/#token=${token}`);
+if (tls) {
+  const expiry = describeExpiry(tls.notAfter);
+  console.log(`HTTPS: ${expiry.text}.${expiry.level === 'soon' ? ' Run `tailscale cert <name>` again and restart the bridge before it runs out.' : ''}`);
+  const missing = namesNotCovered(tls.names, trustHosts.map((h) => h.toLowerCase()));
+  if (missing.length > 0) console.log(`WARNING: the certificate is not for ${missing.join(', ')}, so a browser will refuse the connection under that name. It is for: ${tls.names.join(', ') || '(no DNS names)'}.`);
+}
+for (const name of trustHosts) console.log(`From another device (${tls ? 'directly over HTTPS' : 'through the HTTPS proxy on this computer'}):  https://${name}${tls ? `:${bridge.port}` : ''}/#token=${token}`);
 if (trustHosts.length > 0) console.log('Whoever can reach that address and has the token can press buttons on your console. The token stays the same between starts.');
 console.log(`Registered consoles are kept in ${store.file} (secrets: keep that file private).`);
 if (handover) console.log(handover.listening ? `Handover: other Great Theft P.S clients with the same console registration can ask this one to let go (UDP ${handover.port}, encrypted; lock it on the page, or start with --no-handover).` : `Handover: UDP ${handover.port} is not available here, so other clients cannot ask this one to let go.`);

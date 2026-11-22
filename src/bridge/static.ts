@@ -39,6 +39,28 @@ export function hostName(host: string | undefined): string {
   return (host ?? '').toLowerCase().replace(/:\d+$/, '');
 }
 
+const isLoopbackAddress = (a: string): boolean => a === '127.0.0.1' || a === 'localhost' || a === '::1';
+const isWildcardAddress = (a: string): boolean => a === '0.0.0.0' || a === '::';
+
+/**
+ * Should the bridge answer a request that names this Host? It keeps a web page from reaching the bridge under another
+ * name (DNS rebinding: a page on evil.example whose name is made to point at this computer).
+ *
+ *  - bound to loopback: loopback names on the bridge's port, and the trusted names (a proxy on this computer);
+ *  - bound beyond loopback, nothing trusted: every name, as before; the token is the protection;
+ *  - bound beyond loopback, names trusted: only those names and the address the bridge is bound to (plus the loopback
+ *    names when it listens on every address).
+ */
+export function hostAllowed(host: string | undefined, o: { bound: string; port: number; trusted: readonly string[] }): boolean {
+  const bound = o.bound.toLowerCase().replace(/^\[|\]$/g, '');
+  const name = hostName(host).replace(/^\[|\]$/g, '');
+  if (isLoopbackAddress(bound)) return isLoopbackHost(host, o.port) || o.trusted.includes(name);
+  if (o.trusted.length === 0) return true;
+  if (o.trusted.includes(name)) return true;
+  if (isWildcardAddress(bound)) return isLoopbackHost(host, o.port);
+  return name === bound;
+}
+
 /**
  * Is this request from the page itself? Same origin as the Host it was sent to, or from a host name the person
  * starting the bridge said to trust (a local HTTPS proxy such as `tailscale serve` in front of it: some proxies pass

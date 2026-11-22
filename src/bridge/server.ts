@@ -12,6 +12,7 @@
 
 import { createHash, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
+import https from 'node:https';
 import type { AddressInfo } from 'node:net';
 
 import { emptyPadState, type VirtualPadState } from '../engine/types.ts';
@@ -24,7 +25,8 @@ import type { Handover } from './handover.ts';
 import { DelayLine, type LinkSimProfile } from './linksim.ts';
 import type { StreamResearch } from './ps5-link.ts';
 import { portInUse } from './ports.ts';
-import { handleStatic, hostName, isLoopbackHost, originAllowed, send } from './static.ts';
+import { handleStatic, hostAllowed, hostName, originAllowed, send } from './static.ts';
+import { explainListenError } from './tls.ts';
 import { acceptUpgrade, type WsConnection } from './ws.ts';
 
 const MAX_MESSAGE_BYTES = 64 * 1024; // from the client: pads and small JSON only
@@ -44,6 +46,12 @@ export interface BridgeOptions {
    * accepted as well. They come from other devices, so a token is then required for everything.
    */
   trustedHosts?: string[];
+  /**
+   * Serve HTTPS instead of HTTP with this certificate and key (PEM), for example the files `tailscale cert <name>` writes.
+   * A browser decodes video only on a secure page, so a phone reaching the bridge over a private network needs this.
+   * The WebSocket then runs over TLS as well (wss), on the same port.
+   */
+  tls?: { cert: string | Buffer; key: string | Buffer };
   root: string;
   createLink: () => ConsoleLink;
   /** Where registered consoles are kept. Without it the /api/ endpoints are off. */
@@ -79,12 +87,12 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
   const trusted = (opts.trustedHosts ?? []).map((h) => hostName(h)).filter(Boolean);
   if (trusted.length > 0 && !opts.token) throw new Error('trusting a host name lets other devices in through a proxy, which requires a token');
   /** Was the request sent to an address this bridge answers to? (Keeps a web page from reaching it under another name.) */
-  const hostOk = (host: string | undefined): boolean => !loopbackOnly || isLoopbackHost(host, boundPort) || trusted.includes(hostName(host));
+  const hostOk = (host: string | undefined): boolean => hostAllowed(host, { bound: opts.host, port: boundPort, trusted });
   let active: { conn: WsConnection; stop(): Promise<void> } | null = null;
   const connections = new Set<WsConnection>();
   let boundPort = opts.port;
 
-  const server = http.createServer((req, res) => {
+  const handle: http.RequestListener = (req, res) => {
     if (!hostOk(req.headers.host)) return send(res, 421, { 'Content-Type': 'text/plain' }, 'Misdirected request');
     if (opts.store && (req.url ?? '').startsWith('/api/')) {
       const api: ApiOptions = { store: opts.store, ...(opts.token !== undefined ? { token: opts.token } : {}), ...(opts.research ? { research: opts.research } : {}), ...(opts.handover ? { handover: opts.handover } : {}), ...(trusted.length ? { trustedHosts: trusted } : {}), ...opts.api, log };
@@ -92,7 +100,9 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
       return;
     }
     void handleStatic(req, res, opts.root);
-  });
+  };
+  // Both kinds of server emit 'upgrade' for the WebSocket handshake, so everything below works for either.
+  const server: http.Server = opts.tls ? https.createServer({ cert: opts.tls.cert, key: opts.tls.key }, handle) : http.createServer(handle);
 
   server.on('upgrade', (req, socket, head) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -301,14 +311,14 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
     }
   }
   await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
+    server.once('error', (error) => reject(explainListenError(error as NodeJS.ErrnoException, opts.host, opts.port)));
     server.listen(opts.port, opts.host, resolve);
   });
   boundPort = (server.address() as AddressInfo).port;
   const shownHost = opts.host === '0.0.0.0' ? '127.0.0.1' : opts.host;
   return {
     port: boundPort,
-    url: `http://${shownHost}:${boundPort}/`,
+    url: `${opts.tls ? 'https' : 'http'}://${shownHost}:${boundPort}/`,
     close: async () => {
       // Upgraded sockets are not tracked by http.Server, so close every WebSocket ourselves.
       for (const c of [...connections]) c.close(1001, 'bridge closing');

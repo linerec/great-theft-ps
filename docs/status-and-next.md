@@ -19,6 +19,7 @@ things work (`README.md`, `docs/ts-protocol-port.md`, `docs/stream-research.md`,
 | iPhone Safari decoding this stream | **not tried**; the first thing to find out (see below) |
 | The link simulator and `--latency` | unit tests and the test double; **no real measurement yet** (the console was off) |
 | `--trust-host` | unit tests with hand-made requests; **never behind a real proxy** |
+| `--tls-cert` / `--tls-key` (HTTPS by the bridge, option B) | unit tests and real TLS handshakes with a throwaway certificate (page and `wss` upgrade); started once on loopback with the real `tailscale cert` files and checked with curl against the system's trust store (trusted, 200; a foreign Host gets 421); **never reached from another device, never bound to the tailnet address** |
 | Mouse carry-over | simulation and tests; **not yet tried in a game** |
 
 ## In progress: playing away from home on an iPhone
@@ -46,20 +47,23 @@ Decided:
   werift (pure TypeScript WebRTC, no native code, before 1.0) and node-datachannel (libdatachannel binding with
   prebuilt binaries, MPL-2.0).
 
-**To build next: option B.** About 60 lines and tests.
+**Option B is built** (`src/bridge/tls.ts`, `hostAllowed` in `src/bridge/static.ts`, `test/tls.test.ts`).
 
-- `--tls-cert <file> --tls-key <file>`: `node:https` instead of `node:http` in `src/bridge/server.ts`. The WebSocket
-  code hangs on the server's `upgrade` event and needs no change. Print `https://` addresses, and the certificate's
-  expiry at start with a warning when it is near (they last about 90 days; `tailscale cert` renews).
-- Used with `--host <the tailnet address>` (a token is already mandatory off loopback) and `--trust-host <name>`.
-- **A hole to close with it:** off loopback the server does not check the Host header at all (`hostOk` returns true
-  when not loopback-only). With trusted names given, restrict Host to those names and the bound address, or a page
-  under another name can reach the bridge (DNS rebinding).
-- When the bind fails because Tailscale is down, say so.
-- The test needs a throwaway certificate made inside the test (no private key in the repository). Node cannot issue
-  certificates; a self-signed one needs a small DER builder (an ECDSA key from `node:crypto`, the TBS certificate by
-  hand) or the test replaces `https.createServer`.
-- Expected command on the Mac: `npm run bridge -- --port 8788 --host <100.x address> --tls-cert <crt> --tls-key <key> --trust-host <name>`.
+- `--tls-cert <file> --tls-key <file>`: `node:https` instead of `node:http`; the WebSocket handshake runs over the same
+  server (`wss`). At start it prints the certificate's expiry (a warning in the last 14 days, a refusal to start once it
+  has expired), checks that the key belongs to the certificate, and warns when a `--trust-host` name is not one of the
+  certificate's names.
+- Used with `--host <the tailnet address>` (a token is mandatory off loopback) and `--trust-host <name>`. Command on
+  the Mac: `npm run bridge -- --port 8788 --host <100.x address> --tls-cert <crt> --tls-key <key> --trust-host <name>`.
+- The Host check is closed: off loopback with names trusted, only those names and the bound address are answered (and
+  the loopback names when bound to every address), so a page under another name that points at this computer (DNS
+  rebinding) is turned away with 421. Off loopback with no name trusted it is open as before; the token protects.
+- When the address is not the computer's (Tailscale down), the bridge says so and does not start.
+- The tests make their own certificate (`test/support/selfsigned.ts`, a hand-built DER structure signed with an ECDSA
+  key from `node:crypto`): no key is kept in the repository.
+- The certificate and key for the home Mac are in `~/.gtp/tls/` (owner only). The certificate lasts about 90 days:
+  renew with `tailscale cert` and restart. **Switching it on for the tailnet is the owner's decision** (it opens the
+  bridge, with its token, to the owner's devices on the tailnet); until then the bridge runs on loopback.
 
 Then, on the phone, in this order (each failure changes the plan):
 
@@ -118,7 +122,8 @@ next step for keyboard and mouse play.
 
 ## Things on the list, with a view on their order
 
-1. Option B, then the iPhone checks: everything else about playing away from home waits on "does the phone decode it".
+1. Switch option B on for the tailnet (the owner decides), then the iPhone checks: everything else about playing away
+   from home waits on "does the phone decode it". The iPhone must first be in the tailnet (the Tailscale app, same account).
 2. Waking the console: without it there is nothing to connect to from outside.
 3. Sound: its absence is felt at once on a phone.
 4. The look calibration on a real console: the largest gain for keyboard and mouse.

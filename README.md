@@ -122,6 +122,28 @@ already answers on the port (default 8787); pick another with `--port`.
 The one thing that listens on the network by default is the handover signal described above. All it can be made to do,
 and only by someone who holds your console's registration, is end this copy's stream.
 
+### From another device, such as a phone (HTTPS over Tailscale)
+
+A browser decodes video only on a secure page, and only `localhost` counts as one without HTTPS. So a phone needs an
+`https://` address. The bridge can serve it itself, with the certificate that Tailscale issues for the computer's name,
+and listen on the computer's Tailscale address only, so that nothing outside your tailnet can reach it:
+
+```sh
+tailscale ip -4                                     # this computer's tailnet address
+tailscale cert --cert-file c.crt --key-file c.key <name>.<tailnet>.ts.net
+npm run bridge -- --port 8788 --host <tailnet address> --tls-cert c.crt --tls-key c.key --trust-host <name>.<tailnet>.ts.net
+```
+
+Open the `https://<name>.<tailnet>.ts.net:8788/#token=...` address that the bridge prints; the token is kept in
+`~/.gtp/bridge-token`, so the address keeps working between starts (delete the file and restart to change it). The Host
+header is then checked against that name and the bound address, so a page under any other name cannot reach the bridge.
+At start the bridge says how long the certificate lasts; renew it with `tailscale cert` and restart before it runs out.
+The key file is as sensitive as the registration: keep it private. If the address is not this computer's, or Tailscale is
+not running, the bridge says so and does not start.
+
+Do not use `tailscale serve` for this on a computer that already publishes something with Tailscale Funnel: a serve
+command can change what Funnel serves. `--trust-host` also works behind an HTTPS proxy on the same computer.
+
 ### Looking into stutter
 
 `docs/stream-research.md` has what was measured so far and how to measure it yourself: `GET /api/stream/stats` gives the
