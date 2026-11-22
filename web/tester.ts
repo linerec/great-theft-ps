@@ -316,7 +316,7 @@ const REG_HINT: Record<string, string> = {
 /** Why a call to the bridge's /api/ did not work, in words that say what to do. `null` means no answer at all. */
 export function whyNoApi(r: { status: number; data: Record<string, any> } | null): string {
   if (!r) return `이 주소(${location.host})의 서버에 연결하지 못했습니다. 브리지가 켜져 있는지 확인하세요.`;
-  if (r.status === 404) return `이 주소(${location.host})는 브리지가 아니라 테스트용 서버(npm run dev)로 보입니다. npm run bridge 로 연 주소(보통 http://127.0.0.1:8788/)에서 여세요.`;
+  if (r.status === 404) return `이 주소(${location.host})는 브리지가 아니라 파일만 내보내는 다른 서버로 보입니다. 터미널에서 npm run dev 를 실행하고, 그 화면에 찍힌 주소로 여세요.`;
   if (r.status === 401) return '브리지가 토큰을 요구합니다. 브리지가 출력한 주소(#token=…)로 여세요.';
   if (r.status === 403 || r.status === 421) return '브리지가 이 주소로 온 접속을 거부했습니다. 브리지가 출력한 주소(보통 http://127.0.0.1:포트/)로 여세요.';
   return `브리지가 오류를 돌려줬습니다 (HTTP ${r.status}${r.data.message ? `: ${r.data.message}` : ''}).`;

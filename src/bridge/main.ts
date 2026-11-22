@@ -3,7 +3,7 @@
 // Start the bridge:
 //   node src/bridge/main.ts                          a real PS5 through this project's TypeScript port
 //   node src/bridge/main.ts --link core --core <gtp-core executable> [--core-arg <arg> ...]
-// Options: --host 127.0.0.1  --port 8787  --token <string>  --no-handover  --name <what other clients see>
+// Options: --host 127.0.0.1  --port 8787 (when not given and 8787 is taken, the next free port is used)  --token <string>  --no-handover  --name <what other clients see>
 //          --no-wake             do not wake a console that is in rest mode when someone connects (the default is to wake it)
 //          --no-runs             do not keep what each stream measured (the default: one JSON file per stream, see runlog.ts)
 //          --runs-dir <folder>   where those files go (default: runs/ next to the registered consoles)
@@ -25,6 +25,7 @@ import { ConsoleStore, defaultStorePath } from '../console/store.ts';
 import { CoreLink } from './core-link.ts';
 import { Handover } from './handover.ts';
 import { LINK_PROFILES, parseLinkSim } from './linksim.ts';
+import { firstFreePort } from './ports.ts';
 import { Ps5Link, StreamResearch } from './ps5-link.ts';
 import { probeTailscalePath, RunWriter } from './runlog.ts';
 import { startBridge } from './server.ts';
@@ -43,7 +44,14 @@ function parseArgs(argv: string[]): Record<string, string[]> {
 const args = parseArgs(process.argv.slice(2));
 const first = (k: string, d: string): string => args[k]?.[0] ?? d;
 const host = first('host', '127.0.0.1');
-const port = Number(first('port', '8787'));
+// Without --port, 8787 is tried first and, if something else has it, the next ones: `npm run dev` should just work.
+const wantedPort = Number(first('port', '8787'));
+const port = args.port !== undefined ? wantedPort : await firstFreePort(host, wantedPort);
+if (port === null) {
+  console.error(`No free port from ${wantedPort} to ${wantedPort + 19} on ${host}. Choose one with --port.`);
+  process.exit(1);
+}
+if (port !== wantedPort) console.log(`Port ${wantedPort} is taken by another program; using ${port}.`);
 const loopback = host === '127.0.0.1' || host === 'localhost' || host === '::1';
 /**
  * Host names the bridge is reached under from another device (--trust-host, repeatable). Two ways to get HTTPS there:

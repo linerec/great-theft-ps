@@ -42,9 +42,8 @@ from and for trademark notes.
 Requires Node.js 24 or newer. No dependencies to install.
 
 ```sh
-npm run bridge   # the bridge to your PS5; open the printed URL (no token needed on this computer)
+npm run dev      # the bridge to your PS5 (same as npm run bridge); open the printed URL (no token needed on this computer)
 npm test         # unit and integration tests (node --test)
-npm run dev      # only the test beds (FPS, GTA style) at http://127.0.0.1:5173/, no console and no bridge
 npm run e2e      # real-browser end-to-end check (headless Chrome <-> bridge <-> a test double, no console)
 npm run discover # look for PlayStation consoles on the local network
 npm run register -- --host <console IP>   # register with your console (the page can do it too)
@@ -55,7 +54,7 @@ npm run handover -- who|hold|ask          # try the handover between your client
 
 ### Play
 
-`npm run bridge`, open the address it prints, and on the **PS5** page press the one button: it registers a console when
+`npm run dev` (or `npm run bridge`: the same), open the address it prints, and on the **PS5** page press the one button: it registers a console when
 there is none and connects when there is one. Click the picture to lock the mouse (Esc releases it); keyboard and mouse
 then go to the console through the current profile (arrow keys are the d-pad). **연습장** holds two test games for trying
 the mapping without a console, and **설정** has the mapping, console management and advanced items.

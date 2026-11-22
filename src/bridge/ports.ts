@@ -23,3 +23,18 @@ export function portInUse(host: string, port: number, timeoutMs = 400): Promise<
     socket.once('error', () => done(false));
   });
 }
+
+/** The host to connect to when asking whether a port is taken: a program on "all addresses" answers on loopback. */
+export const probeHostFor = (host: string): string => (host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host);
+
+/**
+ * The first port from `start` on that nothing answers on, looking at most `tries` ports far. Used when nobody asked for
+ * a particular port, so that `npm run dev` works on a computer where the usual one is taken. Null when all are taken.
+ */
+export async function firstFreePort(host: string, start: number, tries = 20): Promise<number | null> {
+  const probe = probeHostFor(host);
+  for (let port = start; port < start + tries && port <= 65535; port++) {
+    if (!(await portInUse(probe, port))) return port;
+  }
+  return null;
+}

@@ -8,7 +8,7 @@
   "engines": { "node": ">=24" },
   "scripts": {
     "test": "node --test --test-timeout=60000 \"test/*.test.ts\"",
-    "dev": "node src/dev-server.mjs",
+    "dev": "node src/bridge/main.ts",
     "bridge": "node src/bridge/main.ts",
     "e2e": "node tools/e2e-browser.mjs",
     "connect": "node tools/connect.mjs",

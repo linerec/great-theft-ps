@@ -24,7 +24,7 @@ import { handleApi, type ApiOptions } from './api.ts';
 import type { Handover } from './handover.ts';
 import { DelayLine, type LinkSimProfile } from './linksim.ts';
 import type { StreamResearch } from './ps5-link.ts';
-import { portInUse } from './ports.ts';
+import { portInUse, probeHostFor } from './ports.ts';
 import { classifyClient, coarseDevice, probeWithin, type PathProbe } from './runlog.ts';
 import { handleStatic, hostAllowed, hostName, originAllowed, send } from './static.ts';
 import { explainListenError } from './tls.ts';
@@ -331,7 +331,7 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
   }
 
   if (opts.port !== 0) {
-    const probeHost = opts.host === '0.0.0.0' || opts.host === '::' ? '127.0.0.1' : opts.host;
+    const probeHost = probeHostFor(opts.host);
     if (await portInUse(probeHost, opts.port)) {
       throw new Error(`port ${opts.port} on ${probeHost} is already in use by another program. Choose another one with --port.`);
     }
