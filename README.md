@@ -31,7 +31,8 @@ from and for trademark notes.
 | Bridge: WebSocket server, safety, API, measurements | **working** |
 | Browser client: H.264 through WebCodecs, paced playout, pad sending, quality presets | **working** (Chrome; real-browser checks with and without a console) |
 | Handing the console over between your own clients, with a lock | **working** between two computers (signals checked both ways; see below) |
-| Sound (Opus), wake-up button, login PIN, touchpad, HEVC in the page, RTT/MTU test | not built |
+| Waking a console in rest mode | built and tested without a console; not yet sent to a real one |
+| Sound (Opus), login PIN, touchpad, HEVC in the page, RTT/MTU test | not built |
 | Profile sharing registry, WebRTC, PSN (outside the home), desktop and mobile shells | not started |
 | gtp-core (C, libchiaki), an alternative console link | specified, not built (`docs/gtp-core-contract.md`) |
 
@@ -66,6 +67,11 @@ Above the picture:
   40 ms late on Wi-Fi does not show as a freeze. *균형* does the same with at most 50 ms. *최소 지연* shows every frame the
   moment it arrives. "표시 지연" is the delay in use, "화면 끊김" counts the hitches you actually saw.
 - **잠금**: see "Several computers, one console".
+
+A console in rest mode shows as 대기 모드 and the button says **깨우고 연결**: the bridge sends the wake-up datagram, waits
+until the console answers, then connects, so from a phone it is still one press. The console must allow it in its rest-mode
+settings (*Enable Turning on PS5 from Network*). `npm run wake` does the waking alone (`-- --check` only reports what the
+console answers). A console that is already on is not sent anything, and `--no-wake` on the bridge switches the waking off.
 
 ### Register your console (once)
 

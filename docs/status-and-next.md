@@ -19,6 +19,7 @@ things work (`README.md`, `docs/ts-protocol-port.md`, `docs/stream-research.md`,
 | iPhone Safari decoding this stream | **not tried**; the first thing to find out (see below) |
 | The link simulator and `--latency` | unit tests and the test double; **no real measurement yet** (the console was off) |
 | `--trust-host` | unit tests with hand-made requests; **never behind a real proxy** |
+| Waking a console in rest mode (automatic on connect, `POST /api/wake`, `npm run wake`) | unit tests (the credential against chiaki-ng's conversion and the stored key's real shape, the waiting on a fake clock, the link, the API) and a read-only check against the real console (`npm run wake -- --check` saw it in rest mode); **the datagram itself has never been sent to a real console** |
 | `--tls-cert` / `--tls-key` (HTTPS by the bridge, option B) | unit tests and real TLS handshakes with a throwaway certificate (page and `wss` upgrade); started once on loopback with the real `tailscale cert` files and checked with curl against the system's trust store (trusted, 200; a foreign Host gets 421); **never reached from another device, never bound to the tailnet address** |
 | Mouse carry-over | simulation and tests; **not yet tried in a game** |
 
@@ -75,10 +76,18 @@ Then, on the phone, in this order (each failure changes the plan):
 4. "Add to Home Screen": no browser bars, screen stays awake?
 5. Then on mobile data: the same, and whether `tailscale ping` says direct or relayed.
 
-Also needed for playing away from home, not built:
+Also needed for playing away from home:
 
-- **Waking the console.** Away from home it will be in rest mode. `src/console/discovery.ts` has the wake-up packet
-  (it needs the registration key) but it has never been sent to a real console, and the page has no button.
+- **Waking the console: built, never sent to a real console.** Away from home it will be in rest mode. Pressing connect
+  on a console in rest mode now wakes it first (`src/console/wake.ts`, called from `Ps5Link.start`), waits until it
+  answers and then asks for the session: one press, from a phone too. The wake-up credential is made from the stored
+  key the way chiaki-ng does it (`credentialFromStoredKey`: the key bytes up to the first zero, read as text, at most 8
+  hexadecimal characters; the older `credentialFromRegistKey` takes a hexadecimal STRING and is not for the stored
+  form). Also `POST /api/wake` (sends the datagram only) and `npm run wake` (`-- --check` only says what the console
+  answers). It needs "Enable Turning on PS5 from Network" in the console's rest-mode settings; that cannot be seen from
+  here, the console simply ignores the datagram, and the link then says it did not wake after 60 s. **On the first real
+  try, look at:** how long "standby" lasts, whether the console answers the probe while it starts, and whether it takes
+  a session right when it first says ready (`settleMs`, 1.5 s, is a guess).
 - **Sound.** Nothing is decoded or played yet (Opus in the stream, `AudioDecoder` or Web Audio in the page).
 - One client per bridge: a second browser gets "another client is connected". The handover rule exists between
   bridges, not between two pages of one bridge. A phone taking over from the PC at home needs that.
@@ -124,7 +133,8 @@ next step for keyboard and mouse play.
 
 1. Switch option B on for the tailnet (the owner decides), then the iPhone checks: everything else about playing away
    from home waits on "does the phone decode it". The iPhone must first be in the tailnet (the Tailscale app, same account).
-2. Waking the console: without it there is nothing to connect to from outside.
+2. Waking the console: built and tested without a console; the first real try is the next step (it switches the console
+   on, so it is done with the owner's say).
 3. Sound: its absence is felt at once on a phone.
 4. The look calibration on a real console: the largest gain for keyboard and mouse.
 5. Taking over between two pages of one bridge.

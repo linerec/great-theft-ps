@@ -66,7 +66,7 @@ export interface BridgeOptions {
    */
   linkSim?: LinkSimProfile;
   /** Replaces network discovery and registration. For tests. */
-  api?: Pick<ApiOptions, 'discover' | 'register' | 'psn' | 'session' | 'network'>;
+  api?: Pick<ApiOptions, 'discover' | 'register' | 'psn' | 'session' | 'network' | 'wake'>;
   log?: (line: string) => void;
   /** Test hook: when set, a client message {type:'e2e', ...} is passed to it. Off in normal use. */
   onE2eReport?: (report: unknown) => void;

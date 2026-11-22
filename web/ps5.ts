@@ -92,16 +92,25 @@ function cta(): Cta {
   }
   if (p === 'checking') return { label: '콘솔을 찾는 중…', note: '', disabled: true, run: () => {} };
   if (p === 'absent') return { label: '다시 찾기', note: '그 주소에서 PS5가 응답하지 않습니다. 켜져 있는지, 같은 네트워크인지 확인하세요.', kind: 'quiet', run: () => probe(c) };
-  if (p === 'standby') return { label: '콘솔을 켜 주세요', note: '대기 모드입니다. 깨우기 버튼은 곧 추가합니다. 지금은 PS5를 직접 켜 주세요.', disabled: true, run: () => {} };
+  const connect = (): void => {
+    setConsoleMac(c.mac);
+    $<HTMLButtonElement>('bridgeConnect').click();
+  };
+  // In rest mode the bridge wakes the console itself when the connection starts (src/console/wake.ts), so away from
+  // home too it is one press: it wakes it, waits until it answers, and connects.
+  if (p === 'standby') {
+    return {
+      label: '깨우고 연결', kind: 'primary',
+      note: 'PS5가 대기 모드입니다. 누르면 깨운 뒤 연결합니다. 켜지는 데 잠시 걸립니다. PS5 설정의 "네트워크에서 PS5 켜기"가 켜져 있어야 합니다.',
+      run: connect,
+    };
+  }
   // No separate "check" step: connecting is the check, and a session request that is not followed up keeps the console
   // "in use" for half a minute (measured on a real PS5).
   return {
     label: '연결', kind: 'primary',
     note: 'PS5 화면을 띄웁니다. 화면을 클릭하면 키보드와 마우스가 PS5로 전달됩니다 (Esc로 해제). 음성은 아직 없습니다.',
-    run: () => {
-      setConsoleMac(c.mac);
-      $<HTMLButtonElement>('bridgeConnect').click();
-    },
+    run: connect,
   };
 }
 
@@ -153,7 +162,7 @@ function renderSteps(): void {
     ['브리지', S.apiOk ? 'done' : 'now'],
     ['콘솔 발견', !c ? 'todo' : p === 'ready' || p === 'standby' ? 'done' : p === 'absent' ? 'now' : 'todo'],
     ['등록', c ? 'done' : S.apiOk ? 'now' : 'todo'],
-    ['연결', S.link.state === 'ready' ? 'done' : c && p === 'ready' ? 'now' : 'todo'],
+    ['연결', S.link.state === 'ready' ? 'done' : c && (p === 'ready' || p === 'standby') ? 'now' : 'todo'],
     ['화면·입력', S.link.state === 'ready' ? 'done' : 'todo'],
   ];
   const ol = $<HTMLElement>('ps5Steps');

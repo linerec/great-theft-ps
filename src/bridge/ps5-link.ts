@@ -24,6 +24,7 @@ import type { ConsoleStore } from '../console/store.ts';
 import { DEFAULT_TUNING, StreamConnection, StreamError, type StreamFrame, type StreamTransport, type StreamTuning, type StreamVideoRequest } from '../console/streamconnection.ts';
 import { StreamStats } from '../console/streamstats.ts';
 import { takionTransport } from '../console/takion-transport.ts';
+import { wakeConsole, type WakeDeps, type WakeOptions } from '../console/wake.ts';
 import type { VirtualPadState } from '../engine/types.ts';
 import type { ConsoleLink, LinkHandlers, LinkStartOptions } from './console-link.ts';
 import type { Handover } from './handover.ts';
@@ -169,6 +170,12 @@ export interface Ps5LinkOptions {
   /** How often to ask again when the console says Remote Play is in use, and how long to wait in between. Default: 18 times, 2000 ms (the console holds an abandoned session for about 30 s). */
   inUseRetries?: number;
   inUseRetryWaitMs?: number;
+  /** Wake a console that is in rest mode before connecting (default true). */
+  wake?: boolean;
+  /** Timing of the waking (see WakeOptions). */
+  wakeOptions?: Pick<WakeOptions, 'timeoutMs' | 'pollMs' | 'resendMs' | 'settleMs'>;
+  /** Replaced by tests. */
+  wakeDeps?: WakeDeps;
 }
 
 export class Ps5Link implements ConsoleLink {
@@ -223,6 +230,30 @@ export class Ps5Link implements ConsoleLink {
     let yieldedBy = '';
     this.#mac = record.mac;
     this.#locked = !!options.locked;
+
+    // 1b. A console in rest mode is woken first, so that "connect" is one press, at home and away from it.
+    if (this.#opts.wake !== false) {
+      const woken = await wakeConsole(
+        { host: record.host, target: record.target, registKey: record.registKey },
+        {
+          ...this.#opts.wakeOptions,
+          stopped: () => this.#stopped,
+          onSent: () => step(`${name}이(가) 대기 모드입니다. 깨우는 중입니다`),
+          onState: (presence, seconds) => step(presence === 'standby' ? `${name}을(를) 깨우는 중입니다 (${seconds}초)` : `${name}이(가) 켜지는 중입니다 (${seconds}초)`),
+        },
+        this.#opts.wakeDeps,
+      );
+      if (this.#stopped || woken.result === 'cancelled') return;
+      if (woken.result === 'error') return fail(`${name}을(를) 깨우지 못했습니다. ${woken.message}`);
+      if (woken.result === 'timeout') {
+        return fail(`${name}이(가) ${woken.seconds}초가 지나도 깨어나지 않았습니다. PS5의 설정 > 시스템 > 절전 > 대기 모드에서 사용할 수 있는 기능에서 "네트워크에서 PS5 켜기 활성화"가 켜져 있는지, 같은 집 네트워크인지 확인하세요.`);
+      }
+      if (woken.result === 'woke') {
+        stats.event('wake', `woke after ${woken.seconds} s`);
+        step(`${name}이(가) 켜졌습니다 (${woken.seconds}초). 연결합니다`);
+      }
+    }
+
     let grant: SessionGrant;
     let ctrl: Pick<Ctrl, 'connect' | 'waitForSessionId' | 'close' | 'events'>;
     let sessionId: string;

@@ -55,6 +55,22 @@ export function credentialFromRegistKey(registKey: string): bigint {
   return BigInt(`0x${registKey}`);
 }
 
+/**
+ * The wake-up credential from a registration as it is STORED here (`registKey` in the console store: the 16 key bytes
+ * as hexadecimal). Those bytes are themselves the text of a hexadecimal number, padded with zero bytes: the console's
+ * answer to the registration carries the key that way. The reference client (chiaki-ng, gui/src/discoverymanager.cpp
+ * SendWakeup) cuts the bytes at the first zero, reads them as text, refuses more than 8 characters, and reads that text
+ * as a hexadecimal number. Feeding the stored hexadecimal to credentialFromRegistKey would be a different number.
+ */
+export function credentialFromStoredKey(storedRegistKeyHex: string): bigint {
+  if (!/^(?:[0-9a-fA-F]{2})+$/.test(storedRegistKeyHex)) throw new Error('the stored registration key is not hexadecimal bytes');
+  const bytes = Buffer.from(storedRegistKeyHex, 'hex');
+  const zero = bytes.indexOf(0);
+  const text = bytes.subarray(0, zero < 0 ? bytes.length : zero).toString('latin1');
+  if (text.length === 0 || text.length > 8 || !/^[0-9a-fA-F]+$/.test(text)) throw new Error('the registration key is not usable for waking the console (it is not up to 8 hexadecimal characters)');
+  return BigInt(`0x${text}`);
+}
+
 export function formatWakeup(credential: bigint, protocolVersion: string): Buffer {
   if (credential < 0n || credential > U64_MAX) throw new Error('credential out of range');
   return Buffer.from(

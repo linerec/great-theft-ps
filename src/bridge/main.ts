@@ -4,6 +4,7 @@
 //   node src/bridge/main.ts                          a real PS5 through this project's TypeScript port
 //   node src/bridge/main.ts --link core --core <gtp-core executable> [--core-arg <arg> ...]
 // Options: --host 127.0.0.1  --port 8787  --token <string>  --no-handover  --name <what other clients see>
+//          --no-wake             do not wake a console that is in rest mode when someone connects (the default is to wake it)
 //          --trust-host <name>   the HTTPS name another device reaches the bridge under (see below)
 //          --tls-cert <file> --tls-key <file>   serve HTTPS itself, with the files `tailscale cert <name>` writes
 //          --link-sim <profile>  put a simulated mobile network between the bridge and the page (linksim.ts)
@@ -123,7 +124,7 @@ const bridge = await startBridge({
   ...(handover ? { handover } : {}),
   log,
   createLink: () =>
-    linkKind === 'ps5' ? new Ps5Link({ store, research, log, ...(handover ? { handover } : {}) }) : new CoreLink({ command: first('core', ''), args: args['core-arg'] ?? [], log }),
+    linkKind === 'ps5' ? new Ps5Link({ store, research, log, ...(handover ? { handover } : {}), ...(args['no-wake'] ? { wake: false } : {}) }) : new CoreLink({ command: first('core', ''), args: args['core-arg'] ?? [], log }),
 }).catch((error: Error) => {
   console.error(`Could not start the bridge: ${error.message}`);
   process.exit(1);

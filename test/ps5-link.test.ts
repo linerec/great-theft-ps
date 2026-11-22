@@ -26,6 +26,7 @@ import { SessionError, type SessionRequestOptions } from '../src/console/session
 import { ConsoleStore } from '../src/console/store.ts';
 import type { StreamTransport } from '../src/console/streamconnection.ts';
 import { decodeTakionMessage, encodeTakionMessage, TAKION_PAYLOAD_TYPE, type TakionMessage } from '../src/console/takion-proto.ts';
+import type { Presence, WakeDeps } from '../src/console/wake.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dirs: string[] = [];
@@ -50,6 +51,31 @@ function storeWith(...consoles: Array<[RegisteredConsole, string]>): ConsoleStor
 }
 const grant = async (o: SessionRequestOptions) => ({ target: 'ps5-1' as const, nonce: NONCE, crypt: initAuth('ps5-1', NONCE, o.rpKey) });
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/** Waking, for tests that are about something else: the console is already on, so nothing is asked of the network. */
+const ALREADY_ON: WakeDeps = { probe: async () => 'ready', send: async () => assert.fail('nothing to wake'), sleep: async () => {}, now: () => 0 };
+
+/** A console that answers the probe with these states in turn (the last one for ever), on a clock that only the waiting moves. */
+function scripted(states: Presence[]): { deps: WakeDeps; sent: Array<{ host: string; credential: bigint; ps5: boolean }>; probes: () => number; onSleep: (f: () => void) => void } {
+  let t = 0;
+  let i = 0;
+  let hook: () => void = () => {};
+  const sent: Array<{ host: string; credential: bigint; ps5: boolean }> = [];
+  return {
+    sent,
+    probes: () => i,
+    onSleep: (f) => (hook = f),
+    deps: {
+      probe: async () => states[Math.min(i++, states.length - 1)]!,
+      send: async (host, credential, ps5) => void sent.push({ host, credential, ps5 }),
+      sleep: async (ms) => {
+        t += ms;
+        hook();
+      },
+      now: () => t,
+    },
+  };
+}
 
 /** The console's side of the stream transport: answers BIG with BANG and the stream info, and records what it gets. */
 class FakeStream implements StreamTransport {
@@ -111,7 +137,7 @@ interface Rig {
   asked: SessionRequestOptions[];
   ctrlEvents: { onLoginPinRequest?: () => void; onClose?: (r: string) => void };
 }
-function rig(o: { store?: ConsoleStore; silentStream?: boolean; ctrlFails?: Error; ctrlFailsFirst?: Error; askPin?: boolean; session?: Ps5LinkOptions['session']; handover?: Ps5LinkOptions['handover'] } = {}): Rig {
+function rig(o: { store?: ConsoleStore; silentStream?: boolean; ctrlFails?: Error; ctrlFailsFirst?: Error; askPin?: boolean; session?: Ps5LinkOptions['session']; handover?: Ps5LinkOptions['handover']; wake?: boolean; wakeDeps?: WakeDeps; wakeOptions?: Ps5LinkOptions['wakeOptions'] } = {}): Rig {
   const store = o.store ?? storeWith([reg(), '192.168.1.50']);
   const research = new StreamResearch();
   const stream = new FakeStream(o.silentStream);
@@ -121,6 +147,7 @@ function rig(o: { store?: ConsoleStore; silentStream?: boolean; ctrlFails?: Erro
   const ctrlEvents: Rig['ctrlEvents'] = {};
   const link = new Ps5Link({
     store, research, streamTimeoutMs: 200, inUseRetryWaitMs: 5, ...(o.handover ? { handover: o.handover } : {}),
+    wake: o.wake ?? true, wakeDeps: o.wakeDeps ?? ALREADY_ON, ...(o.wakeOptions ? { wakeOptions: o.wakeOptions } : {}),
     session: o.session ?? (async (s) => (asked.push(s), grant(s))),
     createCtrl: () => ({
       events: ctrlEvents,
@@ -461,7 +488,7 @@ describe('through the bridge', () => {
       host: '127.0.0.1', port: 0, root, store, research,
       createLink: () =>
         new Ps5Link({
-          store, research, streamTimeoutMs: 200, session: grant, createTransport: () => stream,
+          store, research, streamTimeoutMs: 200, wake: false, session: grant, createTransport: () => stream,
           createCtrl: () => ({ events: {}, connect: async () => {}, waitForSessionId: async () => SESSION_ID, close: () => {} }),
         }),
     });
@@ -517,5 +544,104 @@ describe('through the bridge', () => {
     ws.close();
     await sleep(60);
     assert.equal(rigs[0]!.stream.closed, 1, 'closing the page closes the stream');
+  });
+});
+
+describe('waking a console in rest mode before connecting', () => {
+  // The key as the console store keeps it: the text "1f2e3d4c" (a hexadecimal number) padded with zero bytes.
+  const wakeKey = Buffer.concat([Buffer.from('1f2e3d4c', 'latin1'), Buffer.alloc(8)]);
+  const wakeStore = (): ConsoleStore => storeWith([reg({ registKey: wakeKey }), '192.168.1.50']);
+  const details = (statuses: LinkStatus[]): string[] => statuses.map((s) => s.detail ?? '');
+
+  it('wakes a console that is asleep, waits until it answers, and only then asks for a session', async () => {
+    const c = scripted(['standby', 'standby', 'ready']);
+    const r = rig({ store: wakeStore(), wakeDeps: c.deps, wakeOptions: { settleMs: 0 } });
+    const out = await run(r.link);
+    await r.link.stop();
+    assert.equal(out.error, null);
+    assert.equal(c.sent.length, 1, 'one datagram was enough');
+    assert.deepEqual(c.sent[0], { host: '192.168.1.50', credential: 0x1f2e3d4cn, ps5: true });
+    assert.equal(r.asked.length, 1, 'the session was asked for after the console woke');
+    const d = details(out.statuses);
+    assert.ok(d.some((t) => /대기 모드입니다. 깨우는 중/.test(t)));
+    assert.ok(d.some((t) => /켜졌습니다 .*연결합니다/.test(t)));
+    assert.ok(d.findIndex((t) => /켜졌습니다/.test(t)) < d.findIndex((t) => /세션을 요청하는 중/.test(t)), 'woken first, session second');
+    assert.ok(r.research.stats?.events.some((e) => e.kind === 'wake'));
+  });
+
+  it('sends nothing to a console that is already on', async () => {
+    const c = scripted(['ready']);
+    const r = rig({ store: wakeStore(), wakeDeps: c.deps });
+    const out = await run(r.link);
+    await r.link.stop();
+    assert.equal(out.error, null);
+    assert.equal(c.sent.length, 0);
+    assert.equal(r.asked.length, 1);
+    assert.ok(!details(out.statuses).some((t) => /깨우는 중/.test(t)));
+  });
+
+  it('leaves a console that does not answer at all to the ordinary connection, which says it does not answer', async () => {
+    const c = scripted(['absent']);
+    const r = rig({
+      store: wakeStore(), wakeDeps: c.deps,
+      session: async () => {
+        throw new SessionError('timeout', 'no answer');
+      },
+    });
+    const out = await run(r.link);
+    await r.link.stop();
+    assert.equal(c.sent.length, 0, 'nothing to wake: it is shut down or not there');
+    assert.match(out.error?.message ?? '', /응답하지 않습니다/);
+  });
+
+  it('gives up after the time allowed, sending the datagram again on the way, and says what to check on the console', async () => {
+    const c = scripted(['standby']);
+    const r = rig({ store: wakeStore(), wakeDeps: c.deps, wakeOptions: { timeoutMs: 6000, pollMs: 1000, resendMs: 2000, settleMs: 0 } });
+    const out = await run(r.link);
+    await r.link.stop();
+    assert.match(out.error?.message ?? '', /깨어나지 않았습니다.*네트워크에서 PS5 켜기/);
+    assert.ok(c.sent.length >= 3, `a lost datagram is sent again (${c.sent.length} sent)`);
+    assert.equal(r.asked.length, 0, 'no session is asked for from a console that did not wake');
+  });
+
+  it('keeps waiting while a starting console does not answer for a few seconds', async () => {
+    const c = scripted(['standby', 'absent', 'absent', 'standby', 'ready']);
+    const r = rig({ store: wakeStore(), wakeDeps: c.deps, wakeOptions: { settleMs: 0 } });
+    const out = await run(r.link);
+    await r.link.stop();
+    assert.equal(out.error, null);
+    assert.equal(r.asked.length, 1);
+  });
+
+  it('stops waiting when the person disconnects', async () => {
+    const c = scripted(['standby']);
+    const r = rig({ store: wakeStore(), wakeDeps: c.deps, wakeOptions: { settleMs: 0 } });
+    let polls = 0;
+    c.onSleep(() => {
+      if (++polls === 2) void r.link.stop();
+    });
+    const out = await run(r.link);
+    await r.link.stop();
+    assert.equal(out.error, null, 'a disconnect is not an error');
+    assert.equal(r.asked.length, 0);
+    assert.ok(c.probes() < 10, 'it stopped asking');
+  });
+
+  it('refuses to guess when the stored key cannot make a credential', async () => {
+    const c = scripted(['standby']);
+    const r = rig({ wakeDeps: c.deps }); // the default test key is not a hexadecimal number
+    const out = await run(r.link);
+    await r.link.stop();
+    assert.match(out.error?.message ?? '', /깨우지 못했습니다/);
+    assert.equal(c.sent.length, 0);
+    assert.equal(r.asked.length, 0);
+  });
+
+  it('does not touch the network at all when waking is switched off', async () => {
+    const r = rig({ store: wakeStore(), wake: false, wakeDeps: { probe: async () => assert.fail('no probe'), send: async () => assert.fail('no send'), sleep: async () => {}, now: () => 0 } });
+    const out = await run(r.link);
+    await r.link.stop();
+    assert.equal(out.error, null);
+    assert.equal(r.asked.length, 1);
   });
 });

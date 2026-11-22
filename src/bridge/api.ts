@@ -9,6 +9,8 @@
 //   GET    /api/network           this computer's LAN addresses (the page uses them to tell which kind of route it is on)
 //   POST   /api/session-check     { mac, host? }  asks the console for a session with the stored registration; answers ok
 //                                 or the console's reason. Proves the registration works. Never returns keys or the nonce.
+//   POST   /api/wake              { mac }  sends the wake-up datagram to a console in rest mode (it does not wait; connecting
+//                                 does: the link wakes a console that is in rest mode before it asks for a session)
 //   GET    /api/handover          whether this client hands the console over to this project's other clients, and its name
 //   GET    /api/stream/stats      measurements of the running or last stream (totals, one sample per second, events)
 //   GET    /api/stream/tuning     the settings that can be changed to study the stream
@@ -24,10 +26,10 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-import { discover as realDiscover, type DiscoveredHost } from '../console/discovery.ts';
+import { credentialFromStoredKey, discover as realDiscover, wakeup, type DiscoveredHost } from '../console/discovery.ts';
 import { parseAccountId, register as realRegister, RegistError, type RegisterOptions, type RegisteredConsole } from '../console/regist.ts';
 import { extractLoginCode, fetchAccountId, PSN_LOGIN_URL, PsnAccountError } from '../console/psn-account.ts';
-import { isKnownTarget } from '../console/rpcrypt.ts';
+import { isKnownTarget, isPs5Target } from '../console/rpcrypt.ts';
 import { requestSession, SessionError, type SessionRequestOptions } from '../console/session.ts';
 import os from 'node:os';
 import type { Handover } from './handover.ts';
@@ -45,6 +47,8 @@ export interface ApiOptions {
   psn?: (code: string) => Promise<string>;
   /** Asks a console for a session with a stored registration. Replaced by tests. */
   session?: (opts: SessionRequestOptions) => Promise<unknown>;
+  /** Sends the wake-up datagram to a console in rest mode. Replaced by tests. */
+  wake?: (host: string, credential: bigint, ps5: boolean) => Promise<void>;
   /** Measurements and settings of the stream, for studying its delivery. Without it the /api/stream/ endpoints answer 404. */
   research?: StreamResearch;
   /** Host names the bridge is reached under through a local proxy (see BridgeOptions.trustedHosts). */
@@ -76,6 +80,10 @@ export function localNetworks(): NetworkInterfaceInfo[] {
 /** At most this many PSN exchanges per minute: a mistyped paste should not turn into a stream of requests to Sony. */
 const PSN_PER_MINUTE = 6;
 const psnAttempts: number[] = [];
+/** A wake-up datagram is not sent again for the same console within this time: a held-down button is not a stream of them. */
+const WAKE_MIN_GAP_MS = 3000;
+/** When each console was last sent a wake-up datagram, kept per console store so that two bridges in one process do not share it. */
+const wakeTimes = new WeakMap<object, Map<string, number>>();
 
 const MAX_BODY = 4096;
 const sha = (s: string): Buffer => createHash('sha256').update(s).digest();
@@ -220,6 +228,27 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
       store.setAccountId(accountId);
       // Only the last digits go back, enough to recognise the account. The full value stays in the store.
       json(res, 200, { accountIdSaved: true, hint: Buffer.from(accountId, 'base64').readBigUInt64LE().toString().slice(-4) });
+    } else if (req.method === 'POST' && url.pathname === '/api/wake') {
+      // Wake a console in rest mode: one UDP datagram with the credential made from the stored registration key. It
+      // does not wait for the console (connecting does that); GET /api/discover?host= shows when it says "ready".
+      const body = (await readBody(req)) as { mac?: unknown };
+      if (typeof body.mac !== 'string') return json(res, 400, { error: 'invalid-input', message: 'mac is missing' }), true;
+      const rec = store.get(body.mac);
+      if (!rec) return json(res, 404, { error: 'not-registered', message: 'That console is not registered on this computer' }), true;
+      let credential: bigint;
+      try {
+        credential = credentialFromStoredKey(rec.registKey);
+      } catch {
+        return json(res, 409, { error: 'key-unusable', message: 'The stored registration cannot be used to wake the console. Register it again.' }), true;
+      }
+      const now = Date.now();
+      const lastWake = wakeTimes.get(store) ?? new Map<string, number>();
+      wakeTimes.set(store, lastWake);
+      if (now - (lastWake.get(rec.mac) ?? 0) < WAKE_MIN_GAP_MS) return json(res, 429, { error: 'too-soon', message: 'Wait a few seconds before waking it again' }), true;
+      lastWake.set(rec.mac, now);
+      log(`waking ${rec.nickname || rec.mac} at ${rec.host}`);
+      await (opts.wake ?? ((host, c, ps5) => wakeup(host, c, ps5)))(rec.host, credential, isPs5Target(rec.target));
+      json(res, 200, { ok: true, sent: true });
     } else if (req.method === 'DELETE' && url.pathname.startsWith('/api/consoles/')) {
       const mac = decodeURIComponent(url.pathname.slice('/api/consoles/'.length));
       const removed = store.remove(mac);

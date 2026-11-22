@@ -289,6 +289,60 @@ describe('/api/ endpoints', () => {
     });
   });
 
+  describe('waking a console', () => {
+    // A key a console can be woken with: the text "1f2e3d4c" (a hexadecimal number) padded with zero bytes.
+    const WAKE_KEY = Buffer.concat([Buffer.from('1f2e3d4c', 'latin1'), Buffer.alloc(8)]);
+    const start = async (over: { wake?: (host: string, credential: bigint, ps5: boolean) => Promise<void>; key?: Buffer } = {}) => {
+      const store = new ConsoleStore(path.join(tmp(), 'consoles.json'));
+      const lines: string[] = [];
+      const sent: Array<{ host: string; credential: bigint; ps5: boolean }> = [];
+      const wake = over.wake ?? (async (host: string, credential: bigint, ps5: boolean) => void sent.push({ host, credential, ps5 }));
+      const bridge = await startBridge({ host: '127.0.0.1', port: 0, root, store, createLink: () => new FakeLink(), log: (l) => lines.push(l), api: { wake } });
+      bridges.push(bridge);
+      store.put(registered({ registKey: over.key ?? WAKE_KEY }), '192.168.1.50');
+      return { bridge, store, lines, sent };
+    };
+
+    it('sends the datagram with the credential made from the stored key, and answers without any secret', async () => {
+      const { bridge, lines, sent } = await start();
+      const r = await call(bridge.port, 'POST', '/api/wake', { body: { mac: '0123456789AB' } });
+      assert.equal(r.status, 200);
+      assert.deepEqual(r.json(), { ok: true, sent: true });
+      assert.deepEqual(sent, [{ host: '192.168.1.50', credential: 0x1f2e3d4cn, ps5: true }]);
+      for (const secret of [RP_KEY_HEX, WAKE_KEY.toString('hex'), '1f2e3d4c', '523124044']) {
+        assert.ok(!r.text.includes(secret), `no secret in the answer: ${secret.slice(0, 4)}`);
+        assert.ok(!lines.join('\n').includes(secret), `no secret in the log: ${secret.slice(0, 4)}`);
+      }
+    });
+
+    it('does not send again within a few seconds, so a held-down button is not a stream of datagrams', async () => {
+      const { bridge, sent } = await start();
+      assert.equal((await call(bridge.port, 'POST', '/api/wake', { body: { mac: '0123456789ab' } })).status, 200);
+      assert.equal((await call(bridge.port, 'POST', '/api/wake', { body: { mac: '0123456789ab' } })).status, 429);
+      assert.equal(sent.length, 1);
+    });
+
+    it('refuses an unknown console, missing input, and a key that cannot make a credential', async () => {
+      const { bridge, sent } = await start();
+      assert.equal((await call(bridge.port, 'POST', '/api/wake', { body: { mac: 'ffffffffffff' } })).status, 404);
+      assert.equal((await call(bridge.port, 'POST', '/api/wake', { body: {} })).status, 400);
+      const bad = await start({ key: Buffer.from(REGIST_KEY_HEX, 'hex') }); // "abcdefgh": not a hexadecimal number
+      const r = await call(bad.bridge.port, 'POST', '/api/wake', { body: { mac: '0123456789ab' } });
+      assert.equal(r.status, 409);
+      assert.equal(r.json().error, 'key-unusable');
+      assert.equal(bad.sent.length + sent.length, 0);
+    });
+
+    it('says so when the datagram cannot be sent', async () => {
+      const { bridge } = await start({
+        wake: async () => {
+          throw Object.assign(new Error('unreachable'), { code: 'ENETUNREACH' });
+        },
+      });
+      assert.equal((await call(bridge.port, 'POST', '/api/wake', { body: { mac: '0123456789ab' } })).status, 500);
+    });
+  });
+
   describe('session check and network', () => {
     const seen: Array<Record<string, unknown>> = [];
     const okSession = async (o: Record<string, unknown>): Promise<unknown> => (seen.push(o), { nonce: 'SECRET-NONCE' });
