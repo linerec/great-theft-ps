@@ -9,6 +9,7 @@
   "scripts": {
     "test": "node --test --test-timeout=60000 \"test/*.test.ts\"",
     "dev": "node src/bridge/main.ts",
+    "phone": "node src/bridge/main.ts --phone",
     "bridge": "node src/bridge/main.ts",
     "e2e": "node tools/e2e-browser.mjs",
     "connect": "node tools/connect.mjs",

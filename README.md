@@ -132,7 +132,18 @@ and only by someone who holds your console's registration, is end this copy's st
 
 A browser decodes video only on a secure page, and only `localhost` counts as one without HTTPS. So a phone needs an
 `https://` address. The bridge can serve it itself, with the certificate that Tailscale issues for the computer's name,
-and listen on the computer's Tailscale address only, so that nothing outside your tailnet can reach it:
+and listen on the computer's Tailscale address only, so that nothing outside your tailnet can reach it. One word does it:
+
+```sh
+npm run phone
+```
+
+It reads this computer's tailnet address and name from `tailscale status`, gets the certificate with `tailscale cert`
+when there is none, when it is for another name or when it has two weeks left (the files are kept in `tls/` next to the
+registered consoles), and keeps the port at 8788 so that the address on the phone's home screen stays the same (it does
+not move to another port when 8788 is taken: it stops and says so). It does not change Tailscale's settings. If
+Tailscale is not running or HTTPS certificates are not turned on for the tailnet, it says what to do and does not start.
+Anything typed after it wins, for example `npm run phone -- --no-wake`. By hand, what it does is:
 
 ```sh
 tailscale ip -4                                     # this computer's tailnet address
@@ -143,7 +154,7 @@ npm run bridge -- --port 8788 --host <tailnet address> --tls-cert c.crt --tls-ke
 Open the `https://<name>.<tailnet>.ts.net:8788/#token=...` address that the bridge prints; the token is kept in
 `~/.gtp/bridge-token`, so the address keeps working between starts (delete the file and restart to change it). The Host
 header is then checked against that name and the bound address, so a page under any other name cannot reach the bridge.
-At start the bridge says how long the certificate lasts; renew it with `tailscale cert` and restart before it runs out.
+At start the bridge says how long the certificate lasts; `npm run phone` renews it by itself when it is nearly out.
 The key file is as sensitive as the registration: keep it private. If the address is not this computer's, or Tailscale is
 not running, the bridge says so and does not start.
 

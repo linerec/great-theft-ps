@@ -10,7 +10,9 @@
 //          --trust-host <name>   the HTTPS name another device reaches the bridge under (see below)
 //          --tls-cert <file> --tls-key <file>   serve HTTPS itself, with the files `tailscale cert <name>` writes
 //          --link-sim <profile>  put a simulated mobile network between the bridge and the page (linksim.ts)
-// A phone over Tailscale, without any proxy:
+//          --phone               the bridge for a phone over Tailscale, in one word (`npm run phone`): works out the tailnet
+//                                address, the HTTPS name and the certificate, and keeps port 8788 (see phone.ts)
+// A phone over Tailscale, without any proxy (this is what --phone does for you):
 //   tailscale cert --cert-file c.crt --key-file c.key <name>.<tailnet>.ts.net
 //   node src/bridge/main.ts --host <this computer's tailnet address> --tls-cert c.crt --tls-key c.key --trust-host <name>.<tailnet>.ts.net
 // On this computer (the default) no token is used. With --host set to anything else a token is required: if you do
@@ -25,6 +27,7 @@ import { ConsoleStore, defaultStorePath } from '../console/store.ts';
 import { CoreLink } from './core-link.ts';
 import { Handover } from './handover.ts';
 import { LINK_PROFILES, parseLinkSim } from './linksim.ts';
+import { preparePhone, realPhoneDeps } from './phone.ts';
 import { firstFreePort } from './ports.ts';
 import { Ps5Link, StreamResearch } from './ps5-link.ts';
 import { probeTailscalePath, RunWriter } from './runlog.ts';
@@ -42,6 +45,15 @@ function parseArgs(argv: string[]): Record<string, string[]> {
 }
 
 const args = parseArgs(process.argv.slice(2));
+// --phone fills in the address, the HTTPS name, the certificate and the port as if they had been typed.
+if (args.phone) {
+  try {
+    await preparePhone(args, realPhoneDeps(path.join(path.dirname(defaultStorePath()), 'tls'), (line) => console.log(line)));
+  } catch (error) {
+    console.error(`Phone mode: ${(error as Error).message}`);
+    process.exit(1);
+  }
+}
 const first = (k: string, d: string): string => args[k]?.[0] ?? d;
 const host = first('host', '127.0.0.1');
 // Without --port, 8787 is tried first and, if something else has it, the next ones: `npm run dev` should just work.
