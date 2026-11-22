@@ -3,7 +3,7 @@
 // Browser side of the bridge connection: authentication, pad sending (only when something changed, plus a
 // keepalive), ping/RTT, and input-to-picture latency where the source echoes the input sequence.
 
-import { decodePong, decodeVideo, encodePad, encodePing, MSG, type VideoHeader } from '../src/bridge/protocol.ts';
+import { decodeAudio, decodePong, decodeVideo, encodePad, encodePing, MSG, type VideoHeader } from '../src/bridge/protocol.ts';
 import type { VirtualPadState } from '../src/engine/types.ts';
 
 export type BridgeState = 'idle' | 'connecting' | 'ready' | 'closed';
@@ -22,6 +22,10 @@ export class BridgeClient {
   link = '';
 
   onVideo: (header: VideoHeader, payload: Uint8Array) => void = () => {};
+  /** The console's sound is Opus: the format, once, before the first frame. */
+  onAudioInfo: (info: { channels: number; bits: number; rate: number; frameSize: number }) => void = () => {};
+  /** One Opus frame, or (lost) news that a frame never came. */
+  onAudio: (lost: boolean, payload: Uint8Array) => void = () => {};
   onChange: () => void = () => {};
 
   #ws: WebSocket | null = null;
@@ -124,6 +128,9 @@ export class BridgeClient {
           this.sendPing();
           this.onChange();
         }, 1000);
+      } else if (m.type === 'audio') {
+        const n = (k: string): number => (typeof m[k] === 'number' ? (m[k] as number) : 0);
+        this.onAudioInfo({ channels: n('channels'), bits: n('bits'), rate: n('rate'), frameSize: n('frameSize') });
       } else if (m.type === 'stats') {
         this.serverStats = m;
       } else if (m.type === 'status' || m.type === 'error') {
@@ -140,6 +147,9 @@ export class BridgeClient {
       this.#bytes += bytes.length;
       this.#noteLatency(v.header);
       this.onVideo(v.header, v.payload);
+    } else if (bytes[0] === MSG.AUDIO) {
+      const a = decodeAudio(bytes);
+      if (a) this.onAudio(a.lost, a.payload);
     } else if (bytes[0] === MSG.PONG) {
       const p = decodePong(bytes);
       if (p) this.rttMs = this.rttMs === 0 ? performance.now() - p.clientTime : this.rttMs * 0.7 + (performance.now() - p.clientTime) * 0.3;

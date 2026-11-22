@@ -17,6 +17,7 @@ import { QUALITY_PRESETS, megabytesPerHour, type QualityPreset } from '../src/br
 import { BridgeClient } from './bridge-client.ts';
 import { describeLayout, mountKeymap } from './keymap.ts';
 import { mountTouch, prefersTouch } from './touch.ts';
+import { AudioPlayer } from './audio-player.ts';
 import { VideoPlayer } from './video-player.ts';
 
 const TICK = 0.004;
@@ -42,6 +43,8 @@ const presetProfile = (m: Mode): Profile => (m === 'tps' ? gtaProfile() : defaul
 const client = new BridgeClient();
 const player = new VideoPlayer(document.getElementById('game') as HTMLCanvasElement);
 player.fitCanvas = true;
+/** The console's sound. It is unlocked in the tap that connects (see connectConsole). */
+const audio = new AudioPlayer();
 /** The size the test games draw at. A console's picture resizes the canvas to its own size; this puts it back. */
 const BASE_VIEW = { width: view.width, height: view.height };
 
@@ -453,11 +456,55 @@ void refreshRegistered();
 /** The quality the page asks for when it connects: a console fixes resolution and frame rate when the stream starts. */
 const chosenQuality = (): { preset: string } => ({ preset: $<HTMLSelectElement>('qualityPreset').value });
 function connectConsole(): void {
+  // A browser lets a page make sound only after a tap or click, and this runs in one: unlock before anything is awaited.
+  audio.unlock();
+  audio.close();
   player.close();
   hitchesSeen = 0;
   client.connect(bridgeUrl.value, bridgeToken, consoleMac, chosenQuality(), lockToggle.checked);
 }
 $<HTMLButtonElement>('bridgeConnect').addEventListener('click', connectConsole);
+
+// ---------------------------------------------------------------- the console's sound
+const soundToggle = $<HTMLInputElement>('soundToggle');
+try {
+  soundToggle.checked = localStorage.getItem('gtp.sound') !== '0';
+} catch {
+  /* not remembered */
+}
+audio.setMuted(!soundToggle.checked);
+soundToggle.addEventListener('change', () => {
+  if (soundToggle.checked) audio.unlock(); // a tap: the right moment to let the browser make sound
+  audio.setMuted(!soundToggle.checked);
+  try {
+    localStorage.setItem('gtp.sound', soundToggle.checked ? '1' : '0');
+  } catch {
+    /* not remembered */
+  }
+  showSoundNote();
+});
+// A phone call or an alarm can stop the page's sound, and a browser may not have let it start. Any tap is a chance to
+// let it run again.
+document.addEventListener(
+  'pointerdown',
+  () => {
+    if (soundToggle.checked && client.state === 'ready' && audio.contextState !== 'running' && audio.contextState !== 'none') audio.unlock();
+  },
+  { capture: true, passive: true },
+);
+/** One line about the sound, in words: off, why there is none, or what is playing. */
+function soundNote(): string {
+  const a = audio.stats;
+  if (!soundToggle.checked) return '꺼짐';
+  if (a.state === 'unsupported') return a.reason;
+  if (a.state !== 'playing' || !a.info) return client.state === 'ready' ? '소리를 기다리는 중' : '';
+  if (audio.contextState !== 'running' && !document.hidden) return '브라우저가 소리를 막고 있습니다. 화면을 한 번 탭하세요';
+  const channels = a.info.channels === 1 ? '모노' : a.info.channels === 2 ? '스테레오' : `${a.info.channels}채널`;
+  return `${(a.info.rate / 1000).toFixed(0)} kHz ${channels} · 지연 ${a.delayMs} ms · 끊김 ${a.underruns + a.concealed}회`;
+}
+function showSoundNote(): void {
+  $<HTMLElement>('soundNote').textContent = soundNote();
+}
 
 // A connection that is not locked is handed over when another of this person's clients asks for the console.
 const lockToggle = $<HTMLInputElement>('lockToggle');
@@ -513,6 +560,14 @@ let hitchesSeen = 0;
 const touchToggle = $<HTMLInputElement>('touchToggle');
 const touch = mountTouch($<HTMLElement>('touchLayer'), {
   onDisconnect: () => client.disconnect(),
+  sound: {
+    isOn: () => soundToggle.checked,
+    set: (on) => {
+      soundToggle.checked = on;
+      soundToggle.dispatchEvent(new Event('change'));
+    },
+    note: () => soundNote(),
+  },
   onHide: () => {
     touchToggle.checked = false;
     touchToggle.dispatchEvent(new Event('change'));
@@ -543,11 +598,15 @@ touchToggle.addEventListener('change', () => {
 // A hidden tab is not being watched: do not decode for it and do not count what the browser does to it as hitches.
 document.addEventListener('visibilitychange', () => {
   player.setVisible(!document.hidden);
+  audio.setVisible(!document.hidden);
   if (document.hidden) engine.releaseAll();
 });
 setInterval(() => {
   const sample = player.meter.take();
+  // The sound is held back as much as the picture is, plus a little: they have to stay together.
+  audio.setTargetDelayMs(player.playout.delayMs + 40);
   if (document.hidden) return;
+  showSoundNote();
   if (mode !== 'console' || client.state !== 'ready') return;
   hitchesSeen += sample.hitches;
   const delay = player.playout.delayMs;
@@ -722,6 +781,8 @@ if (mode === 'console') {
 onProfileChanged();
 
 client.onVideo = (header, payload) => player.push(header, payload);
+client.onAudioInfo = (info) => void audio.start(info);
+client.onAudio = (lost, payload) => audio.push(lost, payload);
 player.onNeedKeyframe = () => client.requestKeyframe();
 client.onChange = () => {
   $<HTMLElement>('cStatus').textContent = `${client.state}${client.detail ? ` · ${client.detail}` : ''}`;
@@ -1247,6 +1308,88 @@ async function codecChecks(check: (name: string, ok: boolean, detail?: string) =
     );
   } catch (e) {
     check('H.264 from a real encoder decodes through the player', false, String(e));
+  }
+
+  try {
+    // Sound: a real Opus encoder makes a 440 Hz tone in 10 ms frames, as the console's frames are; they go through the
+    // sound player (decode, schedule) and what reaches the sound card is measured: is it the tone, not silence or noise?
+    const rate = 48000;
+    const frameSize = 480;
+    const frames: Uint8Array[] = [];
+    let encError = '';
+    const enc = new AudioEncoder({
+      output: (c) => {
+        const d = new Uint8Array(c.byteLength);
+        c.copyTo(d);
+        frames.push(d);
+      },
+      error: (e) => (encError = String(e)),
+    });
+    enc.configure({ codec: 'opus', sampleRate: rate, numberOfChannels: 2, bitrate: 96_000, opus: { frameDuration: 10_000, application: 'lowdelay' } } as AudioEncoderConfig);
+    const total = 60;
+    for (let i = 0; i < total; i++) {
+      const pcm = new Float32Array(frameSize * 2); // planar: left, then right
+      for (let n = 0; n < frameSize; n++) {
+        const v = 0.5 * Math.sin((2 * Math.PI * 440 * (i * frameSize + n)) / rate);
+        pcm[n] = v;
+        pcm[frameSize + n] = v;
+      }
+      const data = new AudioData({ format: 'f32-planar', sampleRate: rate, numberOfFrames: frameSize, numberOfChannels: 2, timestamp: i * 10_000, data: pcm });
+      enc.encode(data);
+      data.close();
+    }
+    await enc.flush();
+    // A real audio context, wrapped to see each piece as it is handed to the sound card.
+    const real = new AudioContext();
+    const heard: Float32Array[] = [];
+    const wrapped = {
+      get currentTime() {
+        return real.currentTime;
+      },
+      get state() {
+        return real.state;
+      },
+      destination: real.destination,
+      createBuffer: (c: number, l: number, r: number) => real.createBuffer(c, l, r),
+      createGain: () => real.createGain(),
+      createBufferSource: () => {
+        const node = real.createBufferSource();
+        const start = node.start.bind(node);
+        node.start = (when?: number) => {
+          if (node.buffer && node.buffer.length > 1) heard.push(Float32Array.from(node.buffer.getChannelData(0)));
+          start(when);
+        };
+        return node;
+      },
+      resume: () => real.resume(),
+      suspend: () => real.suspend(),
+      close: () => real.close(),
+    };
+    const sound = new AudioPlayer({ createContext: () => wrapped as never });
+    sound.unlock();
+    await sound.start({ channels: 2, bits: 16, rate, frameSize });
+    // At the pace a console sends them (10 ms a frame; a hair slower, so that nothing piles up and nothing is dropped,
+    // which would break the wave and make the pitch measurement meaningless).
+    for (const f of frames) {
+      sound.push(false, f);
+      await sleep(11);
+    }
+    await until(() => sound.stats.decoded >= frames.length || sound.stats.errors > 0, 3000);
+    // The tone's strength (RMS of 0.5 sine is 0.354) and pitch (zero crossings in the pieces handed over).
+    const flat = heard.flatMap((p) => [...p]);
+    const rms = flat.length ? Math.sqrt(flat.reduce((s, x) => s + x * x, 0) / flat.length) : 0;
+    let crossings = 0;
+    for (let n = 1; n < flat.length; n++) if (flat[n - 1]! < 0 && flat[n]! >= 0) crossings++; // across the pieces' borders too
+    const seconds = flat.length / rate;
+    const hz = seconds > 0 ? crossings / seconds : 0;
+    check(
+      'Opus from a real encoder decodes through the sound player (a 440 Hz tone comes out, at the right strength)',
+      frames.length >= total - 2 && sound.stats.decoded >= frames.length - 1 && sound.stats.errors === 0 && rms > 0.25 && rms < 0.45 && Math.abs(hz - 440) < 30,
+      `${frames.length} frames, ${sound.stats.decoded} decoded, ${sound.stats.errors} errors, rms ${rms.toFixed(3)}, about ${hz.toFixed(0)} Hz${encError ? `, encoder error ${encError}` : ''}${sound.stats.reason ? `, ${sound.stats.reason}` : ''}`,
+    );
+    sound.destroy();
+  } catch (e) {
+    check('Opus from a real encoder decodes through the sound player', false, String(e));
   }
 }
 

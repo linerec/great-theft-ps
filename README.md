@@ -15,8 +15,8 @@ runs in the browser. WebSocket (TCP) is the first transport between browser and 
 the internet.
 
 **What works today, on a real PS5:** finding the console, registering with it, connecting, the picture in the browser
-(H.264, up to 1920x1080 at 60), and keyboard and mouse input reaching the console. **Not there yet:** sound, waking the
-console from rest mode with a button, the login PIN prompt, connecting from outside the home network. It has been used
+(H.264, up to 1920x1080 at 60), and keyboard and mouse input reaching the console. **Written but not yet heard on a real console:** sound (see below). **Not there yet:** the login PIN prompt, connecting from
+outside the home network without a VPN. It has been used
 with one PS5 on one home network; expect rough edges.
 
 "GTP" is short for the project name. This is an unofficial, independent project. See `NOTICE.md` for what it is derived
@@ -32,7 +32,8 @@ from and for trademark notes.
 | Browser client: H.264 through WebCodecs, paced playout, pad sending, quality presets | **working** (Chrome; real-browser checks with and without a console) |
 | Handing the console over between your own clients, with a lock | **working** between two computers (signals checked both ways; see below) |
 | Waking a console in rest mode | works on a real PS5 (woke in 13 s, then accepted a session); not yet tried through the page |
-| Sound (Opus), login PIN, touchpad, HEVC in the page, RTT/MTU test | not built |
+| Sound: Opus from the console to the page (`src/console/audioreceiver.ts`, `web/audio-player.ts`) | **written and tested** with a real browser's Opus encoder and decoder, a 440 Hz tone comes out right; **not yet heard from a real console**. Needs WebCodecs `AudioDecoder` (Chrome; Safari from iOS/macOS 26) and at most two channels |
+| Login PIN, HEVC in the page, RTT/MTU test | not built |
 | Profile sharing registry, WebRTC, PSN (outside the home), desktop and mobile shells | not started |
 | gtp-core (C, libchiaki), an alternative console link | specified, not built (`docs/gtp-core-contract.md`) |
 

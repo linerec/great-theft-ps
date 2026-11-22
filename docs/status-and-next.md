@@ -95,7 +95,19 @@ Also needed for playing away from home:
   the one the console expects. **Not yet seen:** a session asked for right when the console first says "ready"
   (`settleMs`, 1.5 s, is still a guess; the first real use through the page will show whether it needs more), and a
   console with "Enable Turning on PS5 from Network" switched off (it was on here).
-- **Sound.** Nothing is decoded or played yet (Opus in the stream, `AudioDecoder` or Web Audio in the page).
+- **Sound.** Written end to end, checked everywhere except against a real console. The console's audio packets are
+  reassembled in `src/console/audioreceiver.ts` (a port of chiaki-ng's jitter buffer; the copies in a packet are taken
+  before its own frames, on purpose), sent by the bridge as `MSG.AUDIO` frames (a lost frame is a flag, not a gap) after
+  one JSON `{type:'audio'}` message with the format, decoded in the page with WebCodecs `AudioDecoder`, and placed on
+  the sound card's clock by `web/audio-schedule.ts` (cushion that follows the picture's delay + 40 ms; pieces too far
+  ahead are dropped; a lost frame passes in silence). The audio context is made inside the connect tap (iPhone), the
+  audio session is set to "playback" where `navigator.audioSession` exists (silent switch), a hidden tab decodes nothing,
+  any tap wakes a context the phone interrupted. The real-browser check (`npm run e2e`) feeds a 440 Hz tone through a
+  real Opus encoder, the player and Chrome's decoder and measures what reaches the sound card (444 Hz, right strength).
+  **Not yet seen:** the console's real audio header (channel count: browsers decode at most 2, the player says so in
+  words if the PS5 sends more, and then there is no sound), real frames decoding, lip-sync with the picture (the target
+  delay is a guess), an iPhone (iOS before 26 has no `AudioDecoder`: a WASM Opus decoder would be a new dependency, the
+  owner's decision). The first real stream shows the first three.
 - One client per bridge: a second browser gets "another client is connected". The handover rule exists between
   bridges, not between two pages of one bridge. A phone taking over from the PC at home needs that.
 - Replace the link simulator's assumed profiles with a recording from the real mobile line (the page already pings
@@ -142,7 +154,7 @@ next step for keyboard and mouse play.
    from home waits on "does the phone decode it". The iPhone must first be in the tailnet (the Tailscale app, same account).
 2. Waking the console: done and tried once on the real console. What is left is its use through the page, away from
    home, where the session right after the first "ready" gets its real test.
-3. Sound: its absence is felt at once on a phone.
+3. Sound: built; what is left is hearing it from the real console and on the iPhone (see above).
 4. The look calibration on a real console: the largest gain for keyboard and mouse.
 5. Taking over between two pages of one bridge.
 6. Touch layout: size and opacity, moving buttons, a per-game layout. Wait for the first real use; the defaults are

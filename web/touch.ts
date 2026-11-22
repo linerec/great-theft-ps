@@ -53,6 +53,8 @@ export interface TouchHost {
   onDisconnect(): void;
   /** Called when the person turns the touch controls off from the menu. */
   onHide(): void;
+  /** The sound: whether it is on, a way to switch it, and a line saying how it is doing. Left out, the menu has no sound button. */
+  sound?: { isOn(): boolean; set(on: boolean): void; note(): string };
 }
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text = ''): HTMLElementTagNameMap[K] => {
@@ -115,6 +117,20 @@ export function mountTouch(layer: HTMLElement, host: TouchHost): TouchUi {
   slower.addEventListener('click', () => setLook(pad.options.lookScale - 0.5));
   faster.addEventListener('click', () => setLook(pad.options.lookScale + 0.5));
   lookRow.append(slower, lookLabel, faster);
+  const soundRow = el('div', 'tc-row');
+  const soundButton = el('button', 'btn small', '');
+  const soundNote = el('span', 'tc-tip', '');
+  soundButton.type = 'button';
+  const showSound = (): void => {
+    if (!host.sound) return;
+    soundButton.textContent = host.sound.isOn() ? '소리 끄기' : '소리 켜기';
+    soundNote.textContent = host.sound.note();
+  };
+  soundButton.addEventListener('click', () => {
+    host.sound?.set(!host.sound.isOn());
+    showSound();
+  });
+  if (host.sound) soundRow.append(soundButton, soundNote);
   const actions = el('div', 'tc-row');
   const disconnect = el('button', 'btn small', '연결 끊기');
   const hide = el('button', 'btn small', '터치 패드 끄기');
@@ -131,10 +147,11 @@ export function mountTouch(layer: HTMLElement, host: TouchHost): TouchUi {
   close.addEventListener('click', () => (panel.hidden = true));
   actions.append(disconnect, hide, close);
   const tip = el('p', 'tc-tip', '왼쪽 빈 곳 = 왼쪽 스틱, 오른쪽 빈 곳을 끌면 시점. 전체 화면으로 쓰려면 Safari의 공유 → "홈 화면에 추가".');
-  panel.append(status, lookRow, actions, tip);
+  panel.append(...(host.sound ? [status, lookRow, soundRow, actions, tip] : [status, lookRow, actions, tip]));
   menuButton.addEventListener('click', () => {
     panel.hidden = !panel.hidden;
     showLook();
+    showSound();
   });
   layer.append(menuButton, panel);
 
