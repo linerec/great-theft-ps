@@ -42,7 +42,7 @@ from and for trademark notes.
 Requires Node.js 24 or newer. No dependencies to install.
 
 ```sh
-npm run dev      # the bridge to your PS5 (same as npm run bridge); open the printed URL (no token needed on this computer)
+npm run dev      # the bridge to your PS5, for this computer and, over Tailscale, for a phone; open the printed URL
 npm test         # unit and integration tests (node --test)
 npm run e2e      # real-browser end-to-end check (headless Chrome <-> bridge <-> a test double, no console)
 npm run discover # look for PlayStation consoles on the local network
@@ -132,18 +132,22 @@ and only by someone who holds your console's registration, is end this copy's st
 
 A browser decodes video only on a secure page, and only `localhost` counts as one without HTTPS. So a phone needs an
 `https://` address. The bridge can serve it itself, with the certificate that Tailscale issues for the computer's name,
-and listen on the computer's Tailscale address only, so that nothing outside your tailnet can reach it. One word does it:
+and listen on the computer's Tailscale address only, so that nothing outside your tailnet can reach it. There is nothing to start separately: `npm run dev` does it. When Tailscale is running and there is a certificate for this
+computer's name, the same bridge also answers on this computer's tailnet address, over HTTPS, next to its own address:
 
-```sh
-npm run phone
+```
+Open:  http://127.0.0.1:8788/                                  this computer, no token
+Phone (over Tailscale, HTTPS, the token is asked for):  https://<name>.<tailnet>.ts.net:8788/#token=...
 ```
 
-It reads this computer's tailnet address and name from `tailscale status`, gets the certificate with `tailscale cert`
-when there is none, when it is for another name or when it has two weeks left (the files are kept in `tls/` next to the
-registered consoles), and keeps the port at 8788 so that the address on the phone's home screen stays the same (it does
-not move to another port when 8788 is taken: it stops and says so). It does not change Tailscale's settings. If
-Tailscale is not running or HTTPS certificates are not turned on for the tailnet, it says what to do and does not start.
-Anything typed after it wins, for example `npm run phone -- --no-wake`. By hand, what it does is:
+It is one bridge: one client at a time across both addresses, one console link, one set of measurements. The tailnet
+side is bound to the tailnet address only (not the home network, not the internet) and keeps port 8788, so that the
+address on the phone's home screen stays the same; if 8788 is taken it stops and says so rather than moving. The
+certificate is renewed by itself when it has two weeks left. The first certificate is not asked for without being told:
+run `npm run dev -- --phone` once (it asks Tailscale for one; no Tailscale setting is changed). If Tailscale is not
+running, or HTTPS certificates are not turned on for the tailnet, the bridge says what to do and goes on with this
+computer's address alone. `--no-phone` leaves the tailnet side out. Giving `--host`, `--tls-cert` or `--trust-host`
+yourself switches the automatic part off: what you typed is used. By hand, what it does is:
 
 ```sh
 tailscale ip -4                                     # this computer's tailnet address
@@ -154,7 +158,7 @@ npm run bridge -- --port 8788 --host <tailnet address> --tls-cert c.crt --tls-ke
 Open the `https://<name>.<tailnet>.ts.net:8788/#token=...` address that the bridge prints; the token is kept in
 `~/.gtp/bridge-token`, so the address keeps working between starts (delete the file and restart to change it). The Host
 header is then checked against that name and the bound address, so a page under any other name cannot reach the bridge.
-At start the bridge says how long the certificate lasts; `npm run phone` renews it by itself when it is nearly out.
+At start the bridge says how long the certificate lasts.
 The key file is as sensitive as the registration: keep it private. If the address is not this computer's, or Tailscale is
 not running, the bridge says so and does not start.
 

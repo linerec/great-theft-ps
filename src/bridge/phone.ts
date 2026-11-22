@@ -1,24 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `npm run phone`: the bridge for a phone over Tailscale, started with one word. This project's own.
+// Phone access for `npm run dev`: the same bridge also answers on this computer's tailnet address, over HTTPS, so that a
+// phone can use it. This project's own.
 //
-// It fills in what the long command line used to ask for (see the README, "From another device"): this computer's
-// tailnet address (--host), the HTTPS name it has in the tailnet (--trust-host), and the certificate for that name
-// (--tls-cert, --tls-key), getting a new one from `tailscale cert` when there is none, when it is for another name or
-// when it has two weeks left. The port stays 8788 and does not move to another when it is taken: the address on the
-// phone's home screen must keep working. Anything given by hand on the command line wins over what is worked out here.
-//
-// It does not change Tailscale's settings: it reads `tailscale status` and asks `tailscale cert` for the certificate,
-// the same two commands the manual way used. The bridge is bound to the tailnet address only, so it is not reachable
-// from the home network or the internet.
+// planPhone() works out what the long command line used to ask for (see the README, "From another device"): this
+// computer's tailnet address, the HTTPS name it has in the tailnet and the certificate for that name. The certificate
+// comes from `tailscale cert`. Two modes:
+//  - 'auto' (what `npm run dev` does): phone access is switched on when Tailscale is running and there already is a
+//    certificate for this computer's name; a certificate that is nearly out is renewed by itself. A first certificate
+//    is not asked for without being told to: that is `npm run dev -- --phone`, once.
+//  - 'on' (`--phone`): gets the certificate when there is none, when it is for another name or when it is nearly out,
+//    and stops with an explanation if it cannot.
+// Either way it only reads `tailscale status` and asks `tailscale cert` for the certificate: no Tailscale setting is
+// changed. The tailnet side is bound to the tailnet address only, so it is not reachable from the home network or the
+// internet. In 'auto' mode, whatever is missing is reported (as the reason phone access is off), not an error.
 
 import { execFile } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
 import { describeExpiry, loadTls, namesNotCovered, type TlsMaterial } from './tls.ts';
-
-export const PHONE_PORT = '8788';
 
 export interface PhoneDeps {
   /** Run a command and give its output; reject with an error (message = what went wrong) if it fails or takes too long. */
@@ -43,15 +44,21 @@ export const realPhoneDeps = (tlsDir: string, log?: (line: string) => void): Pho
     }),
 });
 
-const set = (args: Record<string, string[]>, key: string, value: string): void => {
-  if (args[key] === undefined) args[key] = [value];
-};
+export interface PhonePlan {
+  /** This computer's tailnet IPv4 address: where the phone side listens. */
+  host: string;
+  /** The HTTPS name this computer has in the tailnet. */
+  name: string;
+  tls: TlsMaterial;
+  certFile: string;
+  keyFile: string;
+}
 
-/**
- * Fill `args` (the bridge's command line, parsed) with what phone mode needs. Throws an Error whose message says what
- * is wrong and what to do about it.
- */
-export async function preparePhone(args: Record<string, string[]>, deps: PhoneDeps): Promise<void> {
+/** Fixed, so that the address on a phone's home screen keeps working. */
+export const PHONE_PORT = 8788;
+
+/** Work out phone access. Throws an Error whose message says what is missing and what to do about it. */
+export async function planPhone(mode: 'auto' | 'on', deps: PhoneDeps): Promise<PhonePlan> {
   const log = deps.log ?? (() => {});
   const now = deps.now ?? (() => new Date());
 
@@ -71,8 +78,8 @@ export async function preparePhone(args: Record<string, string[]>, deps: PhoneDe
     throw new Error('this computer has no name in the tailnet. In the Tailscale admin console, turn on MagicDNS and HTTPS certificates (the DNS page), then try again.');
   }
   const ips = Array.isArray(status.Self?.TailscaleIPs) ? (status.Self.TailscaleIPs as unknown[]) : [];
-  const ip = ips.find((a): a is string => typeof a === 'string' && /^100\.\d+\.\d+\.\d+$/.test(a));
-  if (!ip) throw new Error('this computer has no Tailscale IPv4 address yet. Wait a moment and try again.');
+  const host = ips.find((a): a is string => typeof a === 'string' && /^100\.\d+\.\d+\.\d+$/.test(a));
+  if (!host) throw new Error('this computer has no Tailscale IPv4 address yet. Wait a moment and try again.');
 
   const certFile = path.join(deps.tlsDir, 'bridge.crt');
   const keyFile = path.join(deps.tlsDir, 'bridge.key');
@@ -84,23 +91,27 @@ export async function preparePhone(args: Record<string, string[]>, deps: PhoneDe
       return null;
     }
   };
-  const why = ((): string => {
+  /** What is wrong with the certificate there: nothing, or one of three things. */
+  const state = ((): { kind: 'ok' | 'missing' | 'other-name' | 'ending'; text: string } => {
     try {
       const t = loadTls(certFile, keyFile);
-      if (namesNotCovered(t.names, [name]).length > 0) return `the one there is for another name`;
+      if (namesNotCovered(t.names, [name]).length > 0) return { kind: 'other-name', text: 'the one there is for another name' };
       const expiry = describeExpiry(t.notAfter, now());
-      return expiry.level === 'ok' ? '' : expiry.text;
+      return expiry.level === 'ok' ? { kind: 'ok', text: '' } : { kind: 'ending', text: expiry.text };
     } catch {
-      return 'there is none yet';
+      return { kind: 'missing', text: 'there is none yet' };
     }
   })();
-  if (why) {
-    log(`Getting a certificate for ${name} from Tailscale (${why}) ...`);
+
+  if (state.kind !== 'ok') {
+    if (mode === 'auto' && (state.kind === 'missing' || state.kind === 'other-name')) {
+      throw new Error(`there is no certificate for ${name} yet (${state.text}). Run \`npm run dev -- --phone\` once: it asks Tailscale for one.`);
+    }
+    log(`Getting a certificate for ${name} from Tailscale (${state.text}) ...`);
     mkdirSync(deps.tlsDir, { recursive: true, mode: 0o700 });
     try {
       await deps.run('tailscale', ['cert', '--cert-file', certFile, '--key-file', keyFile, name], 90_000);
-      const fresh = loadTls(certFile, keyFile);
-      log(`Certificate ready: ${describeExpiry(fresh.notAfter, now()).text}.`);
+      log(`Certificate ready: ${describeExpiry(loadTls(certFile, keyFile).notAfter, now()).text}.`);
     } catch (error) {
       const message = (error as Error).message;
       if (usable()) {
@@ -110,12 +121,7 @@ export async function preparePhone(args: Record<string, string[]>, deps: PhoneDe
       }
     }
   }
-
-  set(args, 'host', ip);
-  set(args, 'port', PHONE_PORT);
-  set(args, 'tls-cert', certFile);
-  set(args, 'tls-key', keyFile);
-  const trusted = (args['trust-host'] ??= []);
-  if (!trusted.includes(name)) trusted.push(name);
-  log(`Phone mode: the bridge listens on the tailnet address only, port ${args.port![0]}. After a stream, \`npm run runs\` shows how it went.`);
+  const tls = usable();
+  if (!tls) throw new Error(`the certificate for ${name} cannot be used (see above).`);
+  return { host, name, tls, certFile, keyFile };
 }

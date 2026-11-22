@@ -3,16 +3,19 @@
 // Start the bridge:
 //   node src/bridge/main.ts                          a real PS5 through this project's TypeScript port
 //   node src/bridge/main.ts --link core --core <gtp-core executable> [--core-arg <arg> ...]
-// Options: --host 127.0.0.1  --port 8787 (when not given and 8787 is taken, the next free port is used)  --token <string>  --no-handover  --name <what other clients see>
+// Options: --host 127.0.0.1  --port 8788 (when not given, and phone access is off, the next free port is used if 8788 is taken)  --token <string>  --no-handover  --name <what other clients see>
 //          --no-wake             do not wake a console that is in rest mode when someone connects (the default is to wake it)
 //          --no-runs             do not keep what each stream measured (the default: one JSON file per stream, see runlog.ts)
 //          --runs-dir <folder>   where those files go (default: runs/ next to the registered consoles)
 //          --trust-host <name>   the HTTPS name another device reaches the bridge under (see below)
 //          --tls-cert <file> --tls-key <file>   serve HTTPS itself, with the files `tailscale cert <name>` writes
 //          --link-sim <profile>  put a simulated mobile network between the bridge and the page (linksim.ts)
-//          --phone               the bridge for a phone over Tailscale, in one word (`npm run phone`): works out the tailnet
-//                                address, the HTTPS name and the certificate, and keeps port 8788 (see phone.ts)
-// A phone over Tailscale, without any proxy (this is what --phone does for you):
+//          --phone               set up phone access (once): asks Tailscale for the certificate if there is none (see phone.ts)
+//          --no-phone            do not answer on the tailnet address, whatever else is there
+// Phone access is automatic: when Tailscale is running and there is a certificate for this computer's name, the same
+// bridge also answers on the tailnet address over HTTPS (port 8788, the token is asked for), next to this computer's own
+// address (no token). Giving --host, --tls-cert or --trust-host yourself switches that off: what you typed is used.
+// A phone over Tailscale, without any proxy (this is what the automatic way does for you):
 //   tailscale cert --cert-file c.crt --key-file c.key <name>.<tailnet>.ts.net
 //   node src/bridge/main.ts --host <this computer's tailnet address> --tls-cert c.crt --tls-key c.key --trust-host <name>.<tailnet>.ts.net
 // On this computer (the default) no token is used. With --host set to anything else a token is required: if you do
@@ -27,7 +30,7 @@ import { ConsoleStore, defaultStorePath } from '../console/store.ts';
 import { CoreLink } from './core-link.ts';
 import { Handover } from './handover.ts';
 import { LINK_PROFILES, parseLinkSim } from './linksim.ts';
-import { preparePhone, realPhoneDeps } from './phone.ts';
+import { PHONE_PORT, planPhone, realPhoneDeps, type PhonePlan } from './phone.ts';
 import { firstFreePort } from './ports.ts';
 import { Ps5Link, StreamResearch } from './ps5-link.ts';
 import { probeTailscalePath, RunWriter } from './runlog.ts';
@@ -45,20 +48,28 @@ function parseArgs(argv: string[]): Record<string, string[]> {
 }
 
 const args = parseArgs(process.argv.slice(2));
-// --phone fills in the address, the HTTPS name, the certificate and the port as if they had been typed.
-if (args.phone) {
-  try {
-    await preparePhone(args, realPhoneDeps(path.join(path.dirname(defaultStorePath()), 'tls'), (line) => console.log(line)));
-  } catch (error) {
-    console.error(`Phone mode: ${(error as Error).message}`);
-    process.exit(1);
-  }
-}
 const first = (k: string, d: string): string => args[k]?.[0] ?? d;
 const host = first('host', '127.0.0.1');
-// Without --port, 8787 is tried first and, if something else has it, the next ones: `npm run dev` should just work.
-const wantedPort = Number(first('port', '8787'));
-const port = args.port !== undefined ? wantedPort : await firstFreePort(host, wantedPort);
+
+// Phone access: the same bridge also answers on this computer's tailnet address, over HTTPS (see phone.ts). Off when the
+// address or the TLS files were typed by hand, with --no-phone, or when Tailscale is not ready (then it says why).
+let phone: PhonePlan | null = null;
+if (!args['no-phone'] && args.host === undefined && args['tls-cert'] === undefined && args['trust-host'] === undefined && first('link', 'ps5') === 'ps5') {
+  try {
+    phone = await planPhone(args.phone ? 'on' : 'auto', realPhoneDeps(path.join(path.dirname(defaultStorePath()), 'tls'), (line) => console.log(line)));
+  } catch (error) {
+    if (args.phone) {
+      console.error(`Phone access: ${(error as Error).message}`);
+      process.exit(1);
+    }
+    console.log(`Phone access is off: ${(error as Error).message}`);
+  }
+}
+
+// Without --port, 8788 is tried first and, if something else has it, the next ones: `npm run dev` should just work.
+// With phone access the port stays 8788 whatever happens: the address on the phone's home screen must keep working.
+const wantedPort = Number(first('port', String(PHONE_PORT)));
+const port = args.port !== undefined || phone ? wantedPort : await firstFreePort(host, wantedPort);
 if (port === null) {
   console.error(`No free port from ${wantedPort} to ${wantedPort + 19} on ${host}. Choose one with --port.`);
   process.exit(1);
@@ -146,6 +157,7 @@ const bridge = await startBridge({
   ...(token !== undefined ? { token } : {}),
   ...(trustHosts.length > 0 ? { trustedHosts: trustHosts } : {}),
   ...(tls ? { tls: { cert: tls.cert, key: tls.key } } : {}),
+  ...(phone ? { also: [{ host: phone.host, port, token: args.token?.[0] ?? keptToken(), trustedHosts: [phone.name], tls: { cert: phone.tls.cert, key: phone.tls.key } }] } : {}),
   ...(linkSim ? { linkSim } : {}),
   root,
   store,
@@ -157,6 +169,7 @@ const bridge = await startBridge({
     linkKind === 'ps5' ? new Ps5Link({ store, research, log, ...(handover ? { handover } : {}), ...(args['no-wake'] ? { wake: false } : {}) }) : new CoreLink({ command: first('core', ''), args: args['core-arg'] ?? [], log }),
 }).catch((error: Error) => {
   console.error(`Could not start the bridge: ${error.message}`);
+  if (phone) console.error(`Phone access keeps port ${port} so that the address on the phone keeps working. Is another \`npm run dev\` still running? (--no-phone starts without phone access.)`);
   process.exit(1);
 });
 
@@ -168,6 +181,12 @@ if (tls) {
   console.log(`HTTPS: ${expiry.text}.${expiry.level === 'soon' ? ' Run `tailscale cert <name>` again and restart the bridge before it runs out.' : ''}`);
   const missing = namesNotCovered(tls.names, trustHosts.map((h) => h.toLowerCase()));
   if (missing.length > 0) console.log(`WARNING: the certificate is not for ${missing.join(', ')}, so a browser will refuse the connection under that name. It is for: ${tls.names.join(', ') || '(no DNS names)'}.`);
+}
+if (phone && bridge.also[0]) {
+  const expiry = describeExpiry(phone.tls.notAfter);
+  console.log(`Phone (over Tailscale, HTTPS, the token is asked for):  https://${phone.name}:${bridge.also[0].port}/#token=${args.token?.[0] ?? keptToken()}`);
+  console.log(`  ${expiry.text}; it is renewed by itself when nearly out. Only devices in your tailnet can reach it, and anyone who has this address can press buttons on your console. The token stays the same between starts.`);
+  console.log('  After a stream ends, `npm run runs` shows how it went.');
 }
 for (const name of trustHosts) console.log(`From another device (${tls ? 'directly over HTTPS' : 'through the HTTPS proxy on this computer'}):  https://${name}${tls ? `:${bridge.port}` : ''}/#token=${token}`);
 if (trustHosts.length > 0) console.log('Whoever can reach that address and has the token can press buttons on your console. The token stays the same between starts.');

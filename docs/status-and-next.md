@@ -25,9 +25,9 @@ things work (`README.md`, `docs/ts-protocol-port.md`, `docs/stream-research.md`,
 
 ## Comparing ways of connecting (the owner wants to try them all)
 
-Starting: `npm run phone` for the phone-facing bridge (tailnet address, HTTPS, port 8788, token kept), `npm run dev`
-for one on this computer only (loopback; it takes the next free port when 8787 is taken, so it can run beside the phone
-one). A stream's numbers: `npm run runs`.
+Starting: `npm run dev`, one bridge, one process: this computer's own address (http, no token) and, when Tailscale is
+running and a certificate exists, the tailnet address over HTTPS with the token, port 8788 for both (`--phone` once to get
+the first certificate, `--no-phone` to leave the tailnet side out). A stream's numbers: `npm run runs`.
 
 Every stream the bridge carries is kept when it ends (`src/bridge/runlog.ts`, `npm run runs`), with the client's kind,
 device and tailnet path. The ways to compare, and who can run them:
@@ -79,7 +79,8 @@ Decided:
   has expired), checks that the key belongs to the certificate, and warns when a `--trust-host` name is not one of the
   certificate's names.
 - Used with `--host <the tailnet address>` (a token is mandatory off loopback) and `--trust-host <name>`. Command on
-  the Mac: `npm run phone`, which works those arguments out (`src/bridge/phone.ts`); by hand it is
+  the Mac: `npm run dev`, which works those arguments out (`src/bridge/phone.ts`) and serves the tailnet address next to
+  loopback from the same bridge (`BridgeOptions.also`); by hand it is
   `npm run bridge -- --port 8788 --host <100.x address> --tls-cert <crt> --tls-key <key> --trust-host <name>`.
 - The Host check is closed: off loopback with names trusted, only those names and the bound address are answered (and
   the loopback names when bound to every address), so a page under another name that points at this computer (DNS

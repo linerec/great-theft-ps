@@ -36,6 +36,16 @@ const SILENCE_MS = 2000;
 const BACKPRESSURE_BYTES = 1_500_000;
 const MAX_PADS_PER_SECOND = 2000;
 
+/** One more address the same bridge answers on, with its own token, TLS and trusted names (see BridgeOptions.also). */
+export interface ExtraListener {
+  host: string;
+  port: number;
+  /** Required: an extra address is for other devices, which must show it. */
+  token: string;
+  trustedHosts?: string[];
+  tls?: { cert: string | Buffer; key: string | Buffer };
+}
+
 export interface BridgeOptions {
   host: string;
   port: number;
@@ -53,6 +63,12 @@ export interface BridgeOptions {
    * The WebSocket then runs over TLS as well (wss), on the same port.
    */
   tls?: { cert: string | Buffer; key: string | Buffer };
+  /**
+   * More addresses this same bridge answers on, for example this computer's tailnet address with TLS and a token next to
+   * the loopback address without. There is still one bridge: one client at a time across all of them, one console link,
+   * one set of measurements.
+   */
+  also?: ExtraListener[];
   root: string;
   createLink: () => ConsoleLink;
   /** Where registered consoles are kept. Without it the /api/ endpoints are off. */
@@ -78,50 +94,77 @@ export interface BridgeOptions {
 export interface Bridge {
   port: number;
   url: string;
+  /** The other addresses (see BridgeOptions.also), in the order given. */
+  also: Array<{ port: number; url: string }>;
   close(): Promise<void>;
+}
+
+/** What differs between the addresses the bridge answers on. */
+interface Face {
+  host: string;
+  port: number;
+  token: string | undefined;
+  /** Host names reached through a proxy or the tailnet name (lower case). */
+  trusted: string[];
+  tls: { cert: string | Buffer; key: string | Buffer } | undefined;
+  /** The port actually bound (differs from `port` when that is 0). */
+  bound: number;
+}
+
+function makeFace(l: { host: string; port: number; token?: string | undefined; trustedHosts?: string[] | undefined; tls?: { cert: string | Buffer; key: string | Buffer } | undefined }): Face {
+  const loopbackOnly = l.host === '127.0.0.1' || l.host === 'localhost' || l.host === '::1';
+  if (!loopbackOnly && !l.token) throw new Error(`listening on ${l.host} (beyond this computer) requires a token: pass --token or leave --host out`);
+  const trusted = (l.trustedHosts ?? []).map((h) => hostName(h)).filter(Boolean);
+  if (trusted.length > 0 && !l.token) throw new Error('trusting a host name lets other devices in through a proxy, which requires a token');
+  return { host: l.host, port: l.port, token: l.token, trusted, tls: l.tls, bound: l.port };
 }
 
 const sha = (s: string): Buffer => createHash('sha256').update(s).digest();
 
 export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
   const log = opts.log ?? (() => {});
-  const loopbackOnly = opts.host === '127.0.0.1' || opts.host === 'localhost' || opts.host === '::1';
-  if (!loopbackOnly && !opts.token) throw new Error(`listening on ${opts.host} (beyond this computer) requires a token: pass --token or leave --host out`);
-  const trusted = (opts.trustedHosts ?? []).map((h) => hostName(h)).filter(Boolean);
-  if (trusted.length > 0 && !opts.token) throw new Error('trusting a host name lets other devices in through a proxy, which requires a token');
-  /** Was the request sent to an address this bridge answers to? (Keeps a web page from reaching it under another name.) */
-  const hostOk = (host: string | undefined): boolean => hostAllowed(host, { bound: opts.host, port: boundPort, trusted });
+  const faces: Face[] = [
+    makeFace(opts),
+    ...(opts.also ?? []).map((l) => {
+      if (!l.token) throw new Error('an extra address is for other devices and needs a token');
+      return makeFace(l);
+    }),
+  ];
   let active: { conn: WsConnection; stop(): Promise<void> } | null = null;
   const connections = new Set<WsConnection>();
-  let boundPort = opts.port;
 
-  const handle: http.RequestListener = (req, res) => {
-    if (!hostOk(req.headers.host)) return send(res, 421, { 'Content-Type': 'text/plain' }, 'Misdirected request');
-    if (opts.store && (req.url ?? '').startsWith('/api/')) {
-      const api: ApiOptions = { store: opts.store, ...(opts.token !== undefined ? { token: opts.token } : {}), ...(opts.research ? { research: opts.research } : {}), ...(opts.handover ? { handover: opts.handover } : {}), ...(trusted.length ? { trustedHosts: trusted } : {}), ...opts.api, log };
-      void handleApi(req, res, api).catch(() => send(res, 500, { 'Content-Type': 'text/plain' }, 'error'));
-      return;
-    }
-    void handleStatic(req, res, opts.root);
+  /** One HTTP(S) server for one address: the same page, API and WebSocket, with that address's own rules. */
+  const serverFor = (face: Face): http.Server => {
+    /** Was the request sent to an address this bridge answers to? (Keeps a web page from reaching it under another name.) */
+    const hostOk = (host: string | undefined): boolean => hostAllowed(host, { bound: face.host, port: face.bound, trusted: face.trusted });
+    const handle: http.RequestListener = (req, res) => {
+      if (!hostOk(req.headers.host)) return send(res, 421, { 'Content-Type': 'text/plain' }, 'Misdirected request');
+      if (opts.store && (req.url ?? '').startsWith('/api/')) {
+        const api: ApiOptions = { store: opts.store, ...(face.token !== undefined ? { token: face.token } : {}), ...(opts.research ? { research: opts.research } : {}), ...(opts.handover ? { handover: opts.handover } : {}), ...(face.trusted.length ? { trustedHosts: face.trusted } : {}), ...opts.api, log };
+        void handleApi(req, res, api).catch(() => send(res, 500, { 'Content-Type': 'text/plain' }, 'error'));
+        return;
+      }
+      void handleStatic(req, res, opts.root);
+    };
+    // Both kinds of server emit 'upgrade' for the WebSocket handshake, so everything below works for either.
+    const server: http.Server = face.tls ? https.createServer({ cert: face.tls.cert, key: face.tls.key }, handle) : http.createServer(handle);
+    server.on('upgrade', (req, socket, head) => {
+      const url = new URL(req.url ?? '/', 'http://localhost');
+      if (url.pathname !== '/ws') return void socket.destroy();
+      if (!hostOk(req.headers.host)) return void socket.end('HTTP/1.1 421 Misdirected Request\r\nConnection: close\r\n\r\n');
+      // Same-origin only (or a trusted host name). Browsers always send Origin on WebSocket handshakes.
+      if (!originAllowed(req.headers.origin, req.headers.host, face.trusted)) return void socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+      const conn = acceptUpgrade(req, socket, head, MAX_MESSAGE_BYTES);
+      if (conn) {
+        connections.add(conn);
+        const net = socket as { remoteAddress?: string; localAddress?: string };
+        handleClient(conn, { remote: net.remoteAddress, local: net.localAddress, userAgent: req.headers['user-agent'] }, face);
+      }
+    });
+    return server;
   };
-  // Both kinds of server emit 'upgrade' for the WebSocket handshake, so everything below works for either.
-  const server: http.Server = opts.tls ? https.createServer({ cert: opts.tls.cert, key: opts.tls.key }, handle) : http.createServer(handle);
 
-  server.on('upgrade', (req, socket, head) => {
-    const url = new URL(req.url ?? '/', 'http://localhost');
-    if (url.pathname !== '/ws') return void socket.destroy();
-    if (!hostOk(req.headers.host)) return void socket.end('HTTP/1.1 421 Misdirected Request\r\nConnection: close\r\n\r\n');
-    // Same-origin only (or a trusted host name). Browsers always send Origin on WebSocket handshakes.
-    if (!originAllowed(req.headers.origin, req.headers.host, trusted)) return void socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
-    const conn = acceptUpgrade(req, socket, head, MAX_MESSAGE_BYTES);
-    if (conn) {
-      connections.add(conn);
-      const net = socket as { remoteAddress?: string; localAddress?: string };
-      handleClient(conn, { remote: net.remoteAddress, local: net.localAddress, userAgent: req.headers['user-agent'] });
-    }
-  });
-
-  function handleClient(conn: WsConnection, from: { remote?: string | undefined; local?: string | undefined; userAgent?: string | undefined }): void {
+  function handleClient(conn: WsConnection, from: { remote?: string | undefined; local?: string | undefined; userAgent?: string | undefined }, face: Face): void {
     let authed = false;
     let link: ConsoleLink | null = null;
     let lastSeq = 0;
@@ -176,7 +219,7 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
     conn.onClose = () => void cleanup();
 
     async function authenticate(msg: ClientControl): Promise<void> {
-      const tokenOk = opts.token === undefined || (typeof msg.token === 'string' && timingSafeEqual(sha(msg.token), sha(opts.token)));
+      const tokenOk = face.token === undefined || (typeof msg.token === 'string' && timingSafeEqual(sha(msg.token), sha(face.token)));
       if (msg.type !== 'hello' || !tokenOk) {
         sendJson({ type: 'error', code: 'unauthorized', message: 'bad token' });
         return conn.close(4401, 'unauthorized');
@@ -330,27 +373,42 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
     }
   }
 
-  if (opts.port !== 0) {
-    const probeHost = probeHostFor(opts.host);
-    if (await portInUse(probeHost, opts.port)) {
-      throw new Error(`port ${opts.port} on ${probeHost} is already in use by another program. Choose another one with --port.`);
+  for (const face of faces) {
+    if (face.port === 0) continue;
+    const probeHost = probeHostFor(face.host);
+    if (await portInUse(probeHost, face.port)) {
+      throw new Error(`port ${face.port} on ${probeHost} is already in use by another program. Choose another one with --port.`);
     }
   }
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', (error) => reject(explainListenError(error as NodeJS.ErrnoException, opts.host, opts.port)));
-    server.listen(opts.port, opts.host, resolve);
-  });
-  boundPort = (server.address() as AddressInfo).port;
-  const shownHost = opts.host === '0.0.0.0' ? '127.0.0.1' : opts.host;
+  const servers: http.Server[] = [];
+  try {
+    for (const face of faces) {
+      const server = serverFor(face);
+      await new Promise<void>((resolve, reject) => {
+        server.once('error', (error) => reject(explainListenError(error as NodeJS.ErrnoException, face.host, face.port)));
+        server.listen(face.port, face.host, resolve);
+      });
+      face.bound = (server.address() as AddressInfo).port;
+      servers.push(server);
+    }
+  } catch (error) {
+    // One address failed: do not leave the ones that did start running.
+    for (const server of servers) server.close();
+    throw error;
+  }
+  const urlOf = (face: Face): string => `${face.tls ? 'https' : 'http'}://${face.host === '0.0.0.0' ? '127.0.0.1' : face.host}:${face.bound}/`;
   return {
-    port: boundPort,
-    url: `${opts.tls ? 'https' : 'http'}://${shownHost}:${boundPort}/`,
+    port: faces[0]!.bound,
+    url: urlOf(faces[0]!),
+    also: faces.slice(1).map((f) => ({ port: f.bound, url: urlOf(f) })),
     close: async () => {
       // Upgraded sockets are not tracked by http.Server, so close every WebSocket ourselves.
       for (const c of [...connections]) c.close(1001, 'bridge closing');
       await active?.stop();
-      server.closeAllConnections?.();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      for (const server of servers) {
+        server.closeAllConnections?.();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
     },
   };
 }
