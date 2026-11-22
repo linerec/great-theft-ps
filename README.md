@@ -31,7 +31,7 @@ from and for trademark notes.
 | Bridge: WebSocket server, safety, API, measurements | **working** |
 | Browser client: H.264 through WebCodecs, paced playout, pad sending, quality presets | **working** (Chrome; real-browser checks with and without a console) |
 | Handing the console over between your own clients, with a lock | **working** between two computers (signals checked both ways; see below) |
-| Waking a console in rest mode | built and tested without a console; not yet sent to a real one |
+| Waking a console in rest mode | works on a real PS5 (woke in 13 s, then accepted a session); not yet tried through the page |
 | Sound (Opus), login PIN, touchpad, HEVC in the page, RTT/MTU test | not built |
 | Profile sharing registry, WebRTC, PSN (outside the home), desktop and mobile shells | not started |
 | gtp-core (C, libchiaki), an alternative console link | specified, not built (`docs/gtp-core-contract.md`) |
