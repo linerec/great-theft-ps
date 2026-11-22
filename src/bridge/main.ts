@@ -5,6 +5,8 @@
 //   node src/bridge/main.ts --link core --core <gtp-core executable> [--core-arg <arg> ...]
 // Options: --host 127.0.0.1  --port 8787  --token <string>  --no-handover  --name <what other clients see>
 //          --no-wake             do not wake a console that is in rest mode when someone connects (the default is to wake it)
+//          --no-runs             do not keep what each stream measured (the default: one JSON file per stream, see runlog.ts)
+//          --runs-dir <folder>   where those files go (default: runs/ next to the registered consoles)
 //          --trust-host <name>   the HTTPS name another device reaches the bridge under (see below)
 //          --tls-cert <file> --tls-key <file>   serve HTTPS itself, with the files `tailscale cert <name>` writes
 //          --link-sim <profile>  put a simulated mobile network between the bridge and the page (linksim.ts)
@@ -24,6 +26,7 @@ import { CoreLink } from './core-link.ts';
 import { Handover } from './handover.ts';
 import { LINK_PROFILES, parseLinkSim } from './linksim.ts';
 import { Ps5Link, StreamResearch } from './ps5-link.ts';
+import { probeTailscalePath, RunWriter } from './runlog.ts';
 import { startBridge } from './server.ts';
 import { describeExpiry, loadTls, namesNotCovered, type TlsMaterial } from './tls.ts';
 
@@ -106,6 +109,12 @@ if (linkSimName && !linkSim) {
 }
 const store = new ConsoleStore(defaultStorePath());
 const research = new StreamResearch();
+// What each stream measured is kept in one file when it ends, so that ways of connecting can be compared (npm run runs).
+const runsDir = args['runs-dir']?.[0] ?? path.join(path.dirname(defaultStorePath()), 'runs');
+if (!args['no-runs'] && linkKind === 'ps5') {
+  const runs = new RunWriter({ dir: runsDir, log });
+  research.onFinished = (snapshot) => void runs.write(snapshot);
+}
 // This project's clients hand the console over among themselves (handover.ts). That needs a listener on the local
 // network: UDP, readable and writable only with the same console registration, and all it can do is end this
 // client's stream. --no-handover leaves it out.
@@ -121,6 +130,7 @@ const bridge = await startBridge({
   root,
   store,
   research,
+  pathProbe: probeTailscalePath,
   ...(handover ? { handover } : {}),
   log,
   createLink: () =>

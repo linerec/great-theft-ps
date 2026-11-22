@@ -617,7 +617,7 @@ setInterval(() => {
   // The bridge keeps these next to its own measurements (GET /api/stream/stats), so a study sees both ends.
   client.sendJson({
     type: 'display', mode: player.playout.mode, delayMs: Math.round(delay * 10) / 10, intervalMs: Math.round(player.playout.intervalMs * 1000) / 1000,
-    worstLateMs: Math.round(player.playout.worstLateMs * 10) / 10, waiting: player.waiting, ...sample,
+    worstLateMs: Math.round(player.playout.worstLateMs * 10) / 10, waiting: player.waiting, rttMs: Math.round(client.rttMs), sound: audio.stats.state, ...sample,
   });
 }, 1000);
 $<HTMLButtonElement>('bridgeDisconnect').addEventListener('click', () => client.disconnect());

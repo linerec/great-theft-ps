@@ -23,6 +23,26 @@ things work (`README.md`, `docs/ts-protocol-port.md`, `docs/stream-research.md`,
 | `--tls-cert` / `--tls-key` (HTTPS by the bridge, option B) | unit tests and real TLS handshakes with a throwaway certificate (page and `wss` upgrade); started once on loopback with the real `tailscale cert` files and checked with curl against the system's trust store (trusted, 200; a foreign Host gets 421); **never reached from another device, never bound to the tailnet address** |
 | Mouse carry-over | simulation and tests; **not yet tried in a game** |
 
+## Comparing ways of connecting (the owner wants to try them all)
+
+Every stream the bridge carries is kept when it ends (`src/bridge/runlog.ts`, `npm run runs`), with the client's kind,
+device and tailnet path. The ways to compare, and who can run them:
+
+| # | Way | Measured by | Who runs it |
+|---|---|---|---|
+| A | chiaki-ng on a computer in the home network, straight to the console (the reference client; it keeps no statistics, so this is by eye or by camera) | feel; its on-screen numbers if it shows any | owner at the computer (installed under ~/Applications) |
+| B | this bridge and a browser on the same computer (no network hop) | the run file | Claude, with the owner's go-ahead for a real stream |
+| C | the bridge on one computer, a page on another in the home network (Wi-Fi) | the run file | owner's other computer or the phone on home Wi-Fi |
+| D | the bridge, the phone on a mobile line, through Tailscale | the run file (`from` says tailnet, `path` says direct or relay) | owner, away from home |
+| E | Sony's own app on the phone over a mobile line (Sony's path) | feel only; it shows nothing | owner |
+
+What each number answers. `lost fr %` and `lost units %` are the console-to-bridge leg (home network, error correction
+included); `to page dropped %` is the bridge-to-page leg (what the TCP connection could not carry in time: this is where
+a mobile line shows); `RTT` is the page's round trip to the bridge; `shown delay` is the pacing delay the page added.
+Only B, C and D give numbers; the same latency measure across A to E is a camera one: film the console's screen and the
+client's screen together while pressing a button, and count frames. For D, `path` matters most: a relay adds a detour
+that no setting here can remove. Keep the game, the scene and the quality the same across runs.
+
 ## In progress: playing away from home on an iPhone
 
 Goal set by the owner: play smoothly over mobile internet on an iPhone, by touch. Picture quality may be given up.

@@ -25,6 +25,7 @@ import type { Handover } from './handover.ts';
 import { DelayLine, type LinkSimProfile } from './linksim.ts';
 import type { StreamResearch } from './ps5-link.ts';
 import { portInUse } from './ports.ts';
+import { classifyClient, coarseDevice, probeWithin, type PathProbe } from './runlog.ts';
 import { handleStatic, hostAllowed, hostName, originAllowed, send } from './static.ts';
 import { explainListenError } from './tls.ts';
 import { acceptUpgrade, type WsConnection } from './ws.ts';
@@ -58,6 +59,8 @@ export interface BridgeOptions {
   store?: ConsoleStore;
   /** Measurements and settings of the stream (see /api/stream/). */
   research?: StreamResearch;
+  /** Asks how the way to a tailnet client looks (direct or through a relay), to be kept with the run. Off without it. */
+  pathProbe?: PathProbe;
   /** Handing the console over between this project's clients (see /api/handover). */
   handover?: Handover;
   /**
@@ -113,11 +116,12 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
     const conn = acceptUpgrade(req, socket, head, MAX_MESSAGE_BYTES);
     if (conn) {
       connections.add(conn);
-      handleClient(conn);
+      const net = socket as { remoteAddress?: string; localAddress?: string };
+      handleClient(conn, { remote: net.remoteAddress, local: net.localAddress, userAgent: req.headers['user-agent'] });
     }
   });
 
-  function handleClient(conn: WsConnection): void {
+  function handleClient(conn: WsConnection, from: { remote?: string | undefined; local?: string | undefined; userAgent?: string | undefined }): void {
     let authed = false;
     let link: ConsoleLink | null = null;
     let lastSeq = 0;
@@ -147,6 +151,13 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
       }
     };
 
+    /** Ask how the way to this client looks, if it is on the tailnet and a probe is there; give up after `ms`. */
+    const notePath = async (ms: number): Promise<void> => {
+      if (!opts.pathProbe || !opts.research || !from.remote || classifyClient(from.remote, from.local) !== 'tailnet') return;
+      const found = await probeWithin(opts.pathProbe, from.remote, ms);
+      if (found) opts.research.notePath(found);
+    };
+
     const cleanup = async (): Promise<void> => {
       if (closed) return;
       closed = true;
@@ -157,6 +168,7 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
       timers.forEach(clearInterval);
       release();
       if (active?.conn === conn) active = null;
+      await notePath(1500); // the way to a phone is worth knowing at the end too: it can change from relay to direct
       await link?.stop();
       log('client disconnected');
     };
@@ -227,6 +239,8 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
       }
       sendJson({ type: 'ready', link: link.name, quality });
       log(`client connected, link=${link.name}`);
+      opts.research?.setClient({ kind: classifyClient(from.remote, from.local), device: coarseDevice(from.userAgent) });
+      timers.push(setTimeout(() => void notePath(4000), 10_000));
 
       timers.push(
         setInterval(() => {
@@ -240,6 +254,7 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
             padsPerSecond: padsLastSecond,
             lastPad: { buttons: lastPadWire.buttons, l2: lastPadWire.l2, r2: lastPadWire.r2, lx: lastPadWire.lx, ly: lastPadWire.ly, rx: lastPadWire.rx, ry: lastPadWire.ry },
           });
+          opts.research?.addLeg({ frames: counters.frames, kbps: Math.round((counters.bytes * 8) / 1000), dropped: counters.dropped });
           counters.frames = 0;
           counters.bytes = 0;
           counters.dropped = 0;

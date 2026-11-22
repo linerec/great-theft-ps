@@ -151,6 +151,16 @@ not running, the bridge says so and does not start.
 Do not use `tailscale serve` for this on a computer that already publishes something with Tailscale Funnel: a serve
 command can change what Funnel serves. `--trust-host` also works behind an HTTPS proxy on the same computer.
 
+### Comparing ways of connecting
+
+When a stream ends (and lasted at least five seconds) the bridge keeps what it measured in one file in `runs/` next to
+the registered consoles: how frames arrived from the console (loss, error correction, evenness), how many the bridge had
+to leave out because the page was behind, what the page put on the screen (hitches, delay, its round trip to the
+bridge), the sound, and who watched, coarsely: this computer, the tailnet, the local network or elsewhere; the kind of
+device; for a tailnet client whether the path was direct or went through a relay. No addresses are kept.
+`npm run runs` prints one line per run, so a run over home Wi-Fi and one over a mobile line can be read side by side;
+`npm run runs -- --detail 1` shows the newest in full. `--no-runs` turns it off, `--runs-dir <folder>` moves it.
+
 ### Looking into stutter
 
 `docs/stream-research.md` has what was measured so far and how to measure it yourself: `GET /api/stream/stats` gives the

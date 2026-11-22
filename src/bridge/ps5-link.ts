@@ -30,6 +30,7 @@ import type { ConsoleLink, LinkHandlers, LinkStartOptions } from './console-link
 import type { Handover } from './handover.ts';
 import { CODEC } from './protocol.ts';
 import type { QualityRequest } from './quality.ts';
+import type { ClientKind, TailscalePath } from './runlog.ts';
 
 /** What can be read and changed to study the stream. One per bridge; links come and go, this stays. */
 export class StreamResearch {
@@ -41,6 +42,12 @@ export class StreamResearch {
   state: 'idle' | 'connecting' | 'streaming' | 'ended' = 'idle';
   /** Why the last stream ended or could not start, in plain words. */
   lastError = '';
+  /** Who watched the stream, coarsely (set by the server, see runlog.ts). Null before a page has connected to it. */
+  client: RunClient | null = null;
+  /** The way from the bridge to the page, second by second (the other half of `stream`, which is the way from the console). */
+  leg: LegReport = emptyLeg();
+  /** Called once when a stream ends, with everything measured: the bridge keeps it (see runlog.ts). */
+  onFinished: ((snapshot: Record<string, unknown>) => void) | null = null;
 
   /** Change settings for the next connection. Returns what was not understood. */
   setTuning(input: Record<string, unknown>): string[] {
@@ -77,7 +84,47 @@ export class StreamResearch {
     this.video = video;
     this.stats = new StreamStats();
     this.display = emptyDisplay();
+    this.client = null;
+    this.leg = emptyLeg();
     return this.stats;
+  }
+
+  /** Seconds since the stream started, by the bridge's clock. */
+  #elapsedS(): number {
+    return this.stats ? Math.round(this.stats.snapshot(0).elapsedMs / 1000) : 0;
+  }
+
+  /** Who is watching this stream. Called by the server right after the page's connection is accepted. */
+  setClient(client: { kind: ClientKind; device: string }): void {
+    this.client = { kind: client.kind, device: client.device, paths: [] };
+  }
+
+  /** What the way to the page looked like at this moment (direct or through a relay). A few are kept: it can change. */
+  notePath(path: TailscalePath): void {
+    if (!this.client || this.client.paths.length >= 4) return;
+    this.client.paths.push({ t: this.#elapsedS(), path: path.path, os: path.os });
+  }
+
+  /** One second of the way to the page: frames and bits sent, frames left out because the page was behind. */
+  addLeg(sample: { frames: number; kbps: number; dropped: number }): void {
+    if (this.state !== 'streaming') return;
+    const l = this.leg;
+    l.totals.frames += sample.frames;
+    l.totals.dropped += sample.dropped;
+    l.samples.push({ t: this.#elapsedS(), frames: sample.frames, kbps: sample.kbps, dropped: sample.dropped });
+    if (l.samples.length > 600) l.samples.shift();
+  }
+
+  /** The stream is over (once): it is handed to `onFinished` to be kept. A failure there must not get in the way of ending. */
+  finish(reason?: string): void {
+    if (this.state !== 'connecting' && this.state !== 'streaming') return;
+    this.state = 'ended';
+    if (reason !== undefined) this.lastError = reason;
+    try {
+      this.onFinished?.(this.snapshot());
+    } catch {
+      /* not kept */
+    }
   }
 
   /** One report from the page (untrusted: only known numbers are kept, within sane bounds). */
@@ -90,11 +137,13 @@ export class StreamResearch {
     };
     const d = this.display;
     const sample: DisplaySecond = {
-      t: this.stats ? Math.round(this.stats.snapshot(0).elapsedMs / 1000) : d.samples.length,
+      t: this.stats ? this.#elapsedS() : d.samples.length,
       shown: num('shown', 1000), gapMaxMs: num('gapMaxMs', 600000), hitches: num('hitches', 1000), underruns: num('underruns', 1000),
       skipped: num('skipped', 1000), lateMaxMs: num('lateMaxMs', 600000), delayMs: num('delayMs', 1000), waiting: num('waiting', 1000),
       decodeMaxMs: num('decodeMaxMs', 600000), decodeQueueMax: num('decodeQueueMax', 10000), resyncs: num('resyncs', 1000),
+      rttMs: num('rttMs', 60000),
     };
+    if (typeof m.sound === 'string' && /^(idle|unsupported|playing|muted|hidden)$/.test(m.sound)) d.sound = m.sound;
     d.mode = m.mode === 'immediate' ? 'immediate' : 'smooth';
     d.delayMs = sample.delayMs;
     d.intervalMs = num('intervalMs', 1000);
@@ -119,6 +168,8 @@ export class StreamResearch {
       video: this.video,
       tuning: this.tuning,
       stream: this.stats ? this.stats.snapshot(sampleCount) : null,
+      client: this.client,
+      leg: this.leg.samples.length === 0 ? null : { totals: { ...this.leg.totals }, samples: sampleCount === undefined ? [...this.leg.samples] : sampleCount > 0 ? this.leg.samples.slice(-sampleCount) : [] },
       display: d.samples.length === 0 ? null : { ...d, totals: { ...d.totals }, samples: sampleCount === undefined ? [...d.samples] : sampleCount > 0 ? d.samples.slice(-sampleCount) : [] },
     };
   }
@@ -142,9 +193,36 @@ export interface DisplaySecond {
   decodeMaxMs: number;
   decodeQueueMax: number;
   resyncs: number;
+  /** The page's own round trip to the bridge at that moment, ms (0: not known yet). */
+  rttMs: number;
 }
 
+/** Who watched a stream: where the page connected from, the kind of device, and how the way to it looked (see runlog.ts). */
+export interface RunClient {
+  kind: ClientKind;
+  device: string;
+  paths: Array<{ t: number; path: string; os: string }>;
+}
+
+/** One second of the way from the bridge to the page. */
+export interface LegSecond {
+  t: number;
+  frames: number;
+  kbps: number;
+  /** Frames left out because the page was not taking them as fast as they came. */
+  dropped: number;
+}
+
+export interface LegReport {
+  totals: { frames: number; dropped: number };
+  samples: LegSecond[];
+}
+
+const emptyLeg = (): LegReport => ({ totals: { frames: 0, dropped: 0 }, samples: [] });
+
 export interface DisplayReport {
+  /** The page's sound as it last reported it: idle, unsupported, playing, muted or hidden ('' before any report). */
+  sound: string;
   mode: 'smooth' | 'immediate';
   delayMs: number;
   intervalMs: number;
@@ -153,7 +231,7 @@ export interface DisplayReport {
   samples: DisplaySecond[];
 }
 
-const emptyDisplay = (): DisplayReport => ({ mode: 'smooth', delayMs: 0, intervalMs: 0, worstLateMs: 0, totals: { shown: 0, hitches: 0, underruns: 0, skipped: 0, maxGapMs: 0, maxLateMs: 0, maxDecodeMs: 0, resyncs: 0 }, samples: [] });
+const emptyDisplay = (): DisplayReport => ({ sound: '', mode: 'smooth', delayMs: 0, intervalMs: 0, worstLateMs: 0, totals: { shown: 0, hitches: 0, underruns: 0, skipped: 0, maxGapMs: 0, maxLateMs: 0, maxDecodeMs: 0, resyncs: 0 }, samples: [] });
 
 export interface Ps5LinkOptions {
   store: ConsoleStore;
@@ -209,8 +287,7 @@ export class Ps5Link implements ConsoleLink {
     const registKey = Buffer.from(record.registKey, 'hex');
     const step = (detail: string): void => handlers.onStatus({ state: 'connecting', detail });
     const fail = (message: string): never => {
-      research.state = 'ended';
-      research.lastError = message;
+      research.finish(message);
       this.#cleanup();
       throw new Error(message);
     };
@@ -353,8 +430,7 @@ export class Ps5Link implements ConsoleLink {
 
   #ended(handlers: LinkHandlers, reason: string): void {
     if (this.#stopped) return;
-    this.#research.state = 'ended';
-    this.#research.lastError = reason;
+    this.#research.finish(reason);
     this.#cleanup();
     handlers.onStatus({ state: 'closed', detail: reason });
   }
@@ -389,7 +465,7 @@ export class Ps5Link implements ConsoleLink {
   async stop(): Promise<void> {
     if (this.#stopped) return;
     this.#stopped = true;
-    if (this.#research.state === 'streaming' || this.#research.state === 'connecting') this.#research.state = 'ended';
+    this.#research.finish();
     this.#cleanup();
   }
 }
