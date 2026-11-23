@@ -11,6 +11,7 @@
     "dev": "node src/bridge/main.ts",
     "bridge": "node src/bridge/main.ts",
     "e2e": "node tools/e2e-browser.mjs",
+    "e2e:look": "node tools/e2e-look.mjs",
     "connect": "node tools/connect.mjs",
     "wake": "node tools/wake.mjs",
     "runs": "node tools/runs.mjs",

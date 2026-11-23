@@ -46,7 +46,7 @@ Other parts of chiaki-ng were read to understand the protocol structure; no code
 The exact differences from the reference are listed in the header of each file.
 
 Not derived from anything, this project's own: the mapping engine and test beds, the bridge, the page, the measurements
-(`src/console/streamstats.ts`), the paced playout (`src/bridge/playout.ts`), the page's sound player (`web/audio-player.ts`, `web/audio-schedule.ts`) and the handover between this project's clients
+(`src/console/streamstats.ts`), the paced playout (`src/bridge/playout.ts`), the measuring of a console game's camera response from its video (`src/engine/lookmeasure.ts`, `src/engine/lookcalibrate.ts`, `web/calibrate-console.ts`), the page's sound player (`web/audio-player.ts`, `web/audio-schedule.ts`) and the handover between this project's clients
 (`src/bridge/handover.ts`).
 
 ### Code that chiaki-ng itself takes from elsewhere

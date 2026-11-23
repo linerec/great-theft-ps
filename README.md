@@ -45,6 +45,7 @@ Requires Node.js 24 or newer. No dependencies to install.
 npm run dev      # the bridge to your PS5, for this computer and, over Tailscale, for a phone; open the printed URL
 npm test         # unit and integration tests (node --test)
 npm run e2e      # real-browser end-to-end check (headless Chrome <-> bridge <-> a test double, no console)
+npm run e2e:look # the same for measuring a game's camera response, against a made-up game with a known response (about a minute)
 npm run discover # look for PlayStation consoles on the local network
 npm run register -- --host <console IP>   # register with your console (the page can do it too)
 npm run consoles -- list|export|import    # see, back up and move registrations
@@ -256,6 +257,19 @@ inverting each axis separately overshoots badly on diagonals (found by the integ
 are supported too, and `inGame.verticalRateRatio` covers games that turn slower vertically than horizontally.
 Mouse movement arrives once per display frame, so `runFor()` spreads each frame's movement evenly over the
 fixed ticks to keep the speed steady.
+
+**Measuring a console game's response.** The table that turns a turn rate into a stick value is the game's own, and a
+console does not tell it. In the settings, **콘솔 게임 자동 보정** measures it from the picture: with a scene where the
+camera can turn (not a menu or a cut scene), it holds the right stick by itself, first at full deflection until the
+picture has come all the way round (one full turn is 360 degrees, which gives the scale without knowing the field of
+view and shows how long a stick takes to be seen), then at each deflection from small to large, and measures how fast the
+picture moves in a window that starts a little after the first movement. That window is what a flick of the mouse looks
+like, so a game whose camera speeds up the longer the stick is held is measured the way the mouse will use it. A few short
+pushes up and down give the vertical rate relative to the horizontal. The result is shown with a drawing of the table and
+is put in the profile with one button. It takes about 40 seconds, ignores the keyboard, mouse and touch meanwhile and lets go of the
+stick however it ends. `npm run e2e:look` tries the whole thing in a real browser against a made-up game
+(`test/support/game-link.ts`) whose response is known. What is not known yet: how it fares on a real console and a real
+game.
 
 A stick can never exceed full deflection, so the game's own maximum turn rate is a hard ceiling in stick mode.
 For games with gyro aiming, `mouse.target = "gyro"` sends the mouse as a virtual gyro instead

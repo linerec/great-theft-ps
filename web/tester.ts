@@ -6,7 +6,7 @@
 
 import { MappingEngine } from '../src/engine/engine.ts';
 import { defaultProfile, gtaProfile, parseProfileText, PRESETS, validateProfile, type Profile } from '../src/engine/profile.ts';
-import { BUTTON, BUTTON_NAMES, type VirtualPadState } from '../src/engine/types.ts';
+import { BUTTON, BUTTON_NAMES, emptyPadState, type VirtualPadState } from '../src/engine/types.ts';
 import { FpsGame, defaultGameSettings } from '../src/testbed/fps.ts';
 import { applyMeasuredCalibration, measureCalibration, type GameFactory } from '../src/testbed/measure.ts';
 import { renderGame } from '../src/testbed/render.ts';
@@ -18,6 +18,7 @@ import { BridgeClient } from './bridge-client.ts';
 import { describeLayout, mountKeymap } from './keymap.ts';
 import { mountTouch, prefersTouch } from './touch.ts';
 import { AudioPlayer } from './audio-player.ts';
+import { mountConsoleCalibration } from './calibrate-console.ts';
 import { VideoPlayer } from './video-player.ts';
 
 const TICK = 0.004;
@@ -52,6 +53,11 @@ let profile: Profile = presetProfile(mode);
 const engine = new MappingEngine(profile);
 let state: VirtualPadState = engine.tick(TICK);
 let lockNote = '해제됨';
+/**
+ * While the console game is being measured (calibrate-console.ts) the pad is not the keyboard's and mouse's: this is the
+ * right stick the measurement holds. Null the rest of the time.
+ */
+let calibStick: { x: number; y: number } | null = null;
 
 // Rotation measurement: mouse counts fed since the mark vs. degrees the game actually turned.
 let measureCounts = 0;
@@ -63,6 +69,7 @@ function resetMeasure(): void {
 }
 
 function feedMouse(dx: number, dy: number): void {
+  if (calibStick) return;
   engine.mouseMove(dx, dy);
   measureCounts += dx;
 }
@@ -783,6 +790,25 @@ onProfileChanged();
 client.onVideo = (header, payload) => player.push(header, payload);
 client.onAudioInfo = (info) => void audio.start(info);
 client.onAudio = (lost, payload) => audio.push(lost, payload);
+
+// Measuring the game's response to the right stick from its picture (the panel is in the settings).
+mountConsoleCalibration({
+  canvas: view,
+  setStickOverride: (stick) => {
+    calibStick = stick;
+    if (stick) engine.releaseAll();
+  },
+  onFrameDrawn: (listener) => {
+    player.onFrame = () => listener();
+  },
+  ready: () => mode === 'console' && client.state === 'ready',
+  profile: () => profile,
+  changed: () => {
+    applyProfile(profile);
+    refreshJson();
+    syncControls();
+  },
+});
 player.onNeedKeyframe = () => client.requestKeyframe();
 client.onChange = () => {
   $<HTMLElement>('cStatus').textContent = `${client.state}${client.detail ? ` · ${client.detail}` : ''}`;
@@ -874,6 +900,7 @@ document.addEventListener('pointerlockchange', () => {
 window.addEventListener('blur', () => engine.releaseAll());
 
 window.addEventListener('keydown', (e) => {
+  if (calibStick) return;
   if (!isActive() || e.repeat) return;
   if (e.code === 'Escape') return; // let the browser release the pointer lock
   engine.keyDown(e.code);
@@ -891,7 +918,7 @@ document.addEventListener('mousemove', (e) => {
 });
 
 document.addEventListener('mousedown', (e) => {
-  if (!isLocked()) return;
+  if (calibStick || !isLocked()) return;
   engine.mouseButton(e.button, true);
   e.preventDefault();
 });
@@ -909,7 +936,7 @@ document.addEventListener('contextmenu', (e) => {
 document.addEventListener(
   'wheel',
   (e) => {
-    if (!isLocked()) return;
+    if (calibStick || !isLocked()) return;
     engine.wheel(e.deltaY);
     e.preventDefault();
   },
@@ -1053,6 +1080,21 @@ let last = performance.now();
 let acc = 0;
 
 function frame(now: number): void {
+  if (calibStick && mode === 'console') {
+    // The measurement holds the right stick; nothing else is sent, and what the engine would have done is not caught up on after.
+    const s = emptyPadState();
+    s.rightX = calibStick.x;
+    s.rightY = calibStick.y;
+    state = s;
+    last = now;
+    acc = 0;
+    client.sendPad(s, false, now);
+    renderView();
+    drawPad();
+    updateReadout();
+    requestAnimationFrame(frame);
+    return;
+  }
   acc += Math.min(0.1, (now - last) / 1000);
   last = now;
   const steps = Math.min(25, Math.floor(acc / TICK + 1e-9));
@@ -1655,5 +1697,46 @@ async function runSnap(): Promise<void> {
 // ?touchpreview=1 shows the touch controls without a console, for looking at the layout on a phone or in a small window.
 if (params.has('touchpreview')) touch.show(true);
 if (params.has('snap')) void runSnap();
-if (params.has('e2e')) void runE2e();
+/**
+ * ?e2e=look: the measuring of a game's response to the right stick (calibrate-console.ts), driven through its panel
+ * against a made-up game behind the bridge (tools/e2e-look.mjs). Reports what the panel found and what it put in the profile.
+ */
+async function runLookE2e(): Promise<void> {
+  const lines: string[] = [];
+  let pass = true;
+  const check = (name: string, ok: boolean, detail = ''): void => {
+    if (!ok) pass = false;
+    lines.push(`${ok ? 'ok  ' : 'FAIL'} ${name}${detail ? ` (${detail})` : ''}`);
+  };
+  const win = window as unknown as { __lastCalibration?: unknown };
+  const text = (id: string): string => $<HTMLElement>(id).textContent ?? '';
+  let result: unknown = null;
+  let applied: unknown = null;
+  try {
+    setMode('console', false);
+    client.connect(bridgeUrl.value, bridgeToken, consoleMac, chosenQuality(), false);
+    await until(() => client.state === 'ready', 5000);
+    await until(() => player.decoded >= 20, 8000);
+    check('connected, and the picture arrives', client.state === 'ready' && player.decoded >= 20, `${player.decoded} frames`);
+    $<HTMLButtonElement>('consoleCalibrate').click();
+    check('the panel started the measurement', $<HTMLButtonElement>('consoleCalibrate').disabled && !$<HTMLButtonElement>('consoleCalibrateStop').hidden);
+    await until(() => win.__lastCalibration !== undefined || (!$<HTMLButtonElement>('consoleCalibrate').disabled && text('consoleCalibrateStatus') !== ''), 150000);
+    result = win.__lastCalibration ?? null;
+    check('the measurement finished', result !== null, text('consoleCalibrateStatus'));
+    check('the panel shows the result and a picture of the table', text('consoleCalibrateResult').includes('데드존') && $<HTMLElement>('consoleCalibratePlot').innerHTML.includes('<polyline'));
+    check('the pad is the keyboard\'s and mouse\'s again afterwards', !$<HTMLButtonElement>('consoleCalibrate').disabled && $<HTMLButtonElement>('consoleCalibrateStop').hidden);
+    const before = JSON.stringify(profile.calibration);
+    $<HTMLButtonElement>('consoleCalibrateApply').click();
+    applied = { calibration: profile.calibration, inGame: profile.inGame };
+    check('"apply" puts the table in the profile', profile.calibration.horizontal !== null && JSON.stringify(profile.calibration) !== before);
+    const valid = validateProfile(JSON.parse(JSON.stringify(profile)));
+    check('and the profile still passes its own validation', valid.ok, valid.ok ? '' : valid.errors.join('; '));
+  } catch (e) {
+    check('no error', false, String(e));
+  }
+  client.sendJson({ type: 'e2e', pass, lines, result, applied, status: text('consoleCalibrateStatus') });
+}
+
+if (params.get('e2e') === 'look') void runLookE2e();
+else if (params.has('e2e')) void runE2e();
 if (params.has('autoconnect') && mode === 'console') connectConsole();

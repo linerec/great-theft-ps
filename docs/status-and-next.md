@@ -23,6 +23,32 @@ things work (`README.md`, `docs/ts-protocol-port.md`, `docs/stream-research.md`,
 | `--tls-cert` / `--tls-key` (HTTPS by the bridge, option B) | unit tests and real TLS handshakes with a throwaway certificate (page and `wss` upgrade); started once on loopback with the real `tailscale cert` files and checked with curl against the system's trust store (trusted, 200; a foreign Host gets 421); **never reached from another device, never bound to the tailnet address** |
 | Mouse carry-over | simulation and tests; **not yet tried in a game** |
 
+## Measuring a console game's camera response (written 2026-11-22; not yet tried on a real console)
+
+Reported by the owner on the real game: moving the mouse turns the camera a little and then it stands still. The engine
+was checked and is right on its own terms: it holds the stick for as long as the mouse moves and turns the camera by the
+angle the hand asked for, *if* the game responds as the profile says. A simulation with the default profile gave stick
+values of 0.14 for a slow drift, 0.36 for a normal turn and 0.75 for a fast one: small values that a game with a larger
+deadzone or a camera that speeds up with time barely turns for. So the profile's idea of the game is what is wrong.
+
+`web/calibrate-console.ts` (panel in the settings, 콘솔 게임 자동 보정) runs `src/engine/lookcalibrate.ts`: one full turn at
+full deflection for the scale and the delay, 14 horizontal levels measured in a window of 0.1 to 0.7 s after the first
+movement (the window of a mouse flick), up to three vertical pushes at moderate rates (the camera cannot look far up or
+down). It builds the table (`buildTable`: monotone, deadzone where the rising part meets zero, ends at full deflection) and
+puts it in the profile on request. The measuring of the picture is `src/engine/lookmeasure.ts`: block matching on 256 x 144
+grey frames with a median over the blocks, so the character, the HUD and traffic are outvoted by the background; the gap between
+the frames of a pair is chosen so the picture moves a few pixels; a picture that moves too far between frames is looked at
+from half size.
+
+Tested: 48 unit tests against a made-up world with a HUD, a fixed character, moving things and noise (the response is
+recovered to within a few percent at 30 and 60 frames a second, with a delay and a ramp-up), and `npm run e2e:look` in a
+real Chrome against `test/support/game-link.ts` (scale 3.20 px/deg exactly, deadzone 0.22, rates within 1 to 5 %).
+
+**Not yet seen:** a real game. What can go wrong there: a scene with too little in it (the panel says so), a camera that
+auto-centres or is blocked by a wall during the turn (a warning, or a wrong scale: the scale then falls back to an assumed 80
+degrees across and says so), a game whose camera acceleration is not about time held (then the table is only right for
+flicks of about half a second), traffic or crowds that outvote the background. The first real run will show.
+
 ## Comparing ways of connecting (the owner wants to try them all)
 
 Starting: `npm run dev`, one bridge, one process: this computer's own address (http, no token) and, when Tailscale is
