@@ -232,3 +232,25 @@ node tools/research/swipe-sim.mjs                # what the stick does for a mou
 
 `?touchpreview=1` on the page shows the touch controls without a console. `?snap=1`, `?watch=N`, `?latency=N`,
 `?playout=`, `?quality=` are what `snap-console.mjs` uses and work by hand too.
+
+## Running at home for the family (2026-11-24)
+
+Built and tested here (unit tests and a real browser against the simulator, 1060+ tests):
+
+- **Login and minutes per day** (`accounts.ts`, `auth-api.ts`, `web/account-ui.ts`): owner without limit, members with
+  minutes per day (the day ends in a chosen time zone), one-time invitations, scrypt hashes, 30-day sessions in an
+  HttpOnly SameSite=Strict cookie, slowed-down guessing, owner-only API (register, forget, tuning, people). A stream is
+  counted while the picture runs and ended at zero.
+- **Finding the console again** when the router gives it another address (`locate.ts`): by its id, as the registration is.
+- **A real controller** (`web/gamepad.ts`): standard layout, analog triggers, round dead zone; joins keyboard and mouse.
+- **A server that keeps itself current** (`tools/supervise.mjs`, `deploy/compose.yaml`): a new commit on `main` is
+  started on the side and taken only if it answers and nobody is playing; a commit that fails is not retried. Seen
+  working against a local repository, including refusing a broken commit, and on the real server (it took a commit by
+  itself within a minute).
+- **Live reload and a version line** for development.
+
+**Not yet seen:** a stream from the real console through the server (the bridge on the NAS has the registration, the
+HTTPS address works and asks for a login, but nobody has pressed connect from outside yet); a real DualSense in a real
+browser (the mapping follows the browser's standard layout and is tested with a fake pad); how much of the NAS's CPU a
+1080p60 stream needs; Safari on an iPhone with a controller; the minutes counted over a real evening.
+

@@ -11,6 +11,7 @@
 //          --trust-host <name>   the HTTPS name another device reaches the bridge under (see below)
 //          --tls-cert <file> --tls-key <file>   serve HTTPS itself, with the files `tailscale cert <name>` writes
 //          --link-sim <profile>  put a simulated mobile network between the bridge and the page (linksim.ts)
+//          --live                reload the page when a file under web/ or src/ is saved (for developing; npm run dev does it)
 //          --accounts            people log in (see accounts.ts): the owner has no limit, others have minutes per day. Needed for the internet.
 //          --time-zone <name>    where a day ends for those minutes (default: GTP_TIMEZONE or America/New_York)
 //          --owner-name <name>   the name of the owner invited on the first start (default: owner)
@@ -32,7 +33,9 @@ import { fileURLToPath } from 'node:url';
 
 import { locateConsole } from '../console/locate.ts';
 import { ConsoleStore, defaultStorePath } from '../console/store.ts';
+import { execFileSync } from 'node:child_process';
 import { AccountStore } from './accounts.ts';
+import { DevReload } from './devreload.ts';
 import { CoreLink } from './core-link.ts';
 import { Handover } from './handover.ts';
 import { LINK_PROFILES, parseLinkSim } from './linksim.ts';
@@ -130,6 +133,15 @@ const accounts = args.accounts
   : undefined;
 const token: string | undefined = args.token?.[0] ?? (accounts ? undefined : trustHosts.length > 0 ? keptToken() : loopback ? undefined : randomBytes(16).toString('hex'));
 const linkKind = first('link', 'ps5');
+// What is running, for the page's version line: the commit this folder is on, if it is a git folder.
+const version = (() => {
+  try {
+    const [commit = '', subject = ''] = execFileSync('git', ['-c', 'safe.directory=*', 'log', '-1', '--format=%h%x09%s'], { cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..'), encoding: 'utf8', timeout: 5000 }).trim().split('\t');
+    return { commit, subject, startedAt: new Date().toISOString() };
+  } catch {
+    return { commit: '', subject: '', startedAt: new Date().toISOString() };
+  }
+})();
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const log = (line: string): void => console.log(`[${new Date().toISOString().slice(11, 19)}] ${line}`);
 
@@ -170,6 +182,8 @@ const bridge = await startBridge({
   ...(phone ? { also: [{ host: phone.host, port, token: args.token?.[0] ?? keptToken(), trustedHosts: [phone.name], tls: { cert: phone.tls.cert, key: phone.tls.key } }] } : {}),
   ...(linkSim ? { linkSim } : {}),
   ...(accounts ? { accounts } : {}),
+  version,
+  ...(args.live ? { devReload: new DevReload({ dirs: [path.join(root, 'web'), path.join(root, 'src')] }) } : {}),
   root,
   store,
   research,

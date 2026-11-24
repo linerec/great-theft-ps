@@ -23,6 +23,7 @@ import { decodePad, decodePing, encodeAudio, encodePong, encodeVideo, isNeutral,
 import { DEFAULT_QUALITY, parseQuality, type QualityRequest } from './quality.ts';
 import type { ConsoleStore } from '../console/store.ts';
 import type { AccountStore, PublicUser } from './accounts.ts';
+import type { DevReload } from './devreload.ts';
 import { handleApi, type ApiOptions } from './api.ts';
 import { userOf } from './auth-api.ts';
 import type { Handover } from './handover.ts';
@@ -95,6 +96,10 @@ export interface BridgeOptions {
    * and other addresses need the token.
    */
   accounts?: AccountStore;
+  /** Live reload for whoever is developing (see devreload.ts). Only offered on the loopback address, never to other devices. */
+  devReload?: DevReload;
+  /** What is running, for the page's small version line (GET /api/version). */
+  version?: { commit: string; subject: string; startedAt: string };
   /** Replaces network discovery and registration. For tests. */
   api?: Pick<ApiOptions, 'discover' | 'register' | 'psn' | 'session' | 'network' | 'wake'>;
   log?: (line: string) => void;
@@ -152,10 +157,11 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
     const handle: http.RequestListener = (req, res) => {
       if (!hostOk(req.headers.host)) return send(res, 421, { 'Content-Type': 'text/plain' }, 'Misdirected request');
       if (opts.store && (req.url ?? '').startsWith('/api/')) {
-        const api: ApiOptions = { store: opts.store, ...(face.token !== undefined ? { token: face.token } : {}), ...(accounts ? { accounts } : {}), ...(opts.research ? { research: opts.research } : {}), ...(opts.handover ? { handover: opts.handover } : {}), ...(face.trusted.length ? { trustedHosts: face.trusted } : {}), ...opts.api, log };
+        const api: ApiOptions = { store: opts.store, ...(face.token !== undefined ? { token: face.token } : {}), ...(accounts ? { accounts } : {}), ...(opts.version ? { version: opts.version } : {}), ...(opts.research ? { research: opts.research } : {}), ...(opts.handover ? { handover: opts.handover } : {}), ...(face.trusted.length ? { trustedHosts: face.trusted } : {}), ...opts.api, log };
         void handleApi(req, res, api).catch(() => send(res, 500, { 'Content-Type': 'text/plain' }, 'error'));
         return;
       }
+      if (opts.devReload && face.host === '127.0.0.1' && req.method === 'GET' && (req.url ?? '').startsWith('/__dev/events') && !accounts) return opts.devReload.handle(req, res);
       void handleStatic(req, res, opts.root);
     };
     // Both kinds of server emit 'upgrade' for the WebSocket handshake, so everything below works for either.
@@ -446,6 +452,7 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
     url: urlOf(faces[0]!),
     also: faces.slice(1).map((f) => ({ port: f.bound, url: urlOf(f) })),
     close: async () => {
+      opts.devReload?.close();
       // Upgraded sockets are not tracked by http.Server, so close every WebSocket ourselves.
       for (const c of [...connections]) c.close(1001, 'bridge closing');
       await active?.stop();

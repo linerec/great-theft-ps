@@ -1080,6 +1080,9 @@ function renderView(): void {
 let last = performance.now();
 let acc = 0;
 
+// Live reload (dev-reload.ts) must not end a game in progress.
+(window as { gtpBusy?: () => boolean }).gtpBusy = () => client.state === 'ready' || client.state === 'connecting';
+
 // A real controller (DualSense and the like) joins the keyboard and mouse; see gamepad.ts.
 const gamepads = new GamepadInput();
 let padNow: PadSample | null = null;

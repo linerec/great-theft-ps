@@ -329,4 +329,4 @@ table.users td.bad { color: var(--bad); }
 .invitebox { margin-top: 12px; padding: 12px; border: 1px dashed var(--line); border-radius: 10px; }
 .invitebox input { margin: 8px 0; }
 #loginMsg[data-kind="err"] { color: var(--bad); }
-
+.versionline { text-align: center; margin: -36px 0 28px; opacity: .75; }

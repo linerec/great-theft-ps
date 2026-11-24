@@ -8,6 +8,7 @@
 // player both draw on the same canvas.
 
 import './account-ui.ts';
+import './dev-reload.ts';
 import { setMode, type Mode } from './tester.ts';
 import './ps5.ts';
 
@@ -62,3 +63,14 @@ $<HTMLButtonElement>('setRoutes').addEventListener('click', () => {
 const hash = location.hash.slice(1);
 setView(hash === 'lab' || hash === 'settings' ? hash : gameParam === 'fps' || gameParam === 'tps' ? 'lab' : 'ps5', false);
 $<HTMLSelectElement>('gameMode').value = labGame;
+
+// What is running, in small print at the bottom: after a push, this is how to see that the server has it.
+void fetch('/api/version')
+  .then((r) => (r.ok ? r.json() : null))
+  .then((v: { commit?: string; subject?: string; startedAt?: string } | null) => {
+    const el = document.getElementById('versionLine');
+    if (!el || !v?.commit) return;
+    const t = v.startedAt ? new Date(v.startedAt).toLocaleString('ko-KR', { hour12: false }) : '';
+    el.textContent = `버전 ${v.commit} · ${v.subject ?? ''}${t ? ` · ${t}에 시작` : ''}`;
+  })
+  .catch(() => {});

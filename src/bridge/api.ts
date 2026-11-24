@@ -11,6 +11,7 @@
 //                                 or the console's reason. Proves the registration works. Never returns keys or the nonce.
 //   POST   /api/wake              { mac }  sends the wake-up datagram to a console in rest mode (it does not wait; connecting
 //                                 does: the link wakes a console that is in rest mode before it asks for a session)
+//   GET    /api/version           what is running: the commit, its subject and when it started
 //   GET    /api/busy              (this computer only) whether a stream is running, for the updater
 //   GET    /api/handover          whether this client hands the console over to this project's other clients, and its name
 //   GET    /api/stream/stats      measurements of the running or last stream (totals, one sample per second, events)
@@ -57,6 +58,8 @@ export interface ApiOptions {
   research?: StreamResearch;
   /** Host names the bridge is reached under through a local proxy (see BridgeOptions.trustedHosts). */
   trustedHosts?: string[];
+  /** What is running (commit, its subject, when it started). */
+  version?: { commit: string; subject: string; startedAt: string };
   /** People who log in (accounts.ts). When set, every request needs a login (or the token), and members may not change what the owner owns. */
   accounts?: AccountStore;
   /** Handing the console over between this project's clients. Without it /api/handover says it is off. */
@@ -133,6 +136,8 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
     if (opts.token !== undefined && !tokenOk) return json(res, 401, { error: 'unauthorized' }), true;
     if (req.method === 'GET' && url.pathname === '/api/me') return json(res, 200, { accounts: false }), true;
   }
+
+  if (req.method === 'GET' && url.pathname === '/api/version') return json(res, 200, opts.version ?? { commit: '', subject: '', startedAt: '' }), true;
 
   const store = opts.store;
   const discover = opts.discover ?? realDiscover;
