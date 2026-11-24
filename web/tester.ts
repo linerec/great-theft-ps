@@ -19,6 +19,7 @@ import { describeLayout, mountKeymap } from './keymap.ts';
 import { mountTouch, prefersTouch } from './touch.ts';
 import { AudioPlayer } from './audio-player.ts';
 import { mountConsoleCalibration } from './calibrate-console.ts';
+import { GamepadInput, mergeGamepad, type PadSample } from './gamepad.ts';
 import { VideoPlayer } from './video-player.ts';
 
 const TICK = 0.004;
@@ -1079,7 +1080,20 @@ function renderView(): void {
 let last = performance.now();
 let acc = 0;
 
+// A real controller (DualSense and the like) joins the keyboard and mouse; see gamepad.ts.
+const gamepads = new GamepadInput();
+let padNow: PadSample | null = null;
+{
+  const chip = document.getElementById('padChip');
+  gamepads.onChange = (name) => {
+    if (!chip) return;
+    chip.hidden = name === null;
+    if (name !== null) chip.textContent = `${name} 연결됨`;
+  };
+}
+
 function frame(now: number): void {
+  padNow = gamepads.poll();
   if (calibStick && mode === 'console') {
     // The measurement holds the right stick; nothing else is sent, and what the engine would have done is not caught up on after.
     const s = emptyPadState();
@@ -1115,6 +1129,7 @@ function frame(now: number): void {
           s.leftY = t.leftY;
         }
       }
+      mergeGamepad(s, padNow);
       state = s;
       if (mode === 'console') client.sendPad(s, profile.mouse.target === 'gyro', now);
       else active().update(s, TICK);
