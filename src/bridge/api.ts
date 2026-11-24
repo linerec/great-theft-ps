@@ -11,6 +11,7 @@
 //                                 or the console's reason. Proves the registration works. Never returns keys or the nonce.
 //   POST   /api/wake              { mac }  sends the wake-up datagram to a console in rest mode (it does not wait; connecting
 //                                 does: the link wakes a console that is in rest mode before it asks for a session)
+//   GET    /api/busy              (this computer only) whether a stream is running, for the updater
 //   GET    /api/handover          whether this client hands the console over to this project's other clients, and its name
 //   GET    /api/stream/stats      measurements of the running or last stream (totals, one sample per second, events)
 //   GET    /api/stream/tuning     the settings that can be changed to study the stream
@@ -34,6 +35,9 @@ import { requestSession, SessionError, type SessionRequestOptions } from '../con
 import os from 'node:os';
 import type { Handover } from './handover.ts';
 import type { StreamResearch } from './ps5-link.ts';
+import { handleAuthApi, isOwnerOnly, userOf } from './auth-api.ts';
+import type { AccountStore } from './accounts.ts';
+import { json, readBody } from './http-util.ts';
 import { originAllowed } from './static.ts';
 import type { ConsoleStore } from '../console/store.ts';
 
@@ -53,6 +57,8 @@ export interface ApiOptions {
   research?: StreamResearch;
   /** Host names the bridge is reached under through a local proxy (see BridgeOptions.trustedHosts). */
   trustedHosts?: string[];
+  /** People who log in (accounts.ts). When set, every request needs a login (or the token), and members may not change what the owner owns. */
+  accounts?: AccountStore;
   /** Handing the console over between this project's clients. Without it /api/handover says it is off. */
   handover?: Handover;
   /** This computer's usable network addresses. Replaced by tests. */
@@ -85,38 +91,7 @@ const WAKE_MIN_GAP_MS = 3000;
 /** When each console was last sent a wake-up datagram, kept per console store so that two bridges in one process do not share it. */
 const wakeTimes = new WeakMap<object, Map<string, number>>();
 
-const MAX_BODY = 4096;
 const sha = (s: string): Buffer => createHash('sha256').update(s).digest();
-
-function json(res: ServerResponse, status: number, body: unknown): void {
-  const text = JSON.stringify(body);
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Length': Buffer.byteLength(text) });
-  res.end(text);
-}
-
-function readBody(req: IncomingMessage): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    req.on('data', (c: Buffer) => {
-      size += c.length;
-      if (size > MAX_BODY) {
-        reject(new Error('too large'));
-        req.destroy();
-        return;
-      }
-      chunks.push(c);
-    });
-    req.on('end', () => {
-      try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
-      } catch {
-        reject(new Error('not JSON'));
-      }
-    });
-    req.on('error', reject);
-  });
-}
 
 const isIp = (s: string): boolean => /^(\d{1,3}\.){3}\d{1,3}$/.test(s) || /^[0-9a-fA-F:]+$/.test(s);
 
@@ -139,12 +114,24 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
   const log = opts.log ?? (() => {});
 
   if (!originAllowed(req.headers.origin, req.headers.host, opts.trustedHosts ?? [])) return json(res, 403, { error: 'forbidden' }), true;
-  if (opts.token !== undefined) {
-    const auth = /^Bearer (.+)$/.exec(String(req.headers.authorization ?? ''))?.[1] ?? '';
-    if (!timingSafeEqual(sha(auth), sha(opts.token))) return json(res, 401, { error: 'unauthorized' }), true;
-  }
   if (req.method === 'POST' && !String(req.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) {
     return json(res, 415, { error: 'send application/json' }), true;
+  }
+  // For the program that keeps this one up to date (tools/supervise.mjs): is a stream running? Only when asked on a loopback name from this computer.
+  if (req.method === 'GET' && url.pathname === '/api/busy' && /^(127\.0\.0\.1|localhost|\[::1\]):\d+$/i.test(String(req.headers.host ?? '')) && /^(127\.0\.0\.1|::1|::ffff:127\.0\.0\.1)$/.test(req.socket.remoteAddress ?? '')) {
+    return json(res, 200, { busy: opts.research ? opts.research.state === 'streaming' || opts.research.state === 'connecting' : false }), true;
+  }
+  const bearer = /^Bearer (.+)$/.exec(String(req.headers.authorization ?? ''))?.[1] ?? '';
+  const tokenOk = opts.token !== undefined && timingSafeEqual(sha(bearer), sha(opts.token));
+  if (opts.accounts) {
+    // People log in: who is asking decides what they may do. The token (when there is one) is the owner's, for tools.
+    if (await handleAuthApi(req, res, url, opts.accounts)) return true;
+    const who = userOf(req, opts.accounts);
+    if (!who && !tokenOk) return json(res, 401, { error: 'unauthorized', login: true }), true;
+    if (who && who.role !== 'owner' && !tokenOk && isOwnerOnly(req.method, url.pathname)) return json(res, 403, { error: 'owner-only' }), true;
+  } else {
+    if (opts.token !== undefined && !tokenOk) return json(res, 401, { error: 'unauthorized' }), true;
+    if (req.method === 'GET' && url.pathname === '/api/me') return json(res, 200, { accounts: false }), true;
   }
 
   const store = opts.store;

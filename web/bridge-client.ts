@@ -54,7 +54,7 @@ export class BridgeClient {
     ws.onclose = (e) => {
       if (this.#ws === ws) {
         this.#stopTimer();
-        this.#set('closed', e.code === 4401 ? '이 브리지는 토큰이 필요합니다. 브리지가 출력한 주소로 여세요' : e.code === 4409 ? 'another client is connected' : this.detail.startsWith('error: ') ? this.detail.slice(7) : `closed (${e.code})`);
+        this.#set('closed', e.code === 4401 ? '로그인이 필요합니다. 페이지를 새로 고치면 로그인 창이 열립니다. (토큰이 필요한 브리지라면 브리지가 출력한 주소로 여세요)' : e.code === 4403 ? (this.detail.startsWith('error: ') ? this.detail.slice(7) : '오늘 사용할 수 있는 시간이 끝났습니다') : e.code === 4409 ? 'another client is connected' : this.detail.startsWith('error: ') ? this.detail.slice(7) : `closed (${e.code})`);
       }
     };
     ws.onerror = () => this.#set('closed', 'connection failed');
@@ -131,6 +131,9 @@ export class BridgeClient {
       } else if (m.type === 'audio') {
         const n = (k: string): number => (typeof m[k] === 'number' ? (m[k] as number) : 0);
         this.onAudioInfo({ channels: n('channels'), bits: n('bits'), rate: n('rate'), frameSize: n('frameSize') });
+      } else if (m.type === 'quota') {
+        // Minutes per day (see accounts.ts): the account window shows how much is left.
+        window.dispatchEvent(new CustomEvent('gtp:quota', { detail: { remainingSeconds: typeof m.remainingSeconds === 'number' ? m.remainingSeconds : null } }));
       } else if (m.type === 'stats') {
         this.serverStats = m;
       } else if (m.type === 'status' || m.type === 'error') {

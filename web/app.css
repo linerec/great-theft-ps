@@ -310,3 +310,23 @@ body.touch-live #stageBox .hint, body.touch-live #ps5Overlay { display: none; }
 .touch-turn { display: none; position: absolute; left: 50%; bottom: 45%; transform: translateX(-50%); margin: 0; padding: 6px 12px; border-radius: 999px;
   color: #fff; background: rgba(16, 20, 28, .7); font-size: .8rem; pointer-events: none; }
 @media (orientation: portrait) { .touch-turn { display: block; } }
+
+/* ------------------------------------------------------------ accounts (account-ui.ts) */
+.top { flex-wrap: wrap; }
+.acct { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.acct .chip { font-size: .78rem; }
+#loginDialog { width: min(420px, calc(100vw - 24px)); }
+#loginDialog label, #usersDialog label { display: block; margin: 10px 0; font-size: .86rem; color: var(--muted); }
+#loginDialog input, #usersDialog input { display: block; width: 100%; margin-top: 4px; font: inherit; color: var(--ink); background: var(--surface2); border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; }
+#usersDialog .row.wrap { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+#usersDialog .row.wrap input { width: auto; min-width: 8ch; }
+#usersDialog table.users input[type=number] { display: inline-block; width: 7ch; margin: 0; padding: 4px 6px; }
+.tablewrap { overflow-x: auto; }
+table.users { width: 100%; border-collapse: collapse; font-size: .88rem; }
+table.users th { text-align: left; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+table.users td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
+table.users td.bad { color: var(--bad); }
+.invitebox { margin-top: 12px; padding: 12px; border: 1px dashed var(--line); border-radius: 10px; }
+.invitebox input { margin: 8px 0; }
+#loginMsg[data-kind="err"] { color: var(--bad); }
+

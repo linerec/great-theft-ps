@@ -6,6 +6,8 @@
 //  - binds to loopback unless told otherwise. On loopback no token is needed (the checks below keep other web pages and
 //    other hosts out). Listening beyond loopback REQUIRES a token (first message, constant-time compare);
 //  - the WebSocket upgrade must be same-origin, so a random web page cannot drive it;
+//  - with `accounts`, every address needs a login (or the token): people have a role and minutes per day, and a stream
+//    that runs out of minutes is ended;
 //  - one client at a time; a second one is refused;
 //  - when the client goes quiet or disconnects the pad is released, so no button can stay stuck on the console;
 //  - messages are size limited and rate limited; video is dropped (not queued) when the client cannot keep up.
@@ -20,7 +22,9 @@ import type { ConsoleLink } from './console-link.ts';
 import { decodePad, decodePing, encodeAudio, encodePong, encodeVideo, isNeutral, MSG, type ClientControl } from './protocol.ts';
 import { DEFAULT_QUALITY, parseQuality, type QualityRequest } from './quality.ts';
 import type { ConsoleStore } from '../console/store.ts';
+import type { AccountStore, PublicUser } from './accounts.ts';
 import { handleApi, type ApiOptions } from './api.ts';
+import { userOf } from './auth-api.ts';
 import type { Handover } from './handover.ts';
 import { DelayLine, type LinkSimProfile } from './linksim.ts';
 import type { StreamResearch } from './ps5-link.ts';
@@ -35,6 +39,7 @@ const AUTH_TIMEOUT_MS = 5000;
 const SILENCE_MS = 2000;
 const BACKPRESSURE_BYTES = 1_500_000;
 const MAX_PADS_PER_SECOND = 2000;
+const USAGE_FLUSH_SECONDS = 5;
 
 /** One more address the same bridge answers on, with its own token, TLS and trusted names (see BridgeOptions.also). */
 export interface ExtraListener {
@@ -84,6 +89,12 @@ export interface BridgeOptions {
    * is delayed, held up now and then, and limited in rate. For trying things at a desk; off in normal use.
    */
   linkSim?: LinkSimProfile;
+  /**
+   * People who log in (accounts.ts). When set, a page must be logged in (or show the token) on EVERY address, loopback
+   * included, and each person's minutes per day are counted and kept. Without it nothing changes: loopback needs nothing
+   * and other addresses need the token.
+   */
+  accounts?: AccountStore;
   /** Replaces network discovery and registration. For tests. */
   api?: Pick<ApiOptions, 'discover' | 'register' | 'psn' | 'session' | 'network' | 'wake'>;
   log?: (line: string) => void;
@@ -111,11 +122,11 @@ interface Face {
   bound: number;
 }
 
-function makeFace(l: { host: string; port: number; token?: string | undefined; trustedHosts?: string[] | undefined; tls?: { cert: string | Buffer; key: string | Buffer } | undefined }): Face {
+function makeFace(l: { host: string; port: number; token?: string | undefined; trustedHosts?: string[] | undefined; tls?: { cert: string | Buffer; key: string | Buffer } | undefined }, accounts = false): Face {
   const loopbackOnly = l.host === '127.0.0.1' || l.host === 'localhost' || l.host === '::1';
-  if (!loopbackOnly && !l.token) throw new Error(`listening on ${l.host} (beyond this computer) requires a token: pass --token or leave --host out`);
+  if (!loopbackOnly && !l.token && !accounts) throw new Error(`listening on ${l.host} (beyond this computer) requires a token: pass --token or leave --host out`);
   const trusted = (l.trustedHosts ?? []).map((h) => hostName(h)).filter(Boolean);
-  if (trusted.length > 0 && !l.token) throw new Error('trusting a host name lets other devices in through a proxy, which requires a token');
+  if (trusted.length > 0 && !l.token && !accounts) throw new Error('trusting a host name lets other devices in through a proxy, which requires a token or a login');
   return { host: l.host, port: l.port, token: l.token, trusted, tls: l.tls, bound: l.port };
 }
 
@@ -123,11 +134,12 @@ const sha = (s: string): Buffer => createHash('sha256').update(s).digest();
 
 export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
   const log = opts.log ?? (() => {});
+  const accounts = opts.accounts;
   const faces: Face[] = [
-    makeFace(opts),
+    makeFace(opts, !!accounts),
     ...(opts.also ?? []).map((l) => {
-      if (!l.token) throw new Error('an extra address is for other devices and needs a token');
-      return makeFace(l);
+      if (!l.token && !accounts) throw new Error('an extra address is for other devices and needs a token');
+      return makeFace(l, !!accounts);
     }),
   ];
   let active: { conn: WsConnection; stop(): Promise<void> } | null = null;
@@ -140,7 +152,7 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
     const handle: http.RequestListener = (req, res) => {
       if (!hostOk(req.headers.host)) return send(res, 421, { 'Content-Type': 'text/plain' }, 'Misdirected request');
       if (opts.store && (req.url ?? '').startsWith('/api/')) {
-        const api: ApiOptions = { store: opts.store, ...(face.token !== undefined ? { token: face.token } : {}), ...(opts.research ? { research: opts.research } : {}), ...(opts.handover ? { handover: opts.handover } : {}), ...(face.trusted.length ? { trustedHosts: face.trusted } : {}), ...opts.api, log };
+        const api: ApiOptions = { store: opts.store, ...(face.token !== undefined ? { token: face.token } : {}), ...(accounts ? { accounts } : {}), ...(opts.research ? { research: opts.research } : {}), ...(opts.handover ? { handover: opts.handover } : {}), ...(face.trusted.length ? { trustedHosts: face.trusted } : {}), ...opts.api, log };
         void handleApi(req, res, api).catch(() => send(res, 500, { 'Content-Type': 'text/plain' }, 'error'));
         return;
       }
@@ -158,14 +170,17 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
       if (conn) {
         connections.add(conn);
         const net = socket as { remoteAddress?: string; localAddress?: string };
-        handleClient(conn, { remote: net.remoteAddress, local: net.localAddress, userAgent: req.headers['user-agent'] }, face);
+        handleClient(conn, { remote: net.remoteAddress, local: net.localAddress, userAgent: req.headers['user-agent'], user: accounts ? userOf(req, accounts) : null }, face);
       }
     });
     return server;
   };
 
-  function handleClient(conn: WsConnection, from: { remote?: string | undefined; local?: string | undefined; userAgent?: string | undefined }, face: Face): void {
+  function handleClient(conn: WsConnection, from: { remote?: string | undefined; local?: string | undefined; userAgent?: string | undefined; user?: PublicUser | null }, face: Face): void {
     let authed = false;
+    let unsaved = 0;
+    let quotaTick = 0;
+    let player: PublicUser | null = null;
     let link: ConsoleLink | null = null;
     let lastSeq = 0;
     let lastPad: VirtualPadState = emptyPadState();
@@ -186,6 +201,12 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
     const authTimer = setTimeout(() => {
       if (!authed) conn.close(4401, 'auth timeout');
     }, AUTH_TIMEOUT_MS);
+
+    /** Write the played seconds not yet kept (see USAGE_FLUSH_SECONDS). */
+    const flushUsage = (): void => {
+      if (player && accounts && unsaved > 0) accounts.addUsage(player.name, unsaved);
+      unsaved = 0;
+    };
 
     const release = (): void => {
       if (link && !isNeutral(lastPad)) {
@@ -209,6 +230,7 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
       up?.close();
       clearTimeout(authTimer);
       timers.forEach(clearInterval);
+      flushUsage();
       release();
       if (active?.conn === conn) active = null;
       await notePath(1500); // the way to a phone is worth knowing at the end too: it can change from relay to direct
@@ -219,10 +241,18 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
     conn.onClose = () => void cleanup();
 
     async function authenticate(msg: ClientControl): Promise<void> {
-      const tokenOk = face.token === undefined || (typeof msg.token === 'string' && timingSafeEqual(sha(msg.token), sha(face.token)));
-      if (msg.type !== 'hello' || !tokenOk) {
-        sendJson({ type: 'error', code: 'unauthorized', message: 'bad token' });
+      const tokenGiven = face.token !== undefined && typeof msg.token === 'string' && timingSafeEqual(sha(msg.token), sha(face.token));
+      // With accounts a login (or the token) is needed everywhere; without them only an address with a token asks for it.
+      const allowed = accounts ? !!from.user || tokenGiven : face.token === undefined || tokenGiven;
+      if (msg.type !== 'hello' || !allowed) {
+        sendJson({ type: 'error', code: 'unauthorized', message: accounts ? 'log in first' : 'bad token' });
         return conn.close(4401, 'unauthorized');
+      }
+      // Whoever logged in has minutes per day. The token is the owner's (a tool, no limit), so it is not counted.
+      player = accounts && from.user && !tokenGiven ? from.user : null;
+      if (player && accounts && accounts.remainingSeconds(player.name) === 0) {
+        sendJson({ type: 'error', code: 'quota-exhausted', message: '오늘 사용할 수 있는 시간을 모두 썼습니다' });
+        return conn.close(4403, 'no time left today');
       }
       if (active) {
         sendJson({ type: 'error', code: 'busy', message: 'another client is connected' });
@@ -287,6 +317,20 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
 
       timers.push(
         setInterval(() => {
+          if (player && accounts) {
+            // Play time: each second of a running stream counts, and what is not yet written is written every few seconds.
+            unsaved++;
+            if (unsaved >= USAGE_FLUSH_SECONDS) flushUsage();
+            const left = accounts.remainingSeconds(player.name);
+            const remaining = left === null ? null : Math.max(0, left - unsaved);
+            quotaTick++;
+            if (quotaTick % 5 === 1 || (remaining !== null && remaining <= 60)) sendJson({ type: 'quota', remainingSeconds: remaining, dailyMinutes: accounts.get(player.name)?.dailyMinutes ?? null });
+            if (remaining === 0) {
+              flushUsage();
+              sendJson({ type: 'error', code: 'quota-ended', message: '오늘 사용할 수 있는 시간이 끝났습니다' });
+              return conn.close(4403, 'no time left today');
+            }
+          }
           padsLastSecond = padWindowCount;
           sendJson({
             type: 'stats',

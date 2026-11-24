@@ -7,6 +7,7 @@
 // The picture area (#stageBox) is one element that is moved between PS5 and 연습장, because the input engine and the video
 // player both draw on the same canvas.
 
+import './account-ui.ts';
 import { setMode, type Mode } from './tester.ts';
 import './ps5.ts';
 

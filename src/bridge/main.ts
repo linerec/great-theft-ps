@@ -5,11 +5,15 @@
 //   node src/bridge/main.ts --link core --core <gtp-core executable> [--core-arg <arg> ...]
 // Options: --host 127.0.0.1  --port 8788 (when not given, and phone access is off, the next free port is used if 8788 is taken)  --token <string>  --no-handover  --name <what other clients see>
 //          --no-wake             do not wake a console that is in rest mode when someone connects (the default is to wake it)
+//          --no-locate           do not search the network for a console whose address changed (the stored address is used as it is)
 //          --no-runs             do not keep what each stream measured (the default: one JSON file per stream, see runlog.ts)
 //          --runs-dir <folder>   where those files go (default: runs/ next to the registered consoles)
 //          --trust-host <name>   the HTTPS name another device reaches the bridge under (see below)
 //          --tls-cert <file> --tls-key <file>   serve HTTPS itself, with the files `tailscale cert <name>` writes
 //          --link-sim <profile>  put a simulated mobile network between the bridge and the page (linksim.ts)
+//          --accounts            people log in (see accounts.ts): the owner has no limit, others have minutes per day. Needed for the internet.
+//          --time-zone <name>    where a day ends for those minutes (default: GTP_TIMEZONE or America/New_York)
+//          --owner-name <name>   the name of the owner invited on the first start (default: owner)
 //          --phone               set up phone access (once): asks Tailscale for the certificate if there is none (see phone.ts)
 //          --no-phone            do not answer on the tailnet address, whatever else is there
 // Phone access is automatic: when Tailscale is running and there is a certificate for this computer's name, the same
@@ -26,7 +30,9 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { locateConsole } from '../console/locate.ts';
 import { ConsoleStore, defaultStorePath } from '../console/store.ts';
+import { AccountStore } from './accounts.ts';
 import { CoreLink } from './core-link.ts';
 import { Handover } from './handover.ts';
 import { LINK_PROFILES, parseLinkSim } from './linksim.ts';
@@ -118,7 +124,11 @@ function keptToken(): string {
   writeFileSync(file, `${fresh}\n`, { mode: 0o600 });
   return fresh;
 }
-const token: string | undefined = args.token?.[0] ?? (trustHosts.length > 0 ? keptToken() : loopback ? undefined : randomBytes(16).toString('hex'));
+// People log in (--accounts): that replaces the token on every address (a token is then only for tools, when --token is given).
+const accounts = args.accounts
+  ? new AccountStore({ dir: path.join(path.dirname(defaultStorePath()), 'accounts'), timeZone: first('time-zone', process.env.GTP_TIMEZONE ?? 'America/New_York') })
+  : undefined;
+const token: string | undefined = args.token?.[0] ?? (accounts ? undefined : trustHosts.length > 0 ? keptToken() : loopback ? undefined : randomBytes(16).toString('hex'));
 const linkKind = first('link', 'ps5');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const log = (line: string): void => console.log(`[${new Date().toISOString().slice(11, 19)}] ${line}`);
@@ -159,6 +169,7 @@ const bridge = await startBridge({
   ...(tls ? { tls: { cert: tls.cert, key: tls.key } } : {}),
   ...(phone ? { also: [{ host: phone.host, port, token: args.token?.[0] ?? keptToken(), trustedHosts: [phone.name], tls: { cert: phone.tls.cert, key: phone.tls.key } }] } : {}),
   ...(linkSim ? { linkSim } : {}),
+  ...(accounts ? { accounts } : {}),
   root,
   store,
   research,
@@ -166,7 +177,7 @@ const bridge = await startBridge({
   ...(handover ? { handover } : {}),
   log,
   createLink: () =>
-    linkKind === 'ps5' ? new Ps5Link({ store, research, log, ...(handover ? { handover } : {}), ...(args['no-wake'] ? { wake: false } : {}) }) : new CoreLink({ command: first('core', ''), args: args['core-arg'] ?? [], log }),
+    linkKind === 'ps5' ? new Ps5Link({ store, research, log, ...(handover ? { handover } : {}), ...(args['no-wake'] ? { wake: false } : {}), ...(args['no-locate'] ? {} : { locate: (rec: { mac: string; host: string }) => locateConsole(rec) }) }) : new CoreLink({ command: first('core', ''), args: args['core-arg'] ?? [], log }),
 }).catch((error: Error) => {
   console.error(`Could not start the bridge: ${error.message}`);
   if (phone) console.error(`Phone access keeps port ${port} so that the address on the phone keeps working. Is another \`npm run dev\` still running? (--no-phone starts without phone access.)`);
@@ -188,14 +199,28 @@ if (phone && bridge.also[0]) {
   console.log(`  ${expiry.text}; it is renewed by itself when nearly out. Only devices in your tailnet can reach it, and anyone who has this address can press buttons on your console. The token stays the same between starts.`);
   console.log('  After a stream ends, `npm run runs` shows how it went.');
 }
-for (const name of trustHosts) console.log(`From another device (${tls ? 'directly over HTTPS' : 'through the HTTPS proxy on this computer'}):  https://${name}${tls ? `:${bridge.port}` : ''}/#token=${token}`);
-if (trustHosts.length > 0) console.log('Whoever can reach that address and has the token can press buttons on your console. The token stays the same between starts.');
+for (const name of trustHosts) console.log(`From another device (${tls ? 'directly over HTTPS' : 'through the HTTPS proxy on this computer'}):  https://${name}${tls ? `:${bridge.port}` : ''}/${accounts ? '' : `#token=${token}`}`);
+if (trustHosts.length > 0 && !accounts) console.log('Whoever can reach that address and has the token can press buttons on your console. The token stays the same between starts.');
+if (accounts) {
+  console.log(`Accounts: everybody logs in, on every address (day ends in ${accounts.timeZone}). They are kept in ${accounts.dir}.`);
+  if (accounts.empty) {
+    // Nobody is set up yet: the owner is invited, and sets the password in the page. The code is shown here and nowhere else.
+    const owner = accounts.invite(first('owner-name', 'owner'), { role: 'owner' });
+    const urls = [...trustHosts.map((n) => `https://${n}${tls ? `:${bridge.port}` : ''}/`), bridge.url];
+    console.log(`FIRST START: open one of these to choose the owner's password (good for 48 hours, once):`);
+    for (const u of urls) console.log(`  ${u}#invite=${owner.code}`);
+  } else {
+    console.log('  Invite someone, or set minutes per day, from the page when logged in as the owner.');
+  }
+}
 console.log(`Registered consoles are kept in ${store.file} (secrets: keep that file private).`);
 if (handover) console.log(handover.listening ? `Handover: other Great Theft P.S clients with the same console registration can ask this one to let go (UDP ${handover.port}, encrypted; lock it on the page, or start with --no-handover).` : `Handover: UDP ${handover.port} is not available here, so other clients cannot ask this one to let go.`);
 if (linkSim) console.log(`SIMULATED LINK between this bridge and the page: ${linkSimName} (${linkSim.note}). Each way ${linkSim.down.delayMs} ms + up to ${linkSim.down.jitterMs} ms, a ${linkSim.down.stallMs} ms stall about every ${Math.round(linkSim.down.stallEveryMs / 1000)} s, ${linkSim.down.kbps} kbit/s down.`);
 console.log('Ctrl+C to stop.\n');
 
-process.on('SIGINT', () => {
-  handover?.close();
-  void bridge.close().then(() => process.exit(0));
-});
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(signal, () => {
+    handover?.close();
+    void bridge.close().then(() => process.exit(0));
+  });
+}
