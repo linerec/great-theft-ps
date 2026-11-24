@@ -1,0 +1,29 @@
+# A server that runs the bridge for the whole family (a NAS with Docker, a mini PC). See docs/deploy-nas.md.
+# Nothing is built: the plain Node image runs a copy of the code that is cloned from git and kept up to date by
+# tools/supervise.mjs (a new commit on main is tried on the side and taken when nobody is playing).
+services:
+  gtp:
+    image: node:24-bookworm
+    container_name: gtp
+    restart: always
+    # The console is found and woken with UDP on the home network, so the container uses the server's own network.
+    network_mode: host
+    working_dir: /app
+    environment:
+      TZ: America/New_York
+      GTP_TIMEZONE: America/New_York          # where a day ends for "minutes per day"
+      GTP_HOME: /data                         # registrations, accounts, measurements (private: back it up, never share it)
+      GTP_PORT: "8788"
+      GTP_UPDATE_SECONDS: "60"
+      # The HTTPS name your reverse proxy answers to goes after --trust-host. --accounts makes everybody log in.
+      GTP_ARGS: "--accounts --trust-host gtp.example.synology.me"
+      # Once, to move a console registration here without registering again (see docs/deploy-nas.md), then delete both:
+      # GTP_IMPORT_URL: "http://192.168.1.20:8099/consoles.gtpbackup"
+      # GTP_PASSPHRASE: "<the passphrase the copy was made with>"
+    volumes:
+      - ./data:/data
+      - ./app:/app
+    command:
+      - sh
+      - -c
+      - '[ -d /app/.git ] || git clone --branch main https://github.com/linerec/great-theft-ps.git /app; exec node /app/tools/supervise.mjs'

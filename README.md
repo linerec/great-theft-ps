@@ -166,6 +166,21 @@ not running, the bridge says so and does not start.
 Do not use `tailscale serve` for this on a computer that already publishes something with Tailscale Funnel: a serve
 command can change what Funnel serves. `--trust-host` also works behind an HTTPS proxy on the same computer.
 
+### On a server at home, for the whole family
+
+The bridge can run all the time on a NAS or a small PC in the same network as the console, so that one HTTPS address
+works from anywhere. With `--accounts` everybody logs in: the owner has no limit, others get minutes per day (counted
+while the picture runs, a day ends at midnight in the chosen time zone), and people are invited with one-time links
+(nobody types a password for somebody else). New commits on `main` reach the server by themselves: each one is
+started on the side first and taken only when nobody is playing. `docs/deploy-nas.md` has the compose file and the
+steps. It also finds the console again by its id when the router gives it another address (`--no-locate` leaves that out).
+
+### A controller
+
+A DualSense, a DualShock 4 or any pad the browser calls "standard" works as the console's pad (press a button on it
+once, a browser rule). It joins the keyboard and mouse: buttons are added, the trigger is the stronger of the two, and a
+stick that is being pushed takes over from the mouse.
+
 ### Comparing ways of connecting
 
 When a stream ends (and lasted at least five seconds) the bridge keeps what it measured in one file in `runs/` next to
