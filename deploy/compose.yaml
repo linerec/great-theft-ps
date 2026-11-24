@@ -15,7 +15,8 @@ services:
       GTP_HOME: /data                         # registrations, accounts, measurements (private: back it up, never share it)
       GTP_PORT: "8788"
       GTP_UPDATE_SECONDS: "60"
-      # The HTTPS name your reverse proxy answers to goes after --trust-host. --accounts makes everybody log in.
+      # The HTTPS name your reverse proxy answers to goes after --trust-host (repeat it for a second name).
+      # --accounts makes everybody log in.
       GTP_ARGS: "--accounts --trust-host gtp.example.synology.me"
       # Once, to move a console registration here without registering again (see docs/deploy-nas.md), then delete both:
       # GTP_IMPORT_URL: "http://192.168.1.20:8099/consoles.gtpbackup"

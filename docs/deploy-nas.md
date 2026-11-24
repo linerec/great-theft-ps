@@ -34,6 +34,14 @@ So the way to work is: push to `main`, and about a minute later the server runs 
    Destination: HTTP, `localhost`, port 8788. In *Custom Header* add the WebSocket headers (the *WebSocket* preset), and
    `X-Real-IP` = `$remote_addr`. The name needs a certificate (DSM can get one from Let's Encrypt for a
    `synology.me` name). Open ports 80 and 443 on the router to the server.
+
+   *A short address with no port.* A Synology DDNS name also answers to everything under it
+   (`ps5.<name>.synology.me`). If DSM already holds the wildcard certificate for the name (*Control Panel → Security →
+   Certificate*: its subject alternative names list `*.<name>.synology.me`), make the rule's source hostname that
+   subdomain on port 443, then open *Certificate → Settings*, find the new rule in the list and give it the wildcard
+   certificate (DSM restarts its web services for a few seconds). Add the subdomain to the container as a second
+   `--trust-host` (the flag may be repeated; a port is ignored). Without the wildcard certificate a subdomain shows a
+   certificate warning, and the same name on an odd port (for example 8788 with the base name) is the way around it.
 4. **Move the console registration here** (once; never register twice): on a computer that has it,
    `GTP_PASSPHRASE=<a long random phrase> npm run consoles -- export consoles.gtpbackup`, serve the file for a minute
    on the home network (`python3 -m http.server 8099` in its folder), and give the container `GTP_IMPORT_URL` and the same
@@ -41,7 +49,9 @@ So the way to work is: push to `main`, and about a minute later the server runs 
    Remove both variables afterwards and delete the copy.
 5. **Inside the house** the same address should not go out to the internet and back. In the router's local DNS
    (Verizon: Network settings → DNS server → Add DNS entry) make the name point at the server's address; the same
-   HTTPS address then reaches it directly, which is steadier and faster.
+   HTTPS address then reaches it directly, which is steadier and faster. Some routers (the Verizon one included) keep
+   **one name per IP address** in that table: a second entry for the same server address replaces the first, so give
+   the name people actually use to play.
 
 ## People
 
