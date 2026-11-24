@@ -17,7 +17,8 @@ const tmp = (): string => {
 after(() => dirs.forEach((d) => rmSync(d, { recursive: true, force: true })));
 
 const HOUR = 3600_000;
-const make = (dir = tmp(), clock = { t: Date.UTC(2026, 10, 24, 15, 0, 0) }): { s: AccountStore; clock: { t: number }; dir: string } => ({ s: new AccountStore({ dir, now: () => clock.t }), clock, dir });
+const CHEAP = { n: 1024, r: 8, p: 1 }; // the real cost is for servers; tests should not spend the machine on it
+const make = (dir = tmp(), clock = { t: Date.UTC(2026, 10, 24, 15, 0, 0) }): { s: AccountStore; clock: { t: number }; dir: string } => ({ s: new AccountStore({ dir, now: () => clock.t, scryptCost: CHEAP }), clock, dir });
 
 async function setUp(s: AccountStore): Promise<void> {
   const owner = s.invite('owner', { role: 'owner' });
@@ -118,7 +119,7 @@ describe('inviting and logging in', () => {
     await setUp(s);
     const a = (await s.login('kid', 'kid-password-1'))!;
     s.addUsage('kid', 600);
-    const again = new AccountStore({ dir, now: () => clock.t });
+    const again = new AccountStore({ dir, now: () => clock.t, scryptCost: CHEAP });
     assert.equal(again.userFor(a.session)?.name, 'kid');
     assert.equal(again.usedSeconds('kid'), 600);
     assert.ok(await again.login('owner', 'correct horse'));
@@ -162,7 +163,7 @@ describe('minutes per day', () => {
   });
 
   it('can be set to another time zone', () => {
-    const s = new AccountStore({ dir: tmp(), timeZone: 'Asia/Seoul', now: () => Date.UTC(2026, 10, 24, 16, 0, 0) });
+    const s = new AccountStore({ dir: tmp(), scryptCost: CHEAP, timeZone: 'Asia/Seoul', now: () => Date.UTC(2026, 10, 24, 16, 0, 0) });
     assert.equal(s.dayOf(), '2026-11-25');
   });
 });

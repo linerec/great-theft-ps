@@ -135,7 +135,7 @@ describe('link simulator: in the bridge', () => {
       const ws = new WebSocket(`ws://127.0.0.1:${bridge.port}/ws`);
       ws.binaryType = 'arraybuffer';
       const frames: number[] = [];
-      let pongAt = 0;
+      const rtts: number[] = [];
       let ready = false;
       ws.onmessage = (e) => {
         if (typeof e.data === 'string') {
@@ -143,17 +143,23 @@ describe('link simulator: in the bridge', () => {
           return;
         }
         const bytes = new Uint8Array(e.data as ArrayBuffer);
-        if (bytes[0] === MSG.PONG && decodePong(bytes)) pongAt = performance.now();
+        const pong = bytes[0] === MSG.PONG ? decodePong(bytes) : null;
+        if (pong) rtts.push(performance.now() - pong.clientTime);
         if (bytes[0] === MSG.VIDEO) frames.push(performance.now());
       };
       await new Promise<void>((resolve, reject) => ((ws.onopen = () => resolve()), (ws.onerror = () => reject(new Error('ws error')))));
       ws.send(JSON.stringify({ type: 'hello', client: 'test' }));
       for (let i = 0; i < 200 && !ready; i++) await new Promise((r) => setTimeout(r, 10));
       assert.ok(ready, 'the hello gets through the link too');
-      const sentAt = performance.now();
-      ws.send(encodePing(sentAt));
-      for (let i = 0; i < 100 && pongAt === 0; i++) await new Promise((r) => setTimeout(r, 10));
-      const rtt = pongAt - sentAt;
+      // Three pings: on a busy machine (the whole suite runs at once) one of them can be held up by something else, and the
+      // fastest is the one that says what the link does.
+      for (let k = 0; k < 3; k++) {
+        ws.send(encodePing(performance.now()));
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      for (let i = 0; i < 100 && rtts.length < 3; i++) await new Promise((r) => setTimeout(r, 10));
+      assert.ok(rtts.length >= 1, 'a pong comes back');
+      const rtt = Math.min(...rtts);
       assert.ok(rtt >= 115 && rtt < 400, `a round trip of ${rtt.toFixed(0)} ms through 60 ms each way`);
       for (let i = 0; i < 100 && frames.length < 5; i++) await new Promise((r) => setTimeout(r, 10));
       assert.ok(frames.length >= 5, 'video still flows');

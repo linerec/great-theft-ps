@@ -34,7 +34,7 @@ interface Rig {
 async function rig(o: { token?: string } = {}): Promise<Rig> {
   const dir = mkdtempSync(path.join(tmpdir(), 'gtp-auth-'));
   dirs.push(dir);
-  const accounts = new AccountStore({ dir: path.join(dir, 'accounts') });
+  const accounts = new AccountStore({ dir: path.join(dir, 'accounts'), scryptCost: { n: 1024, r: 8, p: 1 } });
   const owner = accounts.invite('owner', { role: 'owner' });
   await accounts.acceptInvite(owner.code, 'owner-password');
   const kid = accounts.invite('kid', { dailyMinutes: 1 });

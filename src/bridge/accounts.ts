@@ -59,8 +59,16 @@ interface UsageFile {
   [day: string]: { [name: string]: number };
 }
 
+export interface ScryptCost {
+  n: number;
+  r: number;
+  p: number;
+}
+
 export interface AccountOptions {
   dir: string;
+  /** How costly a password hash is to make. The default is what a real server uses; tests pass a cheap one. */
+  scryptCost?: ScryptCost;
   /** IANA time zone that decides where a day ends. Default America/New_York. */
   timeZone?: string;
   now?: () => number;
@@ -111,6 +119,7 @@ export class AccountStore {
   readonly dir: string;
   readonly timeZone: string;
   #now: () => number;
+  #cost: ScryptCost;
   #users: UserRecord[] = [];
   #invites: Invite[] = [];
   #sessions: SessionRecord[] = [];
@@ -123,13 +132,14 @@ export class AccountStore {
     this.dir = opts.dir;
     this.timeZone = opts.timeZone ?? 'America/New_York';
     this.#now = opts.now ?? Date.now;
+    this.#cost = opts.scryptCost ?? { n: 16384, r: 8, p: 1 };
     this.#dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: this.timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
     mkdirSync(this.dir, { recursive: true, mode: 0o700 });
     this.#users = this.#load<UserRecord[]>('accounts.json', []);
     this.#invites = this.#load<Invite[]>('invites.json', []);
     this.#sessions = this.#load<SessionRecord[]>('sessions.json', []);
     this.#usage = this.#load<UsageFile>('usage.json', {});
-    this.#dummy = hashPassword(randomBytes(16).toString('hex'));
+    this.#dummy = hashPassword(randomBytes(16).toString('hex'), this.#cost);
   }
 
   #load<T>(file: string, fallback: T): T {
@@ -227,7 +237,7 @@ export class AccountStore {
     const name = this.inviteFor(code);
     const user = name ? this.#user(name) : undefined;
     if (!name || !user) throw new AccountError('bad-invite', 'this invitation is not valid any more');
-    user.password = await hashPassword(password);
+    user.password = await hashPassword(password, this.#cost);
     this.#invites = this.#invites.filter((i) => !sameHex(i.hash, sha(code)));
     this.#save('accounts.json', this.#users);
     this.#save('invites.json', this.#invites);
