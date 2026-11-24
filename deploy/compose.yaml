@@ -26,4 +26,4 @@ services:
     command:
       - sh
       - -c
-      - '[ -d /app/.git ] || git clone --branch main https://github.com/linerec/great-theft-ps.git /app; exec node /app/tools/supervise.mjs'
+      - 'git config --global --add safe.directory /app; [ -d /app/.git ] || git clone --branch main https://github.com/linerec/great-theft-ps.git /app; exec node /app/tools/supervise.mjs'

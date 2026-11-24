@@ -43,7 +43,8 @@ const log = (line) => {
     /* the log is a convenience */
   }
 };
-const git = async (...args) => (await run('git', args, { cwd: root, timeout: 60_000 })).stdout.trim();
+// `safe.directory=*`: in a container the folder is often owned by someone other than the user git runs as, and git then refuses it.
+const git = async (...args) => (await run('git', ['-c', 'safe.directory=*', ...args], { cwd: root, timeout: 60_000 })).stdout.trim();
 const badSet = () => new Set(existsSync(badFile) ? readFileSync(badFile, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean) : []);
 
 // ---------------------------------------------------------------- a console registration, once
