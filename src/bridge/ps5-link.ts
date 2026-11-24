@@ -24,6 +24,7 @@ import type { ConsoleStore } from '../console/store.ts';
 import { DEFAULT_TUNING, StreamConnection, StreamError, type StreamFrame, type StreamTransport, type StreamTuning, type StreamVideoRequest } from '../console/streamconnection.ts';
 import { StreamStats } from '../console/streamstats.ts';
 import { takionTransport } from '../console/takion-transport.ts';
+import type { Located } from '../console/locate.ts';
 import { wakeConsole, type WakeDeps, type WakeOptions } from '../console/wake.ts';
 import type { VirtualPadState } from '../engine/types.ts';
 import type { ConsoleLink, LinkHandlers, LinkStartOptions } from './console-link.ts';
@@ -254,6 +255,11 @@ export interface Ps5LinkOptions {
   wakeOptions?: Pick<WakeOptions, 'timeoutMs' | 'pollMs' | 'resendMs' | 'settleMs'>;
   /** Replaced by tests. */
   wakeDeps?: WakeDeps;
+  /**
+   * Finds the console again when it is no longer at the address its registration has (see locate.ts). Without it the
+   * stored address is used as it is. The bridge passes the real one; tests leave it out.
+   */
+  locate?: (rec: { mac: string; host: string }) => Promise<Located>;
 }
 
 export class Ps5Link implements ConsoleLink {
@@ -307,6 +313,19 @@ export class Ps5Link implements ConsoleLink {
     let yieldedBy = '';
     this.#mac = record.mac;
     this.#locked = !!options.locked;
+
+    // 1a. The console may have been given another address by the router since it was registered: find it by its id.
+    if (this.#opts.locate) {
+      const where = await this.#opts.locate({ mac: record.mac, host: record.host }).catch((): Located => ({ result: 'absent' }));
+      if (this.#stopped) return;
+      if (where.result === 'moved') {
+        log(`${name} moved from ${record.host} to ${where.host}`);
+        stats.event('moved', `address changed to ${where.host}`);
+        store.setHost(record.mac, where.host);
+        record.host = where.host;
+        step(`${name}의 주소가 바뀐 것을 찾았습니다`);
+      }
+    }
 
     // 1b. A console in rest mode is woken first, so that "connect" is one press, at home and away from it.
     if (this.#opts.wake !== false) {

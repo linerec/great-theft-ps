@@ -137,7 +137,7 @@ interface Rig {
   asked: SessionRequestOptions[];
   ctrlEvents: { onLoginPinRequest?: () => void; onClose?: (r: string) => void };
 }
-function rig(o: { store?: ConsoleStore; silentStream?: boolean; ctrlFails?: Error; ctrlFailsFirst?: Error; askPin?: boolean; session?: Ps5LinkOptions['session']; handover?: Ps5LinkOptions['handover']; wake?: boolean; wakeDeps?: WakeDeps; wakeOptions?: Ps5LinkOptions['wakeOptions'] } = {}): Rig {
+function rig(o: { store?: ConsoleStore; silentStream?: boolean; ctrlFails?: Error; ctrlFailsFirst?: Error; askPin?: boolean; session?: Ps5LinkOptions['session']; handover?: Ps5LinkOptions['handover']; wake?: boolean; wakeDeps?: WakeDeps; wakeOptions?: Ps5LinkOptions['wakeOptions']; locate?: Ps5LinkOptions['locate'] } = {}): Rig {
   const store = o.store ?? storeWith([reg(), '192.168.1.50']);
   const research = new StreamResearch();
   const stream = new FakeStream(o.silentStream);
@@ -147,7 +147,7 @@ function rig(o: { store?: ConsoleStore; silentStream?: boolean; ctrlFails?: Erro
   const ctrlEvents: Rig['ctrlEvents'] = {};
   const link = new Ps5Link({
     store, research, streamTimeoutMs: 200, inUseRetryWaitMs: 5, ...(o.handover ? { handover: o.handover } : {}),
-    wake: o.wake ?? true, wakeDeps: o.wakeDeps ?? ALREADY_ON, ...(o.wakeOptions ? { wakeOptions: o.wakeOptions } : {}),
+    wake: o.wake ?? true, wakeDeps: o.wakeDeps ?? ALREADY_ON, ...(o.wakeOptions ? { wakeOptions: o.wakeOptions } : {}), ...(o.locate ? { locate: o.locate } : {}),
     session: o.session ?? (async (s) => (asked.push(s), grant(s))),
     createCtrl: () => ({
       events: ctrlEvents,
@@ -645,3 +645,49 @@ describe('waking a console in rest mode before connecting', () => {
     assert.equal(r.asked.length, 1);
   });
 });
+
+describe('a console that was given another address', () => {
+  it('is found again by its id, and the session is asked for at the new address, which is kept', async () => {
+    const r = rig({ locate: async (rec) => ({ result: 'moved', host: rec.host === '192.168.1.50' ? '192.168.1.77' : rec.host }) });
+    const { statuses, error } = await run(r.link);
+    try {
+      assert.equal(error, null);
+      assert.equal(r.asked[0]!.host, '192.168.1.77', 'the session request goes to the new address');
+      assert.equal(r.store.list()[0]!.host, '192.168.1.77', 'and the registration follows the console');
+      assert.ok(statuses.some((s) => /주소가 바뀐 것을 찾았습니다/.test(s.detail ?? '')));
+      assert.ok(r.research.stats!.events.some((e) => e.kind === 'moved' && /192\.168\.1\.77/.test(e.detail ?? '')), 'and the move is noted with the stream');
+    } finally {
+      await r.link.stop();
+    }
+  });
+
+  it('keeps the stored address when the console answers there, or answers nowhere', async () => {
+    for (const result of ['here', 'absent'] as const) {
+      const r = rig({ locate: async () => ({ result }) });
+      const { error } = await run(r.link);
+      try {
+        assert.equal(error, null);
+        assert.equal(r.asked[0]!.host, '192.168.1.50');
+        assert.equal(r.store.list()[0]!.host, '192.168.1.50');
+      } finally {
+        await r.link.stop();
+      }
+    }
+  });
+
+  it('goes on with the stored address when the search itself fails', async () => {
+    const r = rig({
+      locate: async () => {
+        throw new Error('no network');
+      },
+    });
+    const { error } = await run(r.link);
+    try {
+      assert.equal(error, null);
+      assert.equal(r.asked[0]!.host, '192.168.1.50');
+    } finally {
+      await r.link.stop();
+    }
+  });
+});
+

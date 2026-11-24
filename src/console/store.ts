@@ -166,6 +166,16 @@ export class ConsoleStore {
     return true;
   }
 
+  /** The console was found at another address (see locate.ts). Nothing else about the registration changes. */
+  setHost(mac: string, host: string): boolean {
+    const c = this.#data.consoles.find((x) => x.mac === mac.toLowerCase());
+    if (!c) return false;
+    if (c.host === host) return true;
+    c.host = host;
+    this.#write();
+    return true;
+  }
+
   /** The full record including secrets. For the console link only; never sent to a browser. */
   get(mac: string): StoredConsole | undefined {
     return this.#data.consoles.find((c) => c.mac === mac.toLowerCase());
