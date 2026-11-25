@@ -96,6 +96,30 @@ describe('a bridge behind an HTTPS proxy on its own computer', () => {
   });
 });
 
+describe('a proxy that also listens on plain HTTP (people type "http://")', () => {
+  const plain = (port: number, host: string, target = '/'): Promise<{ status: string; text: string }> =>
+    raw(port, [`GET ${target} HTTP/1.1`, `Host: ${host}`, 'X-Forwarded-Proto: http', 'Connection: close']);
+
+  it('sends the page on to HTTPS instead of serving it, API and login included', async () => {
+    const b = await bridge([NAME], TOKEN);
+    const page = await plain(b.port, NAME);
+    assert.match(page.status, / 308 /);
+    assert.match(page.text, new RegExp(`location: https://${NAME}/\r\n`, 'i'));
+    assert.doesNotMatch(page.text, /<html/i, 'not the page itself');
+    const api = await plain(b.port, NAME, '/api/me?x=1');
+    assert.match(api.status, / 308 /);
+    assert.ok(api.text.includes(`Location: https://${NAME}/api/me?x=1\r\n`), api.text);
+  });
+
+  it('only ever names a trusted host, and keeps answering HTTPS requests as before', async () => {
+    const b = await bridge([NAME], TOKEN);
+    assert.match((await plain(b.port, 'evil.example')).status, / 421 /, 'a name nobody trusted is refused, not sent on');
+    assert.match((await plain(b.port, `${NAME.toUpperCase()}:80`)).text, new RegExp(`location: https://${NAME}/\r\n`, 'i'), 'port and case dropped');
+    const https = await raw(b.port, ['GET / HTTP/1.1', `Host: ${NAME}`, 'X-Forwarded-Proto: https', 'Connection: close']);
+    assert.match(https.status, / 200 /);
+  });
+});
+
 describe('the origin check', () => {
   it('accepts the same origin and trusted names, and nothing else', () => {
     assert.equal(originAllowed(undefined, 'anything', []), true, 'not a browser: the token decides');

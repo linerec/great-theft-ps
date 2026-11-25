@@ -25,7 +25,7 @@ import type { ConsoleStore } from '../console/store.ts';
 import type { AccountStore, PublicUser } from './accounts.ts';
 import type { DevReload } from './devreload.ts';
 import { handleApi, type ApiOptions } from './api.ts';
-import { userOf } from './auth-api.ts';
+import { isPlainViaProxy, userOf } from './auth-api.ts';
 import type { Handover } from './handover.ts';
 import { DelayLine, type LinkSimProfile } from './linksim.ts';
 import type { StreamResearch } from './ps5-link.ts';
@@ -156,6 +156,10 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
     const hostOk = (host: string | undefined): boolean => hostAllowed(host, { bound: face.host, port: face.bound, trusted: face.trusted });
     const handle: http.RequestListener = (req, res) => {
       if (!hostOk(req.headers.host)) return send(res, 421, { 'Content-Type': 'text/plain' }, 'Misdirected request');
+      // Only a name the person trusted is sent on (never whatever the request says), and only to the same path.
+      if (isPlainViaProxy(req) && face.trusted.includes(hostName(req.headers.host)) && (req.url ?? '/').startsWith('/')) {
+        return send(res, 308, { 'Content-Type': 'text/plain', Location: `https://${hostName(req.headers.host)}${req.url ?? '/'}`, 'Cache-Control': 'no-store' }, 'Use https');
+      }
       if (opts.store && (req.url ?? '').startsWith('/api/')) {
         const api: ApiOptions = { store: opts.store, ...(face.token !== undefined ? { token: face.token } : {}), ...(accounts ? { accounts } : {}), ...(opts.version ? { version: opts.version } : {}), ...(opts.research ? { research: opts.research } : {}), ...(opts.handover ? { handover: opts.handover } : {}), ...(face.trusted.length ? { trustedHosts: face.trusted } : {}), ...opts.api, log };
         void handleApi(req, res, api).catch(() => send(res, 500, { 'Content-Type': 'text/plain' }, 'error'));

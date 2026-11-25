@@ -42,6 +42,12 @@ So the way to work is: push to `main`, and about a minute later the server runs 
    certificate (DSM restarts its web services for a few seconds). Add the subdomain to the container as a second
    `--trust-host` (the flag may be repeated; a port is ignored). Without the wildcard certificate a subdomain shows a
    certificate warning, and the same name on an odd port (for example 8788 with the base name) is the way around it.
+
+   *People who type `http://`.* Port 80 of that name otherwise lands on DSM's own "Welcome to Web Station" page, which
+   looks like the address is broken. Add a second rule with the same source name, but HTTP and port 80, and the same
+   destination and headers (`X-Forwarded-Proto` = `$scheme` is the one that matters). The bridge answers those requests
+   with a redirect to the `https://` address of the same page and never serves anything over plain HTTP, so a password is
+   not typed in the open. It only does that for a name given with `--trust-host`.
 4. **Move the console registration here** (once; never register twice): on a computer that has it,
    `GTP_PASSPHRASE=<a long random phrase> npm run consoles -- export consoles.gtpbackup`, serve the file for a minute
    on the home network (`python3 -m http.server 8099` in its folder), and give the container `GTP_IMPORT_URL` and the same

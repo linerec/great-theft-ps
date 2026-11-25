@@ -79,6 +79,14 @@ export function isSecure(req: IncomingMessage): boolean {
   return isLoopback(req.socket.remoteAddress) && String(req.headers['x-forwarded-proto'] ?? '').split(',')[0]?.trim() === 'https';
 }
 
+/**
+ * Did a proxy on this computer say the page was asked for over plain HTTP? (The proxy's own port 80 rule: people type
+ * "http://" or click an old link. They are sent on to HTTPS, never served, so a password is not typed over the open internet.)
+ */
+export function isPlainViaProxy(req: IncomingMessage): boolean {
+  return isLoopback(req.socket.remoteAddress) && !(req.socket as { encrypted?: boolean }).encrypted && String(req.headers['x-forwarded-proto'] ?? '').split(',')[0]?.trim() === 'http';
+}
+
 export function sessionOf(req: { headers: IncomingMessage['headers'] }): string | undefined {
   for (const part of String(req.headers.cookie ?? '').split(';')) {
     const i = part.indexOf('=');
