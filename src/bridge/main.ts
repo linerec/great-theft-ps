@@ -38,6 +38,7 @@ import { AccountStore } from './accounts.ts';
 import { DevReload } from './devreload.ts';
 import { CoreLink } from './core-link.ts';
 import { Handover } from './handover.ts';
+import { StudyStore } from './study-store.ts';
 import { LINK_PROFILES, parseLinkSim } from './linksim.ts';
 import { PHONE_PORT, planPhone, realPhoneDeps, type PhonePlan } from './phone.ts';
 import { firstFreePort } from './ports.ts';
@@ -182,6 +183,7 @@ const bridge = await startBridge({
   ...(phone ? { also: [{ host: phone.host, port, token: args.token?.[0] ?? keptToken(), trustedHosts: [phone.name], tls: { cert: phone.tls.cert, key: phone.tls.key } }] } : {}),
   ...(linkSim ? { linkSim } : {}),
   ...(accounts ? { accounts } : {}),
+  study: new StudyStore(path.join(path.dirname(defaultStorePath()), 'study')),
   version,
   ...(args.live ? { devReload: new DevReload({ dirs: [path.join(root, 'web'), path.join(root, 'src')] }) } : {}),
   root,

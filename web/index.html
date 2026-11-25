@@ -169,6 +169,42 @@
               </div>
             </div>
 
+            <div id="studyPanel" class="panel panel-left study" hidden>
+              <div class="panel-head"><h3>느낌 실험</h3><button class="icon-btn small" type="button" data-close="studyPanel" aria-label="닫기"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+              <div id="studyIdle">
+                <p class="muted small">후보 48개를 하나씩 써 보고 점수를 매깁니다. 값은 숨겨져 있어서 선입견 없이 평가할 수 있고, 점수가 모이면 어떤 값이 좋은지 분석합니다. 끝내면 원래 값으로 돌아갑니다(감도는 그대로).</p>
+                <p id="studyIdleCount" class="muted small"></p>
+                <button id="studyStart" class="btn primary" type="button">실험 시작</button>
+              </div>
+              <div id="studyRun" hidden>
+                <div class="study-head"><b id="studyId">-</b><span id="studyProgress" class="muted small"></span></div>
+                <details class="study-values"><summary>값 보기 (보면 선입견이 생깁니다)</summary><p id="studyValues" class="muted small"></p></details>
+                <div class="study-label"><span>점수</span><output id="studyScoreOut">-</output></div>
+                <div id="studyScore" class="study-scale" role="group" aria-label="점수 1~10"></div>
+                <p class="muted small study-anchor"><span>1 못 쓰겠다</span><span>10 진짜 키보드·마우스 같다</span></p>
+                <div id="studyScene" class="seg" role="group" aria-label="무엇을 하며 써 봤나"></div>
+                <div class="study-actions">
+                  <button id="studyBack" class="btn small" type="button">이전</button>
+                  <button id="studySkip" class="btn small" type="button">건너뛰기</button>
+                  <button id="studySave" class="btn small primary" type="button">저장하고 다음</button>
+                </div>
+                <details class="study-more">
+                  <summary>상황별 표시·메모 (선택)</summary>
+                  <p class="muted small">해당하는 것만 누르세요. 안 누르면 보통입니다.</p>
+                  <div id="studySituations" class="study-sit"></div>
+                  <input id="studyNote" type="text" maxlength="200" placeholder="메모 (선택)" autocomplete="off">
+                </details>
+                <p class="muted small">마우스가 잠겨 있는 동안: <kbd>=</kbd> <kbd>-</kbd> 점수, <kbd>5</kbd>~<kbd>0</kbd> 아쉬웠던 점(천천히·휘두름·따라가기·멈춤·시작·매끄러움), <kbd>]</kbd> 저장하고 다음, <kbd>[</kbd> 이전</p>
+              </div>
+              <div class="study-tools">
+                <button id="studyReport" class="btn small" type="button">분석 보기</button>
+                <button id="studyCopy" class="btn small" type="button">기록 복사</button>
+                <button id="studyEnd" class="btn small" type="button" hidden>끝내기 (원래 값)</button>
+                <p id="studySync" class="muted small"></p>
+              </div>
+              <details class="study-list"><summary>내 기록 <span id="studyListCount"></span></summary><ol id="studyList"></ol></details>
+            </div>
+
             <div id="optPanel" class="panel panel-right" hidden>
               <div class="panel-head"><h3>화면·소리·연결</h3><button class="icon-btn small" type="button" data-close="optPanel" aria-label="닫기"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
               <div id="optPanelSlot"></div>
@@ -182,6 +218,7 @@
               <button id="hudRecBtn" class="hb" type="button" title="녹화 (R)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use id="hudRecIcon" href="#i-record"/></svg></button>
               <button id="hudStats" class="hb" type="button" title="연결 상태 (S)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg></button>
               <button id="hudFeel" class="hb" type="button" title="마우스 느낌 (G)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-mouse"/></svg></button>
+              <button id="hudStudy" class="hb" type="button" title="느낌 실험: 후보를 써 보고 점수 매기기 (L)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg></button>
               <button id="hudKeys" class="hb" type="button" title="키 배치 (K)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-keyboard"/></svg></button>
               <button id="hudOpts" class="hb" type="button" title="화면·소리·연결 설정 (O)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg></button>
               <button id="hudTheater" class="hb" type="button" title="넓게 보기 (T)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-wide"/></svg></button>
@@ -645,6 +682,11 @@
     <div id="usersInvite" class="invitebox" hidden></div>
   </dialog>
 
+  <dialog id="studyReportDialog" class="wide" aria-labelledby="studyReportTitle">
+    <div class="dialog-head"><h2 id="studyReportTitle">느낌 실험 분석</h2><span><button id="studyReportCopy" class="btn small" type="button">복사</button> <button id="studyReportClose" class="btn ghost small" type="button">닫기</button></span></div>
+    <pre id="studyReportText" class="study-report"></pre>
+  </dialog>
+
   <dialog id="shortcutsDialog" aria-labelledby="shortcutsTitle">
     <div class="dialog-head"><h2 id="shortcutsTitle">단축키</h2><button id="shortcutsClose" class="btn ghost small" type="button">닫기</button></div>
     <p class="muted small">PS5 화면에서, 마우스가 잠겨 있지 않을 때 씁니다. 화면을 클릭해 마우스가 잠기면 모든 키가 PS5로 가고, <kbd>Esc</kbd>를 누르면 다시 풀립니다.</p>
@@ -657,9 +699,11 @@
       <div><dt><kbd>S</kbd></dt><dd>연결 상태 (지연, 프레임, 그래프)</dd></div>
       <div><dt><kbd>K</kbd></dt><dd>키 배치 보기</dd></div>
       <div><dt><kbd>G</kbd></dt><dd>마우스 느낌: 감도, 부드러움, 빠른 휘두름 이어 돌기</dd></div>
+      <div><dt><kbd>L</kbd></dt><dd>느낌 실험: 후보 설정을 하나씩 써 보고 점수 매기기</dd></div>
       <div><dt><kbd>O</kbd></dt><dd>화면·소리·연결 설정 패널</dd></div>
       <div><dt><kbd>PageUp</kbd> <kbd>PageDown</kbd></dt><dd>감도 올리기·내리기. 마우스가 잠겨 있는 동안에도 됩니다</dd></div>
       <div><dt><kbd>Home</kbd></dt><dd>마우스 느낌 바꾸기 (또렷하게 → 균형 → 부드럽게). 잠겨 있는 동안에도 됩니다</dd></div>
+      <div><dt><kbd>=</kbd> <kbd>-</kbd></dt><dd>실험 중 점수 올리기·내리기 (마우스가 잠겨 있는 동안에도). <kbd>5</kbd>~<kbd>0</kbd> 아쉬웠던 점 표시, <kbd>]</kbd> 저장하고 다음, <kbd>[</kbd> 이전</dd></div>
       <div><dt><kbd>?</kbd></dt><dd>이 도움말</dd></div>
       <div><dt><kbd>Esc</kbd></dt><dd>마우스를 풀고 조작을 멈춤 (전체 화면에서는 길게 누르면 전체 화면이 꺼집니다)</dd></div>
     </dl>
@@ -681,6 +725,7 @@
     <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9.5v5h4l5 4v-13l-5 4z"/><path d="M17 9.5l4 5M21 9.5l-4 5"/></symbol>
     <symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 20v-7M12 20V5M19 20v-10"/></symbol>
     <symbol id="i-mouse" viewBox="0 0 24 24"><rect x="6.5" y="3" width="11" height="18" rx="5.5"/><path d="M12 3v6M6.5 9h11"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 4l2.4 5 5.4.7-4 3.8 1 5.4-4.8-2.6-4.8 2.6 1-5.4-4-3.8 5.4-.7z"/></symbol>
     <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2.5"/><path d="M7 10h.01M10.5 10h.01M14 10h.01M17.5 10h.01M8 14h8"/></symbol>
     <symbol id="i-wide" viewBox="0 0 24 24"><rect x="2.5" y="7" width="19" height="10" rx="2.5"/></symbol>
     <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3.5v8M6.7 6.7a7.5 7.5 0 1 0 10.6 0"/></symbol>

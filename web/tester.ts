@@ -5,6 +5,7 @@
 // Everything runs on a fixed 250 Hz clock.
 
 import { MappingEngine } from '../src/engine/engine.ts';
+import { describeKnobs, ROUND_1, TrialMeter } from '../src/engine/feel-study.ts';
 import { defaultProfile, gtaProfile, parseProfileText, PRESETS, validateProfile, type Profile } from '../src/engine/profile.ts';
 import { BUTTON, BUTTON_NAMES, emptyPadState, type VirtualPadState } from '../src/engine/types.ts';
 import { FpsGame, defaultGameSettings } from '../src/testbed/fps.ts';
@@ -71,10 +72,17 @@ function resetMeasure(): void {
   yawMark = active().yawTotal;
 }
 
+/** What the hand did, for the study of the mouse feel: the counts since the input loop last looked, and the meter that sorts them by speed. */
+export const trialMeter = new TrialMeter();
+let meterDx = 0;
+let meterDy = 0;
+
 function feedMouse(dx: number, dy: number): void {
   if (calibStick) return;
   engine.mouseMove(dx, dy);
   measureCounts += dx;
+  meterDx += dx;
+  meterDy += dy;
 }
 
 // ---------------------------------------------------------------- controls
@@ -929,6 +937,11 @@ export const stage = {
  * the profile, so the settings page, the saved profile and these controls always show the same numbers.
  */
 export const mouseFeel = {
+  /** What the engine believes about how the game answers a stick (a measured table makes the three numbers a rough guide only). */
+  game(): { innerDeadzone: number; maxTurnRateAtFullStick: number; responseCurve: number; measured: boolean } {
+    const g = profile.inGame;
+    return { innerDeadzone: g.innerDeadzone, maxTurnRateAtFullStick: g.maxTurnRateAtFullStick, responseCurve: g.responseCurve, measured: profile.calibration.horizontal !== null };
+  },
   read(): Feel {
     const m = profile.mouse;
     return { degPerCount: m.degPerCount, smoothingMs: m.smoothingMs, smoothingFadeRate: m.smoothingFadeRate, carryMs: m.carryMs, curve: m.curve };
@@ -1188,6 +1201,9 @@ function pump(): void {
     if (look.dx !== 0 || look.dy !== 0) feedMouse(look.dx, look.dy);
   }
   if (steps > 0) {
+    trialMeter.tick(steps * TICK, meterDx, meterDy, profile.mouse.degPerCount, mode === 'console' && isLocked());
+    meterDx = 0;
+    meterDy = 0;
     engine.runFor(steps * TICK, TICK, (s) => {
       if (touch.shown) {
         // Fingers on the screen add to whatever a keyboard is doing: buttons and triggers join, the stick takes over.
@@ -1701,6 +1717,47 @@ async function runE2e(): Promise<void> {
     calApply.hidden = applyWas;
     click('hudFeel');
     check('the panel closes with its button', $<HTMLElement>('feelPanel').hidden);
+
+    // The study of the feel: candidates one after another, a score for each, kept here and on the server.
+    const knobsNow = (): string => describeKnobs({ smoothingMs: profile.mouse.smoothingMs, smoothingFadeRate: profile.mouse.smoothingFadeRate, carryMs: profile.mouse.carryMs, curve: profile.mouse.curve });
+    const feelBefore = knobsNow();
+    const sensStudy = profile.mouse.degPerCount;
+    localStorage.removeItem('gtp.study.ratings');
+    click('hudStudy');
+    check('the study panel opens (and the feel panel is closed)', !$<HTMLElement>('studyPanel').hidden && $<HTMLElement>('feelPanel').hidden);
+    click('studyStart');
+    check('the first candidate is in force, its number is shown and its values are not', $<HTMLElement>('studyId').textContent === '#01' && knobsNow() === describeKnobs(ROUND_1.candidates[0]!.set) && !($<HTMLElement>('studyValues').parentElement as HTMLDetailsElement).open, `${$<HTMLElement>('studyId').textContent} ${knobsNow()}`);
+    click('studySave');
+    check('a candidate cannot be saved without a score', toasts().includes('점수를 먼저') && ($<HTMLElement>('studyId').textContent === '#01'), toasts());
+    document.querySelector<HTMLButtonElement>('#studyScore [data-score="7"]')?.click();
+    document.querySelector<HTMLButtonElement>('#studySituations [data-sit="stop"] [data-v="-1"]')?.click();
+    document.querySelector<HTMLButtonElement>('#studyScene [data-scene="aim"]')?.click();
+    check('the score and what was bad are shown as chosen', $<HTMLElement>('studyScoreOut').textContent === '7 / 10' && document.querySelector('#studySituations [data-sit="stop"] [data-v="-1"]')?.getAttribute('aria-pressed') === 'true');
+    const study = (await import('./study-ui.ts')).study;
+    study.key('Equal');
+    check('"=" raises the score by one, as it does while the game has the mouse', $<HTMLElement>('studyScoreOut').textContent === '8 / 10', $<HTMLElement>('studyScoreOut').textContent ?? '');
+    study.key('Digit5');
+    check('"5" marks slow aiming as bad', document.querySelector('#studySituations [data-sit="slow"] [data-v="-1"]')?.getAttribute('aria-pressed') === 'true');
+    study.key('BracketRight');
+    check('"]" saves and goes on to the next candidate, whose values are in force', $<HTMLElement>('studyId').textContent === '#02' && knobsNow() === describeKnobs(ROUND_1.candidates[1]!.set), `${$<HTMLElement>('studyId').textContent} ${knobsNow()}`);
+    const kept = JSON.parse(localStorage.getItem('gtp.study.ratings') ?? '[]') as Array<{ preset: string; score: number; flags: Record<string, number>; scene: string; feel: { degPerCount: number } }>;
+    check('the rating is kept in this browser with the score, the marks, the scene and the sensitivity', kept.length === 1 && kept[0]!.preset === 'r1-01' && kept[0]!.score === 8 && kept[0]!.flags.stop === -1 && kept[0]!.flags.slow === -1 && kept[0]!.scene === 'aim' && kept[0]!.feel.degPerCount === sensStudy, JSON.stringify(kept));
+    document.querySelector<HTMLButtonElement>('#studyScore [data-score="4"]')?.click();
+    click('studySave');
+    await until(() => (JSON.parse(localStorage.getItem('gtp.study.sent') ?? '[]') as string[]).length === 2, 5000);
+    check('both ratings have reached the server', (JSON.parse(localStorage.getItem('gtp.study.sent') ?? '[]') as string[]).length === 2, localStorage.getItem('gtp.study.sent') ?? '');
+    check('the list shows them', document.querySelectorAll('#studyList li').length === 2 && $<HTMLElement>('studyListCount').textContent === '(2)');
+    study.key('BracketLeft');
+    check('"[" goes back to the candidate before', $<HTMLElement>('studyId').textContent === '#02' && knobsNow() === describeKnobs(ROUND_1.candidates[1]!.set));
+    click('studyReport');
+    await until(() => /분석/.test($<HTMLElement>('studyReportText').textContent ?? '') && !/하는 중/.test($<HTMLElement>('studyReportText').textContent ?? ''), 8000);
+    // Nothing here locks the mouse, so the two tries had no time with it in the game's hands: the analysis leaves them out and says so.
+    check('the analysis comes back from its worker, and leaves out the two tries that had no time with the mouse', /평가 0개 분석 \(짧은 2개 제외\)/.test($<HTMLElement>('studyReportText').textContent ?? ''), $<HTMLElement>('studyReportText').textContent ?? '');
+    click('studyReportClose');
+    click('studyEnd');
+    check('ending puts the earlier values back, and leaves the sensitivity', knobsNow() === feelBefore && profile.mouse.degPerCount === sensStudy && $<HTMLElement>('studyRun').hidden, knobsNow());
+    click('hudStudy');
+    check('the study panel closes with its button', $<HTMLElement>('studyPanel').hidden);
     const pumps0 = inputLoop.pumps;
     await sleep(500);
     check('the input runs on its own timer, faster than the 60 Hz drawing', inputLoop.pumps - pumps0 >= 40, `${inputLoop.pumps - pumps0} in 500 ms`);

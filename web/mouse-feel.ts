@@ -4,19 +4,10 @@
 // sensitivity that can be pressed during the game, and the rule that keeps a mouse movement from being counted twice.
 // The translation itself (counts to stick) is in src/engine/mouse.ts; this file only picks values for it.
 
-/** The mouse settings of the profile that these controls change. */
-export interface Feel {
-  /** Degrees of camera rotation per mouse count. */
-  degPerCount: number;
-  /** Time constant of the low-pass filter, ms. */
-  smoothingMs: number;
-  /** The turn rate (deg/s) at which the filter has faded out completely; 0 = it works the same at every speed. */
-  smoothingFadeRate: number;
-  /** How long the camera may go on turning after the hand stopped, to pay what the speed limit held back, ms. */
-  carryMs: number;
-  /** 1 = linear. */
-  curve: number;
-}
+import type { Feel } from '../src/engine/feel-study.ts';
+
+/** The mouse settings of the profile that these controls change (defined with the study of the feel, which records them). */
+export type { Feel };
 
 export interface FeelPreset {
   id: 'sharp' | 'balanced' | 'smooth';

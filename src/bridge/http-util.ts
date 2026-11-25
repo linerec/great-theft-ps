@@ -12,13 +12,14 @@ export function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(text);
 }
 
-export function readBody(req: IncomingMessage): Promise<unknown> {
+/** The body of a request as JSON. Small by default (a few KB); a caller that expects more says how much. */
+export function readBody(req: IncomingMessage, max: number = MAX_BODY): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
     req.on('data', (c: Buffer) => {
       size += c.length;
-      if (size > MAX_BODY) {
+      if (size > max) {
         reject(new Error('too large'));
         req.destroy();
         return;

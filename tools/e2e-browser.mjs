@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { FakeLink } from '../test/support/fake-link.ts';
 import { startBridge } from '../src/bridge/server.ts';
 import { ConsoleStore } from '../src/console/store.ts';
+import { StudyStore } from '../src/bridge/study-store.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const candidates = [
@@ -36,6 +37,7 @@ const reported = new Promise((r) => (resolveReport = r));
 // The registration form is driven too, against a stubbed console (the real flow has its own tests).
 const storeDir = mkdtempSync(path.join(tmpdir(), 'gtp-e2e-store-'));
 const store = new ConsoleStore(path.join(storeDir, 'consoles.json'));
+const study = new StudyStore(path.join(storeDir, 'study'));
 let registerCall;
 let psnCode;
 const bridge = await startBridge({
@@ -43,6 +45,7 @@ const bridge = await startBridge({
   port: 0,
   root,
   store,
+  study,
   api: {
     psn: async (code) => {
       psnCode = code;
@@ -94,7 +97,11 @@ try {
     psnCode === 'E2ELoginCode-123' && registerCall?.host === '192.168.1.50' && String(registerCall?.pin) === '24680135' && registerCall?.accountId === 'AgEAAAAAAAA=' &&
     !!store.get('0123456789ab') && store.accountId === 'AgEAAAAAAAA=';
   console.log(`${registerOk ? 'ok  ' : 'FAIL'} the bridge got the login code from the page, fetched the account id, and used it for the registration (target ${registerCall?.target})`);
-  exitCode = report.pass && serverOk && registerOk ? 0 : 1;
+  // The scores the page made in the study of the mouse feel are on the server, as the person who played (nobody logs in here: "local").
+  const kept = study.list('local');
+  const studyOk = kept.length === 2 && kept[0].rating.preset === 'r1-01' && kept[0].rating.score === 8 && kept[0].rating.flags.stop === -1 && kept[1].rating.score === 4;
+  console.log(`${studyOk ? 'ok  ' : 'FAIL'} the server kept the scores of the study (${kept.map((k) => `${k.rating.preset}:${k.rating.score}`).join(', ')})`);
+  exitCode = report.pass && serverOk && registerOk && studyOk ? 0 : 1;
   console.log(exitCode === 0 ? '\nE2E PASS' : '\nE2E FAIL');
 } catch (e) {
   console.error(String(e.message ?? e));

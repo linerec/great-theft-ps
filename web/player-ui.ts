@@ -11,6 +11,7 @@ import {
 } from './player-logic.ts';
 import { FEEL_PRESETS, presetOf, stepSensitivity } from './mouse-feel.ts';
 import { consoleName } from './ps5.ts';
+import { study } from './study-ui.ts';
 import { mouseFeel, stage } from './tester.ts';
 import { save, saved, toast } from './ui.ts';
 
@@ -141,12 +142,12 @@ theaterBtn.addEventListener('click', () => setTheater(!document.body.classList.c
 
 // ------------------------------------------------------------------ the panels
 
-const PANELS = ['statsPanel', 'keysPanel', 'feelPanel', 'optPanel'] as const;
+const PANELS = ['statsPanel', 'keysPanel', 'feelPanel', 'studyPanel', 'optPanel'] as const;
 type PanelId = (typeof PANELS)[number];
 const panelEl = (id: PanelId): HTMLElement => $<HTMLElement>(id);
-const panelButton: Record<PanelId, string> = { statsPanel: 'hudStats', keysPanel: 'hudKeys', feelPanel: 'hudFeel', optPanel: 'hudOpts' };
+const panelButton: Record<PanelId, string> = { statsPanel: 'hudStats', keysPanel: 'hudKeys', feelPanel: 'hudFeel', studyPanel: 'hudStudy', optPanel: 'hudOpts' };
 /** The panels on the left share one place: opening one closes the others. */
-const LEFT: readonly PanelId[] = ['statsPanel', 'keysPanel', 'feelPanel'];
+const LEFT: readonly PanelId[] = ['statsPanel', 'keysPanel', 'feelPanel', 'studyPanel'];
 
 /** The options live in the card beside the picture; while the panel is open they are in it (so they are in reach in full screen). */
 function moveOptions(into: 'panel' | 'card'): void {
@@ -159,6 +160,7 @@ function openPanel(id: PanelId, open: boolean): void {
   if (open) {
     if (LEFT.includes(id)) for (const other of LEFT) if (other !== id) openPanel(other, false);
     if (id === 'feelPanel') paintFeel();
+    if (id === 'studyPanel') study.paint();
     if (id === 'keysPanel') {
       $('keysName').textContent = $('layoutName').textContent ?? '';
       const list = $<HTMLElement>('keysList');
@@ -176,6 +178,7 @@ const closePanels = (): void => PANELS.forEach((p) => openPanel(p, false));
 $<HTMLButtonElement>('hudStats').addEventListener('click', () => togglePanel('statsPanel'));
 $<HTMLButtonElement>('hudKeys').addEventListener('click', () => togglePanel('keysPanel'));
 $<HTMLButtonElement>('hudFeel').addEventListener('click', () => togglePanel('feelPanel'));
+$<HTMLButtonElement>('hudStudy').addEventListener('click', () => togglePanel('studyPanel'));
 $<HTMLButtonElement>('hudOpts').addEventListener('click', () => togglePanel('optPanel'));
 $<HTMLButtonElement>('hudQuality').addEventListener('click', () => togglePanel('statsPanel'));
 for (const b of hudEl.querySelectorAll<HTMLButtonElement>('[data-close]')) b.addEventListener('click', () => openPanel(b.dataset.close as PanelId, false));
@@ -274,6 +277,11 @@ function feelKey(code: string): boolean {
     return true;
   }
   if (code === 'Home') {
+    // The study puts its own candidates in force; cycling the presets under it would make the score about something else.
+    if (study.active) {
+      toast('실험 중에는 느낌을 바꾸지 않습니다. 끝내려면 L 패널에서 끝내기', 'info', 1800);
+      return true;
+    }
     const now = presetOf(mouseFeel.read());
     const at = FEEL_PRESETS.findIndex((p) => p.id === now);
     const next = FEEL_PRESETS[(at + 1) % FEEL_PRESETS.length]!;
@@ -591,7 +599,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   // The few keys that tune the mouse work while the game has it too (they are not the game's: no layout binds them).
-  if (live && stage.locked && !e.ctrlKey && !e.metaKey && !e.altKey && feelKey(e.code)) {
+  if (live && stage.locked && !e.ctrlKey && !e.metaKey && !e.altKey && (study.key(e.code) || feelKey(e.code))) {
     e.preventDefault();
     e.stopImmediatePropagation();
     return;
@@ -611,6 +619,7 @@ window.addEventListener('keydown', (e) => {
     case 'KeyS': return act(() => live && togglePanel('statsPanel'));
     case 'KeyK': return act(() => live && togglePanel('keysPanel'));
     case 'KeyG': return act(() => live && togglePanel('feelPanel'));
+    case 'KeyL': return act(() => live && togglePanel('studyPanel'));
     case 'KeyO': return act(() => live && togglePanel('optPanel'));
     default:
       if (e.key === '?') act(() => $<HTMLDialogElement>('shortcutsDialog').showModal());

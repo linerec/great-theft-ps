@@ -21,6 +21,9 @@
 //   POST   /api/psn/account-id    { redirectUrl, acknowledge: true }  gets the PSN account id and saves it here. The answer
 //                                 holds only its last four digits; tokens are never kept, logged or returned.
 //   DELETE /api/consoles/<mac>    forgets a registration on this computer (the console keeps its own list)
+//   GET    /api/study/ratings     the asker's own scores from the mouse-feel study (?user=all: everybody's, for the owner)
+//   POST   /api/study/ratings     { ratings: [...] }  keeps the ones that pass the check and have not been kept before
+//   DELETE /api/study/ratings/<id>  takes back one of the asker's own scores
 //
 // Same rules as the WebSocket: loopback Host, same-origin Origin when the browser sends one, and the token when one is
 // configured (Authorization: Bearer). POST needs Content-Type: application/json, so a plain cross-site form cannot post.
@@ -39,6 +42,8 @@ import type { StreamResearch } from './ps5-link.ts';
 import { handleAuthApi, isOwnerOnly, userOf } from './auth-api.ts';
 import type { AccountStore } from './accounts.ts';
 import { json, readBody } from './http-util.ts';
+import { parseRating } from '../engine/feel-study.ts';
+import type { StudyStore } from './study-store.ts';
 import { originAllowed } from './static.ts';
 import type { ConsoleStore } from '../console/store.ts';
 
@@ -64,6 +69,8 @@ export interface ApiOptions {
   accounts?: AccountStore;
   /** Handing the console over between this project's clients. Without it /api/handover says it is off. */
   handover?: Handover;
+  /** Where the scores of the mouse-feel study are kept. Without it /api/study/ answers 404. */
+  study?: StudyStore;
   /** This computer's usable network addresses. Replaced by tests. */
   network?: () => NetworkInterfaceInfo[];
   log?: (line: string) => void;
@@ -126,10 +133,11 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
   }
   const bearer = /^Bearer (.+)$/.exec(String(req.headers.authorization ?? ''))?.[1] ?? '';
   const tokenOk = opts.token !== undefined && timingSafeEqual(sha(bearer), sha(opts.token));
+  let who: ReturnType<typeof userOf> = null;
   if (opts.accounts) {
     // People log in: who is asking decides what they may do. The token (when there is one) is the owner's, for tools.
     if (await handleAuthApi(req, res, url, opts.accounts)) return true;
-    const who = userOf(req, opts.accounts);
+    who = userOf(req, opts.accounts);
     if (!who && !tokenOk) return json(res, 401, { error: 'unauthorized', login: true }), true;
     if (who && who.role !== 'owner' && !tokenOk && isOwnerOnly(req.method, url.pathname)) return json(res, 403, { error: 'owner-only' }), true;
   } else {
@@ -241,6 +249,45 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
       log(`waking ${rec.nickname || rec.mac} at ${rec.host}`);
       await (opts.wake ?? ((host, c, ps5) => wakeup(host, c, ps5)))(rec.host, credential, isPs5Target(rec.target));
       json(res, 200, { ok: true, sent: true });
+    } else if (url.pathname.startsWith('/api/study/')) {
+      const study = opts.study;
+      if (!study) return json(res, 404, { error: 'unknown endpoint' }), true;
+      // Scores are a person's own. Without logins there is one person ("local"); the token of a tool is the owner's.
+      const me = opts.accounts ? (who?.name ?? 'owner') : 'local';
+      const isOwner = !opts.accounts || who?.role === 'owner' || (!who && tokenOk);
+      if (req.method === 'GET' && url.pathname === '/api/study/ratings') {
+        const wanted = url.searchParams.get('user');
+        if (wanted === 'all' || (wanted !== null && wanted !== me)) {
+          if (!isOwner) return json(res, 403, { error: 'owner-only' }), true;
+          const items = wanted === 'all' ? study.list() : study.list(wanted);
+          return json(res, 200, { ratings: items.map((s) => ({ ...s.rating, user: s.user })) }), true;
+        }
+        json(res, 200, { ratings: study.list(me).map((s) => s.rating) });
+      } else if (req.method === 'POST' && url.pathname === '/api/study/ratings') {
+        const body = (await readBody(req, 64 * 1024)) as { ratings?: unknown };
+        if (!Array.isArray(body.ratings) || body.ratings.length === 0 || body.ratings.length > 40) return json(res, 400, { error: 'invalid-input', message: 'send { ratings: [1 to 40 scores] }' }), true;
+        let stored = 0;
+        let duplicates = 0;
+        let full = 0;
+        const rejected: Array<{ id: string | null; error: string }> = [];
+        for (const raw of body.ratings) {
+          const parsed = parseRating(raw);
+          if (!parsed.ok) {
+            rejected.push({ id: typeof (raw as { id?: unknown } | null)?.id === 'string' ? (raw as { id: string }).id.slice(0, 64) : null, error: parsed.error });
+            continue;
+          }
+          const result = study.add(me, parsed.rating);
+          if (result === 'stored') stored++;
+          else if (result === 'duplicate') duplicates++;
+          else full++;
+        }
+        json(res, 200, { stored, duplicates, full, rejected });
+      } else if (req.method === 'DELETE' && url.pathname.startsWith('/api/study/ratings/')) {
+        const removed = study.remove(me, decodeURIComponent(url.pathname.slice('/api/study/ratings/'.length)));
+        json(res, removed ? 200 : 404, { ok: removed });
+      } else {
+        json(res, 404, { error: 'unknown endpoint' });
+      }
     } else if (req.method === 'DELETE' && url.pathname.startsWith('/api/consoles/')) {
       const mac = decodeURIComponent(url.pathname.slice('/api/consoles/'.length));
       const removed = store.remove(mac);

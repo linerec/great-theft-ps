@@ -64,6 +64,10 @@ by itself when the address is opened. A web app manifest and icons make "Add to 
 | `web/ps5.ts` | the console cards, the big button, the text before and after the stream, connecting on open |
 | `web/account-ui.ts` | login, the account menu, the time left (counted down only while a stream runs) |
 | `web/mouse-feel.ts` | the starting points for the mouse feel, the sensitivity step, and the rule that keeps a movement from being counted twice (`RawMouseGate`) |
+| `web/study-ui.ts`, `web/study-session.ts`, `web/study-worker.ts` | the study of the mouse feel (`L`): the panel, the rules of one person's way through it, the analysis off the page's thread (`docs/feel-study.md`) |
+| `src/engine/feel-study.ts` | the candidates, the check of a rating, the meter of the hand, what a setting does (by running the engine), the analysis |
+| `src/bridge/study-store.ts` | the file of ratings (`GET/POST/DELETE /api/study/ratings`) |
+| `tools/research/feel-report.mjs` | the analysis of a file of ratings, in the terminal |
 | `web/tester.ts` | the input; exports `stage` (canvas, mouse lock, volume, the sound as a stream) and `mouseFeel` for the player |
 | `tools/preview.mjs` | `npm run preview`: the page with a pretend console (and `--accounts`), to look at and try the interface |
 | `tools/make-icons.mjs` | `npm run icons`: the PNG icons from `web/icon.svg`, drawn by headless Chrome |

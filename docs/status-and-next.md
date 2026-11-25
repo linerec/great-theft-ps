@@ -283,3 +283,17 @@ turn; that was the 12 ms filter (92 ms). The carry-over only acts on a swipe fas
 a locked mouse cannot be given to a script, and the measuring of the real game has never been run. The first thing to try in
 the game: pick "균형" in the panel (the profile saved in the browser still has the old values until then), set GTA's own
 look sensitivity high and its dead zone low, run "게임에 맞게 자동 보정" once, and compare the three starting points with `Home`.
+
+## The study of the mouse feel (2026-11-25)
+
+The owner asked for many candidate settings to be made, to be scored by playing, and the scores to be analysed ("not just a
+key mapping: a solution at the level of how the movement behaves in each situation"). Built: 48 candidates in a fixed blind
+order, a panel (`L`) with keys that work while the mouse is locked, ratings kept in the browser and on the server, and an
+analysis that says what each knob and each behaviour of the filter does to the score, how much the scores themselves move,
+what the best setting seems to be and what to try next. `docs/feel-study.md` has the whole of it.
+
+**Not known:** whether the candidates can be told apart in the game, and what the owner's scores will say. The analysis was
+checked against a made-up person only. Next: the owner plays and scores (ten to a hundred ratings), the analysis is run, and
+the second round is made from what it proposes. If the situation marks and scenes say different situations want different
+settings, the next thing to build is a feel that depends on speed or on the layer (aim, drive, walk).
+

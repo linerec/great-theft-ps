@@ -27,6 +27,7 @@ import type { DevReload } from './devreload.ts';
 import { handleApi, type ApiOptions } from './api.ts';
 import { isPlainViaProxy, userOf } from './auth-api.ts';
 import type { Handover } from './handover.ts';
+import type { StudyStore } from './study-store.ts';
 import { DelayLine, type LinkSimProfile } from './linksim.ts';
 import type { StreamResearch } from './ps5-link.ts';
 import { portInUse, probeHostFor } from './ports.ts';
@@ -96,6 +97,8 @@ export interface BridgeOptions {
    * and other addresses need the token.
    */
   accounts?: AccountStore;
+  /** Where the scores of the mouse-feel study are kept (study-store.ts). */
+  study?: StudyStore;
   /** Live reload for whoever is developing (see devreload.ts). Only offered on the loopback address, never to other devices. */
   devReload?: DevReload;
   /** What is running, for the page's small version line (GET /api/version). */
@@ -161,7 +164,7 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
         return send(res, 308, { 'Content-Type': 'text/plain', Location: `https://${hostName(req.headers.host)}${req.url ?? '/'}`, 'Cache-Control': 'no-store' }, 'Use https');
       }
       if (opts.store && (req.url ?? '').startsWith('/api/')) {
-        const api: ApiOptions = { store: opts.store, ...(face.token !== undefined ? { token: face.token } : {}), ...(accounts ? { accounts } : {}), ...(opts.version ? { version: opts.version } : {}), ...(opts.research ? { research: opts.research } : {}), ...(opts.handover ? { handover: opts.handover } : {}), ...(face.trusted.length ? { trustedHosts: face.trusted } : {}), ...opts.api, log };
+        const api: ApiOptions = { store: opts.store, ...(face.token !== undefined ? { token: face.token } : {}), ...(accounts ? { accounts } : {}), ...(opts.version ? { version: opts.version } : {}), ...(opts.research ? { research: opts.research } : {}), ...(opts.handover ? { handover: opts.handover } : {}), ...(opts.study ? { study: opts.study } : {}), ...(face.trusted.length ? { trustedHosts: face.trusted } : {}), ...opts.api, log };
         void handleApi(req, res, api).catch(() => send(res, 500, { 'Content-Type': 'text/plain' }, 'error'));
         return;
       }
