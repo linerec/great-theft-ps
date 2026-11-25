@@ -24,18 +24,22 @@ mouse and brings the bar back at once; after Esc the keyboard is not the game's 
 (no layout binds them): `PageUp` / `PageDown` raise and lower the mouse sensitivity by 6 % and say the new value in a toast,
 `Home` goes to the next starting point of the mouse feel.
 
-**Mouse feel** (the mouse button in the bar, or `G`). A panel with three starting points and three sliders, so that what a
-mouse feels like can be tried and compared in the game instead of read about in the settings. The starting points differ
-in the low-pass filter only (0, 5 and 12 ms; 12 is what the profile always had); the sliders are the sensitivity, the
-filter and the carry-over, and the profile is what they change, so the settings page and the saved profile show the same
-numbers. The panel also starts the measuring of the game's stick response ("게임에 맞게 자동 보정", see
-`status-and-next.md`) with the game in view, which is where a safe place for the 40 seconds of turning is chosen.
+**Mouse feel** (the mouse button in the bar, or `G`). A panel with three starting points, a choice of how the picture is
+shown with the delay it has now, and sliders, so that what a mouse feels like can be tried and compared in the game
+instead of read about in the settings. The starting points differ in the low-pass filter only: "또렷하게" none, "균형" 12 ms
+that fades out between 20 and 40 degrees a second (`mouse.smoothingFadeRate`), "부드럽게" 12 ms at every speed (what the
+profile always had). The sliders are the sensitivity, the filter, where it fades out and the carry-over; the profile is what
+they change, so the settings page and the saved profile show the same numbers. A profile that is already saved keeps its
+values until a starting point is chosen. The panel also starts the measuring of the game's stick response ("게임에 맞게 자동
+보정", see `status-and-next.md`) with the game in view, which is where a safe place for the 40 seconds of turning is chosen.
 
-What the starting points do to the stick, in the engine alone (`node tools/research/feel-sim.mjs`; a simulated hand and
-the profile's own model of the game, no console): the stick is at 90 % of its level 0, 8 and 24 ms after the hand starts,
-is back to nothing 0, 36 and 92 ms after it stops, and wobbles by 9, 4 and 2 % around its mean at a slow pan. The carry-over
-(300 ms in all three) does nothing to a turn the game can follow; it only matters for a swipe faster than the game turns,
-where without it a 90 degree swipe turns 55 to 60 degrees and with it about 90.
+What the starting points do to the stick, in the engine alone (`node tools/research/feel-sim.mjs`; a simulated hand that
+makes whole counts, and the profile's own model of the game; no console): at a turn of 120 degrees a second the stick starts
+0, 0 and 24 ms after the hand and runs on 0, 0 and 92 ms after it stops; at a slow pan of 3 degrees a second the angle the
+game would turn per 16 ms frame varies by 18, 7 and 7 % (it is the fade that gives "균형" the evenness of "부드럽게" and the
+speed of "또렷하게"). The carry-over (300 ms in all three) does nothing to a turn the game can follow; it only matters for a
+swipe faster than the game turns, where without it a 90 degree swipe turns 55 to 60 degrees and with it about 90.
+`mouse-feel-research.md` has the papers and tools this came from.
 
 **Full screen** is the player alone (picture, bar and panels). Where the browser lets a page ask for it, it is the browser's
 full screen, with the keyboard locked on Chromium so that Esc only lets go of the mouse (hold it to leave) and Ctrl+W,

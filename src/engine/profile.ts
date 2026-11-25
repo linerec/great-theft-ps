@@ -29,6 +29,14 @@ export interface MouseConfig {
   curve: number;
   /** Time constant of the low-pass filter on the turn rate. 0 = off. */
   smoothingMs: number;
+  /**
+   * Smoothing only where it helps. Slow, precise movement arrives as ones and zeros (a mouse makes whole counts) and the
+   * game sees the camera jump and stand still, so it wants smoothing; a quick turn does not, and only gets the delay.
+   * Above half of this turn rate (deg/s) the smoothing fades out, and at this rate it is gone (the tiered smoothing of
+   * JoyShockMapper; the 1 euro filter of Casiez et al. 2012 does the same with a continuous cutoff). 0: the same
+   * smoothing at every speed.
+   */
+  smoothingFadeRate: number;
   /** Hard cap on the camera turn rate, deg/s. This is the "speed limit". */
   maxTurnRate: number;
   /**
@@ -259,6 +267,7 @@ export function defaultProfile(): Profile {
       degPerCount: 0.05,
       curve: 1,
       smoothingMs: 12,
+      smoothingFadeRate: 0,
       maxTurnRate: 360,
       carryMs: 300,
       maxDeflection: 1,
@@ -517,6 +526,7 @@ export function validateProfile(input: unknown): ParseResult {
     degPerCount: c.num(mSrc, 'degPerCount', 'mouse', 0.0001, 5, dm.degPerCount),
     curve: c.num(mSrc, 'curve', 'mouse', 0.5, 3, dm.curve),
     smoothingMs: c.num(mSrc, 'smoothingMs', 'mouse', 0, 200, dm.smoothingMs),
+    smoothingFadeRate: c.num(mSrc, 'smoothingFadeRate', 'mouse', 0, 2000, dm.smoothingFadeRate),
     maxTurnRate: c.num(mSrc, 'maxTurnRate', 'mouse', 1, 5000, dm.maxTurnRate),
     carryMs: c.num(mSrc, 'carryMs', 'mouse', 0, 2000, dm.carryMs),
     maxDeflection: c.num(mSrc, 'maxDeflection', 'mouse', 0.05, 1, dm.maxDeflection),

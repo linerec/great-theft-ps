@@ -59,7 +59,16 @@ export class LookFilter {
     const wantX = dx * perSecond;
     const wantY = (cfg.invertY ? -dy : dy) * perSecond * cfg.verticalScale;
 
-    const alpha = cfg.smoothingMs <= 0 ? 1 : 1 - Math.exp(-(dt * 1000) / cfg.smoothingMs);
+    // Smoothing is for slow movement (see MouseConfig.smoothingFadeRate). The speed that decides is the larger of what the
+    // hand does now and what is being shown, so that a sudden start is not held back by a filter that has not caught up,
+    // and a sudden stop is not trailed by one that is still at speed.
+    let smoothingMs = cfg.smoothingMs;
+    if (smoothingMs > 0 && cfg.smoothingFadeRate > 0) {
+      const speed = Math.max(Math.hypot(this.#sx, this.#sy), Math.hypot(wantX, wantY));
+      const full = cfg.smoothingFadeRate / 2;
+      if (speed > full) smoothingMs *= Math.max(0, 1 - (speed - full) / full);
+    }
+    const alpha = smoothingMs <= 0 ? 1 : 1 - Math.exp(-(dt * 1000) / smoothingMs);
     this.#sx += (wantX - this.#sx) * alpha;
     this.#sy += (wantY - this.#sy) * alpha;
 

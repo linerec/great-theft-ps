@@ -12,17 +12,19 @@ describe('the starting points for the mouse feel', () => {
   });
 
   it('are different from each other, and each is recognised by its own values', () => {
-    assert.equal(new Set(FEEL_PRESETS.map((p) => `${p.set.smoothingMs}/${p.set.carryMs}/${p.set.curve}`)).size, FEEL_PRESETS.length);
+    assert.equal(new Set(FEEL_PRESETS.map((p) => `${p.set.smoothingMs}/${p.set.smoothingFadeRate}/${p.set.carryMs}/${p.set.curve}`)).size, FEEL_PRESETS.length);
     for (const p of FEEL_PRESETS) assert.equal(presetOf(p.set), p.id);
   });
 
   it('say "changed by hand" for anything else', () => {
-    assert.equal(presetOf({ smoothingMs: 7, carryMs: 0, curve: 1 }), null);
+    assert.equal(presetOf({ smoothingMs: 7, smoothingFadeRate: 0, carryMs: 0, curve: 1 }), null);
+    assert.equal(presetOf({ ...FEEL_PRESETS[1]!.set, smoothingFadeRate: 41 }), null, 'the fade counts too');
   });
 
   it('only ever set values the profile accepts', () => {
     for (const p of FEEL_PRESETS) {
       assert.ok(p.set.smoothingMs >= 0 && p.set.smoothingMs <= 200);
+      assert.ok(p.set.smoothingFadeRate >= 0 && p.set.smoothingFadeRate <= 2000);
       assert.ok(p.set.carryMs >= 0 && p.set.carryMs <= 2000);
       assert.ok(p.set.curve >= 0.5 && p.set.curve <= 3);
     }

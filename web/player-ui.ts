@@ -195,6 +195,7 @@ for (const p of FEEL_PRESETS) {
 const feelSliders = [
   { input: $<HTMLInputElement>('qSens'), out: $<HTMLOutputElement>('q_sens'), key: 'degPerCount', text: (v: number) => v.toFixed(3) },
   { input: $<HTMLInputElement>('qSmooth'), out: $<HTMLOutputElement>('q_smooth'), key: 'smoothingMs', text: (v: number) => v.toFixed(0) },
+  { input: $<HTMLInputElement>('qFade'), out: $<HTMLOutputElement>('q_fade'), key: 'smoothingFadeRate', text: (v: number) => (v === 0 ? '안 함' : v.toFixed(0)) },
   { input: $<HTMLInputElement>('qCarry'), out: $<HTMLOutputElement>('q_carry'), key: 'carryMs', text: (v: number) => v.toFixed(0) },
 ] as const;
 for (const sl of feelSliders) sl.input.addEventListener('input', () => mouseFeel.set({ [sl.key]: Number(sl.input.value) }));

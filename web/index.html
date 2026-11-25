@@ -154,6 +154,9 @@
               <label title="값이 클수록 움직임이 매끄럽지만 늦게 따라옵니다.">부드러움 (ms) <output id="q_smooth"></output>
                 <input id="qSmooth" type="range" min="0" max="60" step="1">
               </label>
+              <label title="빠르게 돌릴 때는 지연만 생기므로, 이 속도(°/s)의 절반부터 부드러움이 줄어 이 속도에서는 없어집니다. 0이면 모든 속도에 같은 부드러움을 씁니다.">속도 오르면 부드러움 해제 (°/s) <output id="q_fade"></output>
+                <input id="qFade" type="range" min="0" max="200" step="5">
+              </label>
               <label title="손이 게임이 돌 수 있는 속도보다 빨리 움직였을 때, 못 돌린 각도를 손을 멈춘 뒤에 이어서 돌리는 최대 시간입니다. 보통 속도의 움직임에는 영향이 없고, 0이면 빠르게 휘두를수록 덜 돕니다.">빠른 휘두름 이어 돌기 (ms) <output id="q_carry"></output>
                 <input id="qCarry" type="range" min="0" max="600" step="20">
               </label>
@@ -477,6 +480,9 @@
             </label>
             <label>스무딩 (ms) <output id="o_smoothingMs"></output>
               <input id="smoothingMs" type="range" min="0" max="100" step="1">
+            </label>
+            <label title="느리고 정밀한 움직임은 스무딩이 도움이 되지만, 빠르게 돌릴 때는 지연만 생깁니다. 이 속도(°/s)의 절반부터 스무딩이 줄어 이 속도에서는 완전히 없어집니다. 0이면 모든 속도에 같은 스무딩을 씁니다.">속도에 따른 스무딩 해제 (°/s, 0 = 안 함) <output id="o_smoothingFadeRate"></output>
+              <input id="smoothingFadeRate" type="range" min="0" max="200" step="5">
             </label>
             <label>속도 상한 (°/s) <output id="o_maxTurnRate"></output>
               <input id="maxTurnRate" type="range" min="20" max="1500" step="10">

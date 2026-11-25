@@ -265,3 +265,21 @@ Android phone, a real DualSense, and any of it on a real stream.
 One thing it changed that was wrong before: the time left in the header was counted down by the page even when no stream was
 running (the bridge counts only from the moment the picture starts), so it showed less than a member had. It is counted down
 only while a stream runs now.
+
+## The mouse feel (2026-11-25)
+
+Reported by the owner: playing GTA V with the mouse is "far from a real keyboard and mouse". What was done without a console:
+the input is stepped by its own 4 ms timer and takes raw mouse updates; a panel over the picture (`G`) with three starting
+points for the mouse, the picture's display delay with its numbers, sliders, keys that work while the mouse is locked
+(`PageUp`, `PageDown`, `Home`), and the game measuring started from there; smoothing that fades with speed
+(`mouse.smoothingFadeRate`, new, 0 = as before). `docs/player.md` says what each is, `docs/mouse-feel-research.md` what the
+papers and tools say (there is no literature on mouse to stick; delay matters more than evenness; GTA V's look ramps up
+with time), and `node tools/research/feel-sim.mjs` puts numbers on the starting points.
+
+A correction to what was first said about this: the 300 ms carry-over does **not** make the camera run on after an ordinary
+turn; that was the 12 ms filter (92 ms). The carry-over only acts on a swipe faster than the game can turn.
+
+**Not known:** whether any of it can be felt. Everything above is the engine on its own or a browser with a pretend console;
+a locked mouse cannot be given to a script, and the measuring of the real game has never been run. The first thing to try in
+the game: pick "균형" in the panel (the profile saved in the browser still has the old values until then), set GTA's own
+look sensitivity high and its dead zone low, run "게임에 맞게 자동 보정" once, and compare the three starting points with `Home`.

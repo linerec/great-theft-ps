@@ -10,6 +10,8 @@ export interface Feel {
   degPerCount: number;
   /** Time constant of the low-pass filter, ms. */
   smoothingMs: number;
+  /** The turn rate (deg/s) at which the filter has faded out completely; 0 = it works the same at every speed. */
+  smoothingFadeRate: number;
   /** How long the camera may go on turning after the hand stopped, to pay what the speed limit held back, ms. */
   carryMs: number;
   /** 1 = linear. */
@@ -21,25 +23,29 @@ export interface FeelPreset {
   name: string;
   hint: string;
   /** The values it sets (the sensitivity stays what the person chose). */
-  set: Pick<Feel, 'smoothingMs' | 'carryMs' | 'curve'>;
+  set: Pick<Feel, 'smoothingMs' | 'smoothingFadeRate' | 'carryMs' | 'curve'>;
 }
 
 /**
  * Starting points to compare, not measured optima. They differ in the low-pass filter only, because that is what sets the
- * delay and the wobble (tools/research/feel-sim.mjs, in the engine alone: filter 0 ms starts at once and stops at once but
- * the stick wobbles about 9 % at a slow pan; 5 ms starts in 8 ms, slides 36 ms after the hand stops, 4 % wobble; 12 ms,
- * the profile's old value, starts in 24 ms, slides 92 ms, 2 % wobble). The carry-over stays at 300 ms in all three: it
- * only acts on a swipe faster than the game can turn, where less of it turns the camera a fraction of the way.
+ * delay and the evenness (tools/research/feel-sim.mjs, in the engine alone, against a game that is what the profile says):
+ *  - "sharp", no filter: no delay at all, but a slow pan reaches the game as ones and zeros (the angle per frame spreads
+ *    18 % at 3 deg/s);
+ *  - "smooth", 12 ms at every speed, the profile's old value: the slow pan is even (7 %), but a turn starts 24 ms late and
+ *    runs 92 ms on after the hand stops;
+ *  - "balanced", 12 ms that fades out between 20 and 40 deg/s: as even as "smooth" at the slow pan (7 %) and no delay and
+ *    no run-on for a real turn.
+ * The carry-over stays at 300 ms in all three: it only acts on a swipe faster than the game can turn.
  */
 export const FEEL_PRESETS: readonly FeelPreset[] = [
-  { id: 'sharp', name: '또렷하게', hint: '가장 빠르게 반응합니다. 아주 천천히 움직일 때 시점이 조금 떨릴 수 있습니다.', set: { smoothingMs: 0, carryMs: 300, curve: 1 } },
-  { id: 'balanced', name: '균형', hint: '반응이 빠르고 떨림은 적은 중간입니다.', set: { smoothingMs: 5, carryMs: 300, curve: 1 } },
-  { id: 'smooth', name: '부드럽게', hint: '기본값. 떨림이 가장 적지만, 손을 멈춘 뒤에도 0.1초쯤 더 돕니다.', set: { smoothingMs: 12, carryMs: 300, curve: 1 } },
+  { id: 'sharp', name: '또렷하게', hint: '지연이 전혀 없습니다. 아주 천천히 움직일 때 시점이 조금 떨릴 수 있습니다.', set: { smoothingMs: 0, smoothingFadeRate: 0, carryMs: 300, curve: 1 } },
+  { id: 'balanced', name: '균형', hint: '천천히 움직일 땐 부드럽게, 돌릴 땐 지연 없이. 먼저 써 보기를 권합니다.', set: { smoothingMs: 12, smoothingFadeRate: 40, carryMs: 300, curve: 1 } },
+  { id: 'smooth', name: '부드럽게', hint: '기존 기본값. 항상 부드럽지만, 돌리기 시작할 때 조금 늦고 손을 멈춘 뒤에도 0.1초쯤 더 돕니다.', set: { smoothingMs: 12, smoothingFadeRate: 0, carryMs: 300, curve: 1 } },
 ];
 
 /** The preset these values are, or null when they have been changed by hand. */
-export function presetOf(f: Pick<Feel, 'smoothingMs' | 'carryMs' | 'curve'>): FeelPreset['id'] | null {
-  const hit = FEEL_PRESETS.find((p) => p.set.smoothingMs === f.smoothingMs && p.set.carryMs === f.carryMs && p.set.curve === f.curve);
+export function presetOf(f: Pick<Feel, 'smoothingMs' | 'smoothingFadeRate' | 'carryMs' | 'curve'>): FeelPreset['id'] | null {
+  const hit = FEEL_PRESETS.find((p) => p.set.smoothingMs === f.smoothingMs && p.set.smoothingFadeRate === f.smoothingFadeRate && p.set.carryMs === f.carryMs && p.set.curve === f.curve);
   return hit ? hit.id : null;
 }
 

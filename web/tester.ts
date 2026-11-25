@@ -104,6 +104,7 @@ const FIELDS: Field[] = [
   pf('degPerCount', () => profile.mouse.degPerCount, (v) => (profile.mouse.degPerCount = v), 3),
   pf('curve', () => profile.mouse.curve, (v) => (profile.mouse.curve = v), 2),
   pf('smoothingMs', () => profile.mouse.smoothingMs, (v) => (profile.mouse.smoothingMs = v), 0),
+  pf('smoothingFadeRate', () => profile.mouse.smoothingFadeRate, (v) => (profile.mouse.smoothingFadeRate = v), 0),
   pf('maxTurnRate', () => profile.mouse.maxTurnRate, (v) => (profile.mouse.maxTurnRate = v), 0),
   pf('carryMs', () => profile.mouse.carryMs, (v) => (profile.mouse.carryMs = v), 0),
   pf('maxDeflection', () => profile.mouse.maxDeflection, (v) => (profile.mouse.maxDeflection = v), 2),
@@ -930,13 +931,14 @@ export const stage = {
 export const mouseFeel = {
   read(): Feel {
     const m = profile.mouse;
-    return { degPerCount: m.degPerCount, smoothingMs: m.smoothingMs, carryMs: m.carryMs, curve: m.curve };
+    return { degPerCount: m.degPerCount, smoothingMs: m.smoothingMs, smoothingFadeRate: m.smoothingFadeRate, carryMs: m.carryMs, curve: m.curve };
   },
   set(part: Partial<Feel>): void {
     const m = profile.mouse;
     const within = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
     if (part.degPerCount !== undefined) m.degPerCount = within(part.degPerCount, SENSITIVITY_MIN, SENSITIVITY_MAX);
     if (part.smoothingMs !== undefined) m.smoothingMs = within(part.smoothingMs, 0, 200);
+    if (part.smoothingFadeRate !== undefined) m.smoothingFadeRate = within(part.smoothingFadeRate, 0, 2000);
     if (part.carryMs !== undefined) m.carryMs = within(part.carryMs, 0, 2000);
     if (part.curve !== undefined) m.curve = within(part.curve, 0.5, 3);
     applyProfile(profile);
@@ -1666,15 +1668,17 @@ async function runE2e(): Promise<void> {
     const sensBefore = profile.mouse.degPerCount;
     const sharp = document.querySelector<HTMLButtonElement>('#feelPresets [data-preset="sharp"]');
     sharp?.click();
-    check('"또렷하게" takes away the smoothing', profile.mouse.smoothingMs === 0 && profile.mouse.carryMs === 300 && sharp?.getAttribute('aria-pressed') === 'true', `${profile.mouse.smoothingMs} ${profile.mouse.carryMs}`);
+    check('"또렷하게" takes away the smoothing', profile.mouse.smoothingMs === 0 && profile.mouse.smoothingFadeRate === 0 && profile.mouse.carryMs === 300 && sharp?.getAttribute('aria-pressed') === 'true', `${profile.mouse.smoothingMs} ${profile.mouse.carryMs}`);
     check('and the settings page shows the same numbers', $<HTMLInputElement>('smoothingMs').value === '0' && $<HTMLInputElement>('carryMs').value === '300');
     const qs = $<HTMLInputElement>('qSens');
     qs.value = '0.07';
     qs.dispatchEvent(new Event('input'));
     check('the sensitivity slider changes the profile (and its number)', profile.mouse.degPerCount === 0.07 && $<HTMLOutputElement>('q_sens').textContent === '0.070' && $<HTMLOutputElement>('o_degPerCount').textContent === '0.070', String(profile.mouse.degPerCount));
+    document.querySelector<HTMLButtonElement>('#feelPresets [data-preset="balanced"]')?.click();
+    check('"균형" fades the smoothing out with speed, and the settings page shows it', profile.mouse.smoothingMs === 12 && profile.mouse.smoothingFadeRate === 40 && $<HTMLInputElement>('smoothingFadeRate').value === '40' && $<HTMLInputElement>('qFade').value === '40');
     document.querySelector<HTMLButtonElement>('#feelPresets [data-preset="smooth"]')?.click();
     mouseFeel.set({ degPerCount: sensBefore });
-    check('the feel can be put back as it was', profile.mouse.smoothingMs === 12 && profile.mouse.carryMs === 300 && profile.mouse.degPerCount === sensBefore);
+    check('the feel can be put back as it was', profile.mouse.smoothingMs === 12 && profile.mouse.smoothingFadeRate === 0 && profile.mouse.carryMs === 300 && profile.mouse.degPerCount === sensBefore);
     const delayBtn = (v: string): HTMLButtonElement => document.querySelector<HTMLButtonElement>(`#feelDelay [data-playout="${v}"]`)!;
     delayBtn('immediate').click();
     check('"최소 지연" in the panel is the same choice as in the options', $<HTMLSelectElement>('playoutMode').value === 'immediate' && player.playout.mode === 'immediate' && delayBtn('immediate').getAttribute('aria-pressed') === 'true' && delayBtn('smooth').getAttribute('aria-pressed') === 'false');
