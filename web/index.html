@@ -135,6 +135,28 @@
               <p class="muted small">바꾸려면 <b>설정 → 입력 매핑</b></p>
             </div>
 
+            <div id="feelPanel" class="panel panel-left feel" hidden>
+              <div class="panel-head"><h3>마우스 느낌</h3><button class="icon-btn small" type="button" data-close="feelPanel" aria-label="닫기"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+              <div id="feelPresets" class="seg" role="group" aria-label="느낌 고르기"></div>
+              <p id="feelHint" class="muted small"></p>
+              <label>감도 <output id="q_sens"></output>
+                <input id="qSens" type="range" min="0.005" max="0.3" step="0.001">
+              </label>
+              <label title="값이 클수록 움직임이 매끄럽지만 늦게 따라옵니다.">부드러움 (ms) <output id="q_smooth"></output>
+                <input id="qSmooth" type="range" min="0" max="60" step="1">
+              </label>
+              <label title="손이 게임이 돌 수 있는 속도보다 빨리 움직였을 때, 못 돌린 각도를 손을 멈춘 뒤에 이어서 돌리는 최대 시간입니다. 보통 속도의 움직임에는 영향이 없고, 0이면 빠르게 휘두를수록 덜 돕니다.">빠른 휘두름 이어 돌기 (ms) <output id="q_carry"></output>
+                <input id="qCarry" type="range" min="0" max="600" step="20">
+              </label>
+              <p class="muted small">마우스가 잠겨 있는 동안: <kbd>PageUp</kbd> <kbd>PageDown</kbd> 감도, <kbd>Home</kbd> 느낌 바꾸기</p>
+              <div class="feel-cal">
+                <button id="feelCal" class="btn small" type="button">게임에 맞게 자동 보정</button>
+                <button id="feelCalStop" class="btn small" type="button" hidden>멈추기</button>
+                <button id="feelCalApply" class="btn small primary" type="button" hidden>프로필에 적용</button>
+                <p id="feelCalStatus" class="muted small">약 40초 동안 시점이 저절로 돕니다. 차 안이나 장면이 바뀌는 중이 아닌, 주변이 트인 곳에서 하세요. 이 동안 키보드·마우스는 무시됩니다.</p>
+              </div>
+            </div>
+
             <div id="optPanel" class="panel panel-right" hidden>
               <div class="panel-head"><h3>화면·소리·연결</h3><button class="icon-btn small" type="button" data-close="optPanel" aria-label="닫기"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
               <div id="optPanelSlot"></div>
@@ -147,6 +169,7 @@
               <button id="hudShot" class="hb" type="button" title="스크린샷 (P)"><svg class="ic" aria-hidden="true"><use href="#i-camera"/></svg></button>
               <button id="hudRecBtn" class="hb" type="button" title="녹화 (R)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use id="hudRecIcon" href="#i-record"/></svg></button>
               <button id="hudStats" class="hb" type="button" title="연결 상태 (S)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg></button>
+              <button id="hudFeel" class="hb" type="button" title="마우스 느낌 (G)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-mouse"/></svg></button>
               <button id="hudKeys" class="hb" type="button" title="키 배치 (K)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-keyboard"/></svg></button>
               <button id="hudOpts" class="hb" type="button" title="화면·소리·연결 설정 (O)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg></button>
               <button id="hudTheater" class="hb" type="button" title="넓게 보기 (T)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-wide"/></svg></button>
@@ -618,7 +641,10 @@
       <div><dt><kbd>R</kbd></dt><dd>녹화 시작·끝 (최대 5분, 끝나면 파일로 저장)</dd></div>
       <div><dt><kbd>S</kbd></dt><dd>연결 상태 (지연, 프레임, 그래프)</dd></div>
       <div><dt><kbd>K</kbd></dt><dd>키 배치 보기</dd></div>
+      <div><dt><kbd>G</kbd></dt><dd>마우스 느낌: 감도, 부드러움, 빠른 휘두름 이어 돌기</dd></div>
       <div><dt><kbd>O</kbd></dt><dd>화면·소리·연결 설정 패널</dd></div>
+      <div><dt><kbd>PageUp</kbd> <kbd>PageDown</kbd></dt><dd>감도 올리기·내리기. 마우스가 잠겨 있는 동안에도 됩니다</dd></div>
+      <div><dt><kbd>Home</kbd></dt><dd>마우스 느낌 바꾸기 (또렷하게 → 균형 → 부드럽게). 잠겨 있는 동안에도 됩니다</dd></div>
       <div><dt><kbd>?</kbd></dt><dd>이 도움말</dd></div>
       <div><dt><kbd>Esc</kbd></dt><dd>마우스를 풀고 조작을 멈춤 (전체 화면에서는 길게 누르면 전체 화면이 꺼집니다)</dd></div>
     </dl>
@@ -639,6 +665,7 @@
     <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9.5v5h4l5 4v-13l-5 4z"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
     <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9.5v5h4l5 4v-13l-5 4z"/><path d="M17 9.5l4 5M21 9.5l-4 5"/></symbol>
     <symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 20v-7M12 20V5M19 20v-10"/></symbol>
+    <symbol id="i-mouse" viewBox="0 0 24 24"><rect x="6.5" y="3" width="11" height="18" rx="5.5"/><path d="M12 3v6M6.5 9h11"/></symbol>
     <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2.5"/><path d="M7 10h.01M10.5 10h.01M14 10h.01M17.5 10h.01M8 14h8"/></symbol>
     <symbol id="i-wide" viewBox="0 0 24 24"><rect x="2.5" y="7" width="19" height="10" rx="2.5"/></symbol>
     <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3.5v8M6.7 6.7a7.5 7.5 0 1 0 10.6 0"/></symbol>

@@ -20,7 +20,22 @@ While the game has the mouse (a click on the picture locks it) nothing is shown 
 mouse and brings the bar back at once; after Esc the keyboard is not the game's any more, so the keys below work.
 
 **Keys** (only when the mouse is not locked): `F` full screen, `T` a wider picture, `M` sound, `P` screenshot, `R` clip,
-`S` connection, `K` key layout, `O` options, `?` the list.
+`S` connection, `K` key layout, `G` mouse feel, `O` options, `?` the list. Three keys work while the game has the mouse too
+(no layout binds them): `PageUp` / `PageDown` raise and lower the mouse sensitivity by 6 % and say the new value in a toast,
+`Home` goes to the next starting point of the mouse feel.
+
+**Mouse feel** (the mouse button in the bar, or `G`). A panel with three starting points and three sliders, so that what a
+mouse feels like can be tried and compared in the game instead of read about in the settings. The starting points differ
+in the low-pass filter only (0, 5 and 12 ms; 12 is what the profile always had); the sliders are the sensitivity, the
+filter and the carry-over, and the profile is what they change, so the settings page and the saved profile show the same
+numbers. The panel also starts the measuring of the game's stick response ("게임에 맞게 자동 보정", see
+`status-and-next.md`) with the game in view, which is where a safe place for the 40 seconds of turning is chosen.
+
+What the starting points do to the stick, in the engine alone (`node tools/research/feel-sim.mjs`; a simulated hand and
+the profile's own model of the game, no console): the stick is at 90 % of its level 0, 8 and 24 ms after the hand starts,
+is back to nothing 0, 36 and 92 ms after it stops, and wobbles by 9, 4 and 2 % around its mean at a slow pan. The carry-over
+(300 ms in all three) does nothing to a turn the game can follow; it only matters for a swipe faster than the game turns,
+where without it a 90 degree swipe turns 55 to 60 degrees and with it about 90.
 
 **Full screen** is the player alone (picture, bar and panels). Where the browser lets a page ask for it, it is the browser's
 full screen, with the keyboard locked on Chromium so that Esc only lets go of the mouse (hold it to leave) and Ctrl+W,
@@ -44,7 +59,8 @@ by itself when the address is opened. A web app manifest and icons make "Add to 
 | `web/ui.ts` | toasts, settings kept in the browser, the theme |
 | `web/ps5.ts` | the console cards, the big button, the text before and after the stream, connecting on open |
 | `web/account-ui.ts` | login, the account menu, the time left (counted down only while a stream runs) |
-| `web/tester.ts` | the input; exports `stage` (canvas, mouse lock, volume, the sound as a stream) for the player |
+| `web/mouse-feel.ts` | the starting points for the mouse feel, the sensitivity step, and the rule that keeps a movement from being counted twice (`RawMouseGate`) |
+| `web/tester.ts` | the input; exports `stage` (canvas, mouse lock, volume, the sound as a stream) and `mouseFeel` for the player |
 | `tools/preview.mjs` | `npm run preview`: the page with a pretend console (and `--accounts`), to look at and try the interface |
 | `tools/make-icons.mjs` | `npm run icons`: the PNG icons from `web/icon.svg`, drawn by headless Chrome |
 
@@ -53,6 +69,13 @@ by itself when the address is opened. A web app manifest and icons make "Add to 
 - **Unit tests** (`test/player-logic.test.ts`, `audio-player.test.ts`, `static-files.test.ts`): the bar's timing, the
   signal word, formats and names, the look, the time left and its warnings, the sound as a stream, PNG icons arriving byte
   for byte.
+- **The input path** (written 2026-11-25): the mapping engine is stepped by its own 4 ms timer (about 250 a second, checked
+  in `npm run e2e`) and no longer inside the 60 Hz drawing, where it was sent in bursts of four ticks a frame apart; mouse
+  movement is taken from `pointerrawupdate` where the browser has it (up to a frame sooner than `mousemove`) and from
+  `mousemove` otherwise. Checked: the timer's rate and the once-only rule (unit tests), and in headless Chrome that both
+  events arrive with the same total for the same movement. **Not checked:** a locked mouse (a browser refuses the lock to
+  a script, so it needs a hand), and whether any of this can be felt. The lab's drawing is skipped while the lab is not on
+  the page.
 - **A real browser against the test double** (`npm run e2e`): the bar is up while connected, its panels open and the options
   move into the player and back, the look reaches the picture, a screenshot and a clip are made, `M` mutes, the full screen
   button covers the page (in headless Chrome the browser's own full screen is refused, so this is the covering path), the

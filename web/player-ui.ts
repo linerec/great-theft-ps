@@ -9,8 +9,9 @@ import { QUALITY_PRESETS, type QualityPreset } from '../src/bridge/quality.ts';
 import {
   captureName, DEFAULT_LOOK, formatClock, HudVisibility, lookFilter, MAX_CLIP_SECONDS, pickClipFormat, QUALITY_BARS, QUALITY_TEXT, rateConnection, readLook, Series, type PictureLook,
 } from './player-logic.ts';
+import { FEEL_PRESETS, presetOf, stepSensitivity } from './mouse-feel.ts';
 import { consoleName } from './ps5.ts';
-import { stage } from './tester.ts';
+import { mouseFeel, stage } from './tester.ts';
 import { save, saved, toast } from './ui.ts';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -140,10 +141,12 @@ theaterBtn.addEventListener('click', () => setTheater(!document.body.classList.c
 
 // ------------------------------------------------------------------ the panels
 
-const PANELS = ['statsPanel', 'keysPanel', 'optPanel'] as const;
+const PANELS = ['statsPanel', 'keysPanel', 'feelPanel', 'optPanel'] as const;
 type PanelId = (typeof PANELS)[number];
 const panelEl = (id: PanelId): HTMLElement => $<HTMLElement>(id);
-const panelButton: Record<PanelId, string> = { statsPanel: 'hudStats', keysPanel: 'hudKeys', optPanel: 'hudOpts' };
+const panelButton: Record<PanelId, string> = { statsPanel: 'hudStats', keysPanel: 'hudKeys', feelPanel: 'hudFeel', optPanel: 'hudOpts' };
+/** The panels on the left share one place: opening one closes the others. */
+const LEFT: readonly PanelId[] = ['statsPanel', 'keysPanel', 'feelPanel'];
 
 /** The options live in the card beside the picture; while the panel is open they are in it (so they are in reach in full screen). */
 function moveOptions(into: 'panel' | 'card'): void {
@@ -154,9 +157,8 @@ function moveOptions(into: 'panel' | 'card'): void {
 
 function openPanel(id: PanelId, open: boolean): void {
   if (open) {
-    // The two on the left share a place.
-    if (id === 'statsPanel') openPanel('keysPanel', false);
-    if (id === 'keysPanel') openPanel('statsPanel', false);
+    if (LEFT.includes(id)) for (const other of LEFT) if (other !== id) openPanel(other, false);
+    if (id === 'feelPanel') paintFeel();
     if (id === 'keysPanel') {
       $('keysName').textContent = $('layoutName').textContent ?? '';
       const list = $<HTMLElement>('keysList');
@@ -173,9 +175,90 @@ const togglePanel = (id: PanelId): void => openPanel(id, panelEl(id).hidden);
 const closePanels = (): void => PANELS.forEach((p) => openPanel(p, false));
 $<HTMLButtonElement>('hudStats').addEventListener('click', () => togglePanel('statsPanel'));
 $<HTMLButtonElement>('hudKeys').addEventListener('click', () => togglePanel('keysPanel'));
+$<HTMLButtonElement>('hudFeel').addEventListener('click', () => togglePanel('feelPanel'));
 $<HTMLButtonElement>('hudOpts').addEventListener('click', () => togglePanel('optPanel'));
 $<HTMLButtonElement>('hudQuality').addEventListener('click', () => togglePanel('statsPanel'));
 for (const b of hudEl.querySelectorAll<HTMLButtonElement>('[data-close]')) b.addEventListener('click', () => openPanel(b.dataset.close as PanelId, false));
+
+// ------------------------------------------------------------------ the mouse feel
+
+const feelHint = $<HTMLElement>('feelHint');
+const feelPresets = $<HTMLElement>('feelPresets');
+for (const p of FEEL_PRESETS) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.dataset.preset = p.id;
+  b.textContent = p.name;
+  b.addEventListener('click', () => mouseFeel.set(p.set));
+  feelPresets.append(b);
+}
+const feelSliders = [
+  { input: $<HTMLInputElement>('qSens'), out: $<HTMLOutputElement>('q_sens'), key: 'degPerCount', text: (v: number) => v.toFixed(3) },
+  { input: $<HTMLInputElement>('qSmooth'), out: $<HTMLOutputElement>('q_smooth'), key: 'smoothingMs', text: (v: number) => v.toFixed(0) },
+  { input: $<HTMLInputElement>('qCarry'), out: $<HTMLOutputElement>('q_carry'), key: 'carryMs', text: (v: number) => v.toFixed(0) },
+] as const;
+for (const sl of feelSliders) sl.input.addEventListener('input', () => mouseFeel.set({ [sl.key]: Number(sl.input.value) }));
+
+/** Show what the profile has (it changes from here, from the settings page, and from the keys while playing). */
+function paintFeel(): void {
+  const f = mouseFeel.read();
+  for (const sl of feelSliders) {
+    sl.input.value = String(f[sl.key]);
+    sl.out.textContent = sl.text(f[sl.key]);
+  }
+  const now = presetOf(f);
+  for (const b of feelPresets.querySelectorAll<HTMLButtonElement>('button')) b.setAttribute('aria-pressed', String(b.dataset.preset === now));
+  feelHint.textContent = FEEL_PRESETS.find((p) => p.id === now)?.hint ?? '직접 맞춘 값입니다.';
+}
+document.addEventListener('gtp:profile', paintFeel);
+paintFeel();
+
+// The measuring of the game's response lives in the settings (calibrate-console.ts); here are its buttons and its words, so
+// that it can be started with the game in view, which is where the person has to be in order to choose a safe place for it.
+{
+  const mirror = [
+    { from: 'consoleCalibrate', to: 'feelCal', prop: 'disabled' },
+    { from: 'consoleCalibrateStop', to: 'feelCalStop', prop: 'hidden' },
+    { from: 'consoleCalibrateApply', to: 'feelCalApply', prop: 'hidden' },
+  ] as const;
+  const sync = (): void => {
+    for (const m of mirror) {
+      const to = $<HTMLButtonElement>(m.to);
+      const from = $<HTMLButtonElement>(m.from);
+      if (m.prop === 'disabled') to.disabled = from.disabled;
+      else to.hidden = from.hidden;
+    }
+  };
+  const observer = new MutationObserver(sync);
+  for (const m of mirror) observer.observe($(m.from), { attributes: true });
+  const status = $<HTMLElement>('consoleCalibrateStatus');
+  const hint = $<HTMLElement>('feelCalStatus');
+  const first = hint.textContent ?? '';
+  new MutationObserver(() => void (hint.textContent = status.textContent || first)).observe(status, { childList: true, characterData: true, subtree: true });
+  for (const [mine, theirs] of [['feelCal', 'consoleCalibrate'], ['feelCalStop', 'consoleCalibrateStop'], ['feelCalApply', 'consoleCalibrateApply']] as const) {
+    $<HTMLButtonElement>(mine).addEventListener('click', () => $<HTMLButtonElement>(theirs).click());
+  }
+  sync();
+}
+
+/** The keys that work while the game has the mouse: sensitivity up and down, the next starting point. */
+function feelKey(code: string): boolean {
+  if (code === 'PageUp' || code === 'PageDown') {
+    const next = stepSensitivity(mouseFeel.read().degPerCount, code === 'PageUp' ? 1 : -1);
+    mouseFeel.set({ degPerCount: next });
+    toast(`마우스 감도 ${next.toFixed(3)}`, 'info', 1100);
+    return true;
+  }
+  if (code === 'Home') {
+    const now = presetOf(mouseFeel.read());
+    const at = FEEL_PRESETS.findIndex((p) => p.id === now);
+    const next = FEEL_PRESETS[(at + 1) % FEEL_PRESETS.length]!;
+    mouseFeel.set(next.set);
+    toast(`마우스 느낌: ${next.name}`, 'info', 1400);
+    return true;
+  }
+  return false;
+}
 
 // ------------------------------------------------------------------ the connection: signal, numbers, charts
 
@@ -483,6 +566,12 @@ window.addEventListener('keydown', (e) => {
     else if (PANELS.some((p) => !panelEl(p).hidden)) closePanels();
     return;
   }
+  // The few keys that tune the mouse work while the game has it too (they are not the game's: no layout binds them).
+  if (live && stage.locked && !e.ctrlKey && !e.metaKey && !e.altKey && feelKey(e.code)) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    return;
+  }
   // A canvas that has the keyboard (reached with Tab, no mouse lock) is playing: its keys are the game's.
   if (stage.locked || e.repeat || e.ctrlKey || e.metaKey || e.altKey || typing(e.target) || document.activeElement === canvas || document.querySelector('dialog[open]')) return;
   const act = (fn: () => void): void => {
@@ -497,6 +586,7 @@ window.addEventListener('keydown', (e) => {
     case 'KeyR': return act(toggleClip);
     case 'KeyS': return act(() => live && togglePanel('statsPanel'));
     case 'KeyK': return act(() => live && togglePanel('keysPanel'));
+    case 'KeyG': return act(() => live && togglePanel('feelPanel'));
     case 'KeyO': return act(() => live && togglePanel('optPanel'));
     default:
       if (e.key === '?') act(() => $<HTMLDialogElement>('shortcutsDialog').showModal());

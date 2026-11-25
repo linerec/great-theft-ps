@@ -21,6 +21,7 @@ import { AudioPlayer } from './audio-player.ts';
 import { mountConsoleCalibration } from './calibrate-console.ts';
 import { GamepadInput, mergeGamepad, type PadSample } from './gamepad.ts';
 import { VideoPlayer } from './video-player.ts';
+import { RawMouseGate, SENSITIVITY_MAX, SENSITIVITY_MIN, type Feel } from './mouse-feel.ts';
 import { toast } from './ui.ts';
 
 const TICK = 0.004;
@@ -771,6 +772,7 @@ let refreshQueued = false;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 onProfileChanged = () => {
   profileName.value = profile.game.name;
+  document.dispatchEvent(new CustomEvent('gtp:profile'));
   // A slider being dragged changes the profile many times a second: redraw once per frame, save once it settles.
   if (!refreshQueued) {
     refreshQueued = true;
@@ -896,6 +898,7 @@ view.addEventListener('click', () => {
 });
 
 document.addEventListener('pointerlockchange', () => {
+  rawGate.reset();
   if (!isLocked()) {
     engine.releaseAll();
     lockNote = '해제됨';
@@ -920,6 +923,27 @@ export const stage = {
   captureAudio: (): MediaStream | null => audio.captureStream() as MediaStream | null,
 };
 
+/**
+ * The few mouse settings that are tried while playing (the panel and the keys in player-ui.ts). Everything goes through
+ * the profile, so the settings page, the saved profile and these controls always show the same numbers.
+ */
+export const mouseFeel = {
+  read(): Feel {
+    const m = profile.mouse;
+    return { degPerCount: m.degPerCount, smoothingMs: m.smoothingMs, carryMs: m.carryMs, curve: m.curve };
+  },
+  set(part: Partial<Feel>): void {
+    const m = profile.mouse;
+    const within = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
+    if (part.degPerCount !== undefined) m.degPerCount = within(part.degPerCount, SENSITIVITY_MIN, SENSITIVITY_MAX);
+    if (part.smoothingMs !== undefined) m.smoothingMs = within(part.smoothingMs, 0, 200);
+    if (part.carryMs !== undefined) m.carryMs = within(part.carryMs, 0, 2000);
+    if (part.curve !== undefined) m.curve = within(part.curve, 0.5, 3);
+    applyProfile(profile);
+    syncControls();
+  },
+};
+
 window.addEventListener('blur', () => engine.releaseAll());
 
 window.addEventListener('keydown', (e) => {
@@ -936,8 +960,17 @@ window.addEventListener('keyup', (e) => {
   e.preventDefault();
 });
 
+// The mouse reaches the page twice: at once as `pointerrawupdate` (secure pages in Chrome and its relatives), and about a
+// frame later, summed, as `mousemove`. The first is up to a frame sooner, so it is used where it comes; see RawMouseGate.
+const rawGate = new RawMouseGate();
+window.addEventListener('pointerrawupdate', (e) => {
+  const p = e as PointerEvent;
+  if (p.pointerType !== 'mouse' || !isLocked()) return;
+  rawGate.raw(performance.now());
+  feedMouse(p.movementX, p.movementY);
+});
 document.addEventListener('mousemove', (e) => {
-  if (isLocked()) feedMouse(e.movementX, e.movementY);
+  if (isLocked() && rawGate.ordinary(performance.now())) feedMouse(e.movementX, e.movementY);
 });
 
 document.addEventListener('mousedown', (e) => {
@@ -1120,7 +1153,19 @@ let padNow: PadSample | null = null;
   };
 }
 
-function frame(now: number): void {
+/** How often the input side has run (the page's own check that it does not wait for the drawing, see runE2e). */
+export const inputLoop = { pumps: 0 };
+
+/**
+ * The input side: read the pad, step the mapping engine and send what it made. It runs on its own timer, NOT with the
+ * drawing: a mouse is felt in the time between the hand moving and the console hearing of it, and tying that to the
+ * 60 Hz frame meant it was sent in bursts of four ticks a frame apart (up to 16 ms of delay, uneven from one frame of the
+ * game to the next). The timer is as fast as the browser allows (about 4 ms); the ticks it has to catch up on after a
+ * stall are still taken one by one.
+ */
+function pump(): void {
+  inputLoop.pumps++;
+  const now = performance.now();
   padNow = gamepads.poll();
   if (calibStick && mode === 'console') {
     // The measurement holds the right stick; nothing else is sent, and what the engine would have done is not caught up on after.
@@ -1131,10 +1176,6 @@ function frame(now: number): void {
     last = now;
     acc = 0;
     client.sendPad(s, false, now);
-    renderView();
-    drawPad();
-    updateReadout();
-    requestAnimationFrame(frame);
     return;
   }
   acc += Math.min(0.1, (now - last) / 1000);
@@ -1166,14 +1207,23 @@ function frame(now: number): void {
   } else if (mode === 'console') {
     client.sendPad(state, profile.mouse.target === 'gyro', now);
   }
+}
+
+/** The drawing side: what is on the page, once per frame the browser shows. */
+function frame(): void {
   renderView();
-  drawPad();
-  updateReadout();
+  // The pad drawing and the numbers belong to the lab; while that is not on the page they only take time from the picture
+  // and from the main thread that the input and the video decoder share.
+  if (padCanvas.offsetParent !== null) {
+    drawPad();
+    updateReadout();
+  }
   requestAnimationFrame(frame);
 }
 
 setMode(mode, false);
 requestAnimationFrame(frame);
+setInterval(pump, 4);
 
 // ---------------------------------------------------------------- demo and self test
 
@@ -1609,6 +1659,40 @@ async function runE2e(): Promise<void> {
     await sleep(50);
     check('the stats button opens the connection panel', !$<HTMLElement>('statsPanel').hidden && $<HTMLElement>('hudStats').getAttribute('aria-pressed') === 'true');
     click('hudStats');
+    // The mouse feel: a panel of its own on the left, the starting points and sliders change the profile the settings page shows.
+    click('hudFeel');
+    await sleep(50);
+    check('the mouse feel button opens its panel, in the place of the others on the left', !$<HTMLElement>('feelPanel').hidden && $<HTMLElement>('statsPanel').hidden && $<HTMLElement>('hudFeel').getAttribute('aria-pressed') === 'true');
+    const sensBefore = profile.mouse.degPerCount;
+    const sharp = document.querySelector<HTMLButtonElement>('#feelPresets [data-preset="sharp"]');
+    sharp?.click();
+    check('"또렷하게" takes away the smoothing', profile.mouse.smoothingMs === 0 && profile.mouse.carryMs === 300 && sharp?.getAttribute('aria-pressed') === 'true', `${profile.mouse.smoothingMs} ${profile.mouse.carryMs}`);
+    check('and the settings page shows the same numbers', $<HTMLInputElement>('smoothingMs').value === '0' && $<HTMLInputElement>('carryMs').value === '300');
+    const qs = $<HTMLInputElement>('qSens');
+    qs.value = '0.07';
+    qs.dispatchEvent(new Event('input'));
+    check('the sensitivity slider changes the profile (and its number)', profile.mouse.degPerCount === 0.07 && $<HTMLOutputElement>('q_sens').textContent === '0.070' && $<HTMLOutputElement>('o_degPerCount').textContent === '0.070', String(profile.mouse.degPerCount));
+    document.querySelector<HTMLButtonElement>('#feelPresets [data-preset="smooth"]')?.click();
+    mouseFeel.set({ degPerCount: sensBefore });
+    check('the feel can be put back as it was', profile.mouse.smoothingMs === 12 && profile.mouse.carryMs === 300 && profile.mouse.degPerCount === sensBefore);
+    // The measuring is started from the settings; its buttons and its words are repeated in the panel.
+    const calStatus = $<HTMLElement>('consoleCalibrateStatus');
+    const calWas = calStatus.textContent;
+    calStatus.textContent = '시험 문구';
+    await sleep(30);
+    check('the words of the game measuring are repeated in the panel', $<HTMLElement>('feelCalStatus').textContent === '시험 문구', $<HTMLElement>('feelCalStatus').textContent ?? '');
+    calStatus.textContent = calWas;
+    const calApply = $<HTMLButtonElement>('consoleCalibrateApply');
+    const applyWas = calApply.hidden;
+    calApply.hidden = false;
+    await sleep(30);
+    check('and so is the button that applies the result', !$<HTMLButtonElement>('feelCalApply').hidden);
+    calApply.hidden = applyWas;
+    click('hudFeel');
+    check('the panel closes with its button', $<HTMLElement>('feelPanel').hidden);
+    const pumps0 = inputLoop.pumps;
+    await sleep(500);
+    check('the input runs on its own timer, faster than the 60 Hz drawing', inputLoop.pumps - pumps0 >= 40, `${inputLoop.pumps - pumps0} in 500 ms`);
     click('hudOpts');
     await sleep(50);
     check('the options move into the player while its panel is open (in reach in full screen)', $<HTMLElement>('optPanelSlot').contains($<HTMLElement>('qualityPreset')) && !$<HTMLElement>('optSlot').contains($<HTMLElement>('qualityPreset')));
