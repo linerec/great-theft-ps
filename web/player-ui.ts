@@ -213,6 +213,29 @@ function paintFeel(): void {
 document.addEventListener('gtp:profile', paintFeel);
 paintFeel();
 
+// The delay of the picture is the other half of how a mouse feels (the hand moves, the picture answers): the three ways
+// of showing frames (the options panel has the same choice) sit beside the numbers they change.
+{
+  const select = $<HTMLSelectElement>('playoutMode');
+  const row = $<HTMLElement>('feelDelay');
+  const paint = (): void => {
+    for (const b of row.querySelectorAll<HTMLButtonElement>('button')) b.setAttribute('aria-pressed', String(b.dataset.playout === select.value));
+  };
+  for (const b of row.querySelectorAll<HTMLButtonElement>('button')) {
+    b.addEventListener('click', () => {
+      select.value = b.dataset.playout ?? 'smooth';
+      select.dispatchEvent(new Event('change'));
+    });
+  }
+  select.addEventListener('change', paint);
+  paint();
+  document.addEventListener('gtp:stats', (e) => {
+    if (panelEl('feelPanel').hidden) return;
+    const d = (e as CustomEvent<{ delayMs: number; latencyMs: number }>).detail;
+    $('q_delay').textContent = `표시 +${d.delayMs.toFixed(0)} ms · 입력→화면 ${d.latencyMs > 0 ? `${d.latencyMs.toFixed(0)} ms` : '-'}`;
+  });
+}
+
 // The measuring of the game's response lives in the settings (calibrate-console.ts); here are its buttons and its words, so
 // that it can be started with the game in view, which is where the person has to be in order to choose a safe place for it.
 {

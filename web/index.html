@@ -139,6 +139,15 @@
               <div class="panel-head"><h3>마우스 느낌</h3><button class="icon-btn small" type="button" data-close="feelPanel" aria-label="닫기"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
               <div id="feelPresets" class="seg" role="group" aria-label="느낌 고르기"></div>
               <p id="feelHint" class="muted small"></p>
+              <div class="feel-delay">
+                <div class="feel-delay-head"><span>화면 지연</span><output id="q_delay">-</output></div>
+                <div id="feelDelay" class="seg" role="group" aria-label="화면 표시 방식">
+                  <button type="button" data-playout="smooth">부드럽게</button>
+                  <button type="button" data-playout="balanced">균형</button>
+                  <button type="button" data-playout="immediate">최소 지연</button>
+                </div>
+                <p class="muted small">조준은 지연에 가장 민감합니다. 영상이 가끔 멈칫하면 한 단계 올리세요.</p>
+              </div>
               <label>감도 <output id="q_sens"></output>
                 <input id="qSens" type="range" min="0.005" max="0.3" step="0.001">
               </label>

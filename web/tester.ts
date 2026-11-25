@@ -1675,6 +1675,13 @@ async function runE2e(): Promise<void> {
     document.querySelector<HTMLButtonElement>('#feelPresets [data-preset="smooth"]')?.click();
     mouseFeel.set({ degPerCount: sensBefore });
     check('the feel can be put back as it was', profile.mouse.smoothingMs === 12 && profile.mouse.carryMs === 300 && profile.mouse.degPerCount === sensBefore);
+    const delayBtn = (v: string): HTMLButtonElement => document.querySelector<HTMLButtonElement>(`#feelDelay [data-playout="${v}"]`)!;
+    delayBtn('immediate').click();
+    check('"최소 지연" in the panel is the same choice as in the options', $<HTMLSelectElement>('playoutMode').value === 'immediate' && player.playout.mode === 'immediate' && delayBtn('immediate').getAttribute('aria-pressed') === 'true' && delayBtn('smooth').getAttribute('aria-pressed') === 'false');
+    delayBtn('smooth').click();
+    check('and back to smooth', $<HTMLSelectElement>('playoutMode').value === 'smooth' && player.playout.mode === 'smooth');
+    await sleep(1200);
+    check('the panel shows the delay in numbers', /표시 \+\d+ ms/.test($<HTMLElement>('q_delay').textContent ?? ''), $<HTMLElement>('q_delay').textContent ?? '');
     // The measuring is started from the settings; its buttons and its words are repeated in the panel.
     const calStatus = $<HTMLElement>('consoleCalibrateStatus');
     const calWas = calStatus.textContent;

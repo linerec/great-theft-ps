@@ -481,6 +481,11 @@ button.hud-pill { cursor: pointer; }
 .feel output { color: var(--ink); font-variant-numeric: tabular-nums; }
 .feel .muted { margin: 0; }
 .feel kbd { font-size: .75rem; }
+.feel-delay { display: grid; gap: 6px; }
+.feel-delay-head { display: flex; justify-content: space-between; gap: 8px; font-size: .84rem; color: var(--muted); }
+.feel-delay-head output { color: var(--ink); font-variant-numeric: tabular-nums; }
+.feel-delay .seg { display: flex; width: 100%; }
+.feel-delay .seg button { flex: 1; justify-content: center; padding: 7px 6px; font-size: .84rem; }
 .feel-cal { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, .12); }
 .feel-cal p { flex-basis: 100%; margin: 0; white-space: pre-line; }
 .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
