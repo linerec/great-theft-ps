@@ -7,6 +7,9 @@
 // What a person sees afterwards: their name, the time left today (counted down here between the bridge's messages),
 // log out, and for the owner a window to invite people and set their minutes per day.
 
+import { formatClock, initialOf, timeLeft, warningsCrossed, warningText } from './player-logic.ts';
+import { dismissOnOutside, toast } from './ui.ts';
+
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
 interface PublicUser {
@@ -19,13 +22,7 @@ interface PublicUser {
 }
 
 /** "1:05:09" or "5:09". */
-export function formatRemaining(seconds: number): string {
-  const s = Math.max(0, Math.floor(seconds));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const ss = String(s % 60).padStart(2, '0');
-  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
-}
+export const formatRemaining = formatClock;
 
 /** What a person is told about minutes: "제한 없음" or "하루 90분". */
 export const describeLimit = (minutes: number | null): string => (minutes === null ? '제한 없음' : `하루 ${minutes}분`);
@@ -120,19 +117,49 @@ $<HTMLFormElement>('loginForm').addEventListener('submit', async (e) => {
 
 let remaining: number | null = null;
 let remainingAt = 0;
+/** Is a stream running? The time left is counted down here only then (see timeLeft). */
+let streaming = false;
+/** The time left at the last look, to see which warning point was passed since. */
+let lastLeft: number | null = null;
 
 function paintTime(): void {
   const el = $<HTMLElement>('acctTime');
   if (!me) return;
+  const quota = $<HTMLElement>('acctQuota');
   if (remaining === null) {
     el.textContent = describeLimit(me.dailyMinutes);
     el.className = 'chip';
+    quota.hidden = true;
+    lastLeft = null;
     return;
   }
-  const left = remaining - (Date.now() - remainingAt) / 1000;
-  el.textContent = `오늘 남은 시간 ${formatRemaining(left)}`;
+  const left = timeLeft({ remaining, heardAt: remainingAt, now: Date.now(), streaming }) ?? 0;
+  el.textContent = `남은 시간 ${formatRemaining(left)}`;
   el.className = left <= 60 ? 'chip off' : left <= 300 ? 'chip wait' : 'chip good';
+  // The menu shows it as a bar of the day's minutes.
+  quota.hidden = false;
+  $('acctQuotaText').textContent = formatRemaining(left);
+  const total = (me.dailyMinutes ?? 0) * 60;
+  const bar = $<HTMLElement>('acctQuotaBar');
+  bar.style.width = `${total > 0 ? Math.max(0, Math.min(100, (left / total) * 100)) : 0}%`;
+  bar.dataset.level = left <= 60 ? 'critical' : left <= 300 ? 'low' : 'ok';
+  // A word at five minutes and at one: a stream that ends with no warning is the worst way to find out.
+  if (lastLeft !== null) for (const point of warningsCrossed(lastLeft, left)) toast(warningText(point), point <= 60 ? 'err' : 'warn', 8000);
+  lastLeft = left;
 }
+
+// A stream starts or ends: take what has been counted so far as the new starting point, and count from here only while it runs.
+document.addEventListener('gtp:link', (e) => {
+  const on = (e as CustomEvent<{ state: string }>).detail.state === 'ready';
+  if (on === streaming) return;
+  const left = timeLeft({ remaining, heardAt: remainingAt, now: Date.now(), streaming });
+  streaming = on;
+  if (left !== null) {
+    remaining = left;
+    remainingAt = Date.now();
+  }
+  paintTime();
+});
 
 function setRemaining(seconds: number | null): void {
   remaining = seconds;
@@ -140,10 +167,27 @@ function setRemaining(seconds: number | null): void {
   paintTime();
 }
 
+const acctMenu = $<HTMLElement>('acctMenu');
+const acctBtn = $<HTMLButtonElement>('acctBtn');
+function openMenu(open: boolean): void {
+  acctMenu.hidden = !open;
+  acctBtn.setAttribute('aria-expanded', String(open));
+}
+let stopDismiss: (() => void) | null = null;
+acctBtn.addEventListener('click', () => {
+  const open = acctMenu.hidden;
+  openMenu(open);
+  stopDismiss?.();
+  stopDismiss = open ? dismissOnOutside(acctMenu, acctBtn, () => openMenu(false)) : null;
+});
+
 function showMe(user: PublicUser, remainingSeconds: number | null): void {
   me = user;
   $('acct').hidden = false;
-  $('acctName').textContent = user.role === 'owner' ? `${user.name} (주인)` : user.name;
+  $('acctName').textContent = user.name;
+  $('acctMenuName').textContent = user.name;
+  $('acctRole').textContent = user.role === 'owner' ? '주인 · 시간 제한 없음' : describeLimit(user.dailyMinutes);
+  $('acctAvatar').textContent = $('acctAvatar2').textContent = initialOf(user.name);
   $<HTMLButtonElement>('acctUsers').hidden = user.role !== 'owner';
   setRemaining(remainingSeconds);
   setInterval(paintTime, 1000);
@@ -253,6 +297,7 @@ async function refreshUsers(): Promise<void> {
 }
 
 $<HTMLButtonElement>('acctUsers').addEventListener('click', () => {
+  openMenu(false);
   $<HTMLElement>('usersInvite').hidden = true;
   usersDialog.showModal();
   void refreshUsers();

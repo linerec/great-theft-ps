@@ -53,6 +53,8 @@ export interface TouchHost {
   onDisconnect(): void;
   /** Called when the person turns the touch controls off from the menu. */
   onHide(): void;
+  /** Full screen on or off, from the menu (left out: no such button). */
+  onFullscreen?: () => void;
   /** The sound: whether it is on, a way to switch it, and a line saying how it is doing. Left out, the menu has no sound button. */
   sound?: { isOn(): boolean; set(on: boolean): void; note(): string };
 }
@@ -135,7 +137,12 @@ export function mountTouch(layer: HTMLElement, host: TouchHost): TouchUi {
   const disconnect = el('button', 'btn small', '연결 끊기');
   const hide = el('button', 'btn small', '터치 패드 끄기');
   const close = el('button', 'btn small ghost', '닫기');
-  disconnect.type = hide.type = close.type = 'button';
+  const full = el('button', 'btn small', '전체 화면');
+  disconnect.type = hide.type = close.type = full.type = 'button';
+  full.addEventListener('click', () => {
+    panel.hidden = true;
+    host.onFullscreen?.();
+  });
   disconnect.addEventListener('click', () => {
     panel.hidden = true;
     host.onDisconnect();
@@ -145,7 +152,7 @@ export function mountTouch(layer: HTMLElement, host: TouchHost): TouchUi {
     host.onHide();
   });
   close.addEventListener('click', () => (panel.hidden = true));
-  actions.append(disconnect, hide, close);
+  actions.append(disconnect, ...(host.onFullscreen ? [full] : []), hide, close);
   const tip = el('p', 'tc-tip', '왼쪽 빈 곳 = 왼쪽 스틱, 오른쪽 빈 곳을 끌면 시점. 전체 화면으로 쓰려면 Safari의 공유 → "홈 화면에 추가".');
   panel.append(...(host.sound ? [status, lookRow, soundRow, actions, tip] : [status, lookRow, actions, tip]));
   menuButton.addEventListener('click', () => {

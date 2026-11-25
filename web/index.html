@@ -9,34 +9,160 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="GTP">
   <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#0b1016">
   <title>Great Theft P.S</title>
+  <link rel="manifest" href="/web/manifest.webmanifest">
+  <link rel="icon" href="/web/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/web/apple-touch-icon.png">
+  <!-- Sets the light/dark choice before anything is drawn, so a pinned theme does not flash the other one first. -->
+  <script src="/web/theme-init.js"></script>
   <link rel="stylesheet" href="/web/app.css">
 </head>
 <body>
   <header class="top">
     <div class="brand"><span class="logo" aria-hidden="true">GTP</span><span class="brandname">Great Theft P.S</span></div>
-    <nav class="nav" aria-label="메뉴">
-      <button type="button" data-view="ps5" aria-current="page">PS5</button>
-      <button type="button" data-view="lab">연습장</button>
-      <button type="button" data-view="settings">설정</button>
-    </nav>
-    <div id="acct" class="acct" hidden>
-      <span id="acctName" class="chip"></span>
-      <span id="acctTime" class="chip"></span>
-      <button id="acctUsers" class="btn ghost small" type="button" hidden>사용자</button>
-      <button id="acctOut" class="btn ghost small" type="button">로그아웃</button>
+    <div class="top-end">
+      <button id="themeBtn" class="icon-btn" type="button" aria-label="화면 색">
+        <svg class="ic" aria-hidden="true"><use id="themeIcon" href="#i-auto"/></svg>
+      </button>
+      <div id="acct" class="acct" hidden>
+        <span id="acctTime" class="chip"></span>
+        <button id="acctBtn" class="acct-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="acctMenu">
+          <span id="acctAvatar" class="avatar" aria-hidden="true">?</span>
+          <span id="acctName" class="acct-name"></span>
+          <svg class="ic sm" aria-hidden="true"><use href="#i-down"/></svg>
+        </button>
+        <div id="acctMenu" class="menu" role="menu" hidden>
+          <div class="menu-head">
+            <span id="acctAvatar2" class="avatar big" aria-hidden="true">?</span>
+            <div><strong id="acctMenuName"></strong><div id="acctRole" class="muted small"></div></div>
+          </div>
+          <div id="acctQuota" class="quota" hidden>
+            <div class="quota-line"><span>오늘 남은 시간</span><strong id="acctQuotaText"></strong></div>
+            <div class="meter" aria-hidden="true"><span id="acctQuotaBar"></span></div>
+          </div>
+          <button id="acctUsers" class="menu-item" type="button" role="menuitem" hidden><svg class="ic" aria-hidden="true"><use href="#i-users"/></svg>사용자 관리</button>
+          <button id="acctOut" class="menu-item" type="button" role="menuitem"><svg class="ic" aria-hidden="true"><use href="#i-logout"/></svg>로그아웃</button>
+        </div>
+      </div>
     </div>
   </header>
+  <!-- On a computer this sits at the top in the middle; on a phone it is the bar at the bottom. -->
+  <nav class="nav" aria-label="메뉴">
+    <button type="button" data-view="ps5" aria-current="page"><svg class="ic" aria-hidden="true"><use href="#i-gamepad"/></svg><span>PS5</span></button>
+    <button type="button" data-view="lab"><svg class="ic" aria-hidden="true"><use href="#i-flask"/></svg><span>연습장</span></button>
+    <button type="button" data-view="settings"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg><span>설정</span></button>
+  </nav>
 
   <main>
     <!-- ============================================================ PS5 (main) -->
     <section id="consolePanel" class="view" aria-label="PS5">
       <div class="ps5grid">
-        <div class="col">
+        <!-- The player: the picture, what shows before it (the one big button), and the controls over it while it plays. -->
+        <section class="player" id="ps5Stage" aria-label="화면">
+          <div id="stageBox" class="stagebox">
+            <canvas id="game" width="640" height="360" tabindex="0" aria-label="화면. 클릭하면 마우스가 잠깁니다."></canvas>
+            <p id="hintFps" class="hint">
+              화면을 클릭하면 마우스가 잠깁니다 (Esc로 해제).
+              <b>W A S D</b> 이동 · <b>마우스</b> 시점 · <b>좌클릭</b> 사격 · <b>우클릭</b> 조준(ADS) · <b>Shift</b> 달리기 · <b>X</b> 천천히 걷기
+            </p>
+            <div id="hintTps" class="hint" hidden>
+              <p>화면을 클릭하면 마우스가 잠깁니다 (Esc로 해제).</p>
+              <p>
+                <b>걸을 때</b>: <b>W A S D</b> 이동(스틱을 얼마나 밀었는지에 따라 걷기·조깅·달리기) · <b>Shift 누르고 있기</b> 스프린트(X 자동 연타) ·
+                <b>X</b> 천천히 걷기 · <b>Space</b> 점프(□) · <b>우클릭</b> 조준(L2) · <b>좌클릭</b> 사격(R2) ·
+                <b>F</b> 차량 탑승/하차(△, 그리고 차량 조작으로 전환)
+              </p>
+              <p>
+                <b>운전할 때</b>: <b>W</b> 가속(R2) · <b>S</b> 브레이크/후진(L2) · <b>A D</b> 조향 · <b>Space</b> 핸드브레이크 · 마우스 시점. 차 근처(3.5m)에서 F.
+              </p>
+              <p class="note">
+                GTA V(PlayStation)에서 확인된 것: 스프린트=X 연타, 점프=□, 조준=L2, 탑승=△, 엄폐=R1, 차량 가속=R2. 그 외(브레이크 L2, 핸드브레이크 □, 모든 속도·카메라 수치, 시점 가속 공식)는
+                <b>테스트베드의 가정</b>이며 실제 게임과 다를 수 있습니다.
+              </p>
+            </div>
+          </div>
+
+          <!-- Before the picture, while it connects, and after it ends. -->
+          <div id="ps5Overlay" class="overlay" data-state="idle">
+            <button id="heroFull" class="icon-btn hero-full" type="button" aria-pressed="false" aria-label="전체 화면" title="전체 화면 (F)"><svg class="ic" aria-hidden="true"><use id="heroFullIcon" href="#i-expand"/></svg></button>
+            <div class="hero">
+              <div id="heroIcon" class="hero-icon" aria-hidden="true">
+                <svg class="ic xl"><use href="#i-gamepad"/></svg>
+                <span class="spinner"></span>
+              </div>
+              <h2 id="heroTitle">PS5</h2>
+              <p id="heroSub" class="hero-sub"></p>
+              <button id="ps5Cta2" class="btn primary big" type="button">불러오는 중…</button>
+              <p id="heroNote" class="muted small hero-note"></p>
+              <div class="hero-meta">
+                <span class="chip" id="ps5Badge">실제 PS5</span>
+                <span class="chip good" id="padChip" hidden></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Over the picture while it plays: shown when the mouse moves, gone when the game has the mouse. -->
+          <div id="hud" class="hud" hidden data-visible="false">
+            <div class="hud-top">
+              <span class="hud-pill" id="hudConn"><i class="dot"></i><span id="hudName">PS5</span></span>
+              <button id="hudQuality" class="hud-pill hud-signal" type="button" data-q="none" title="연결 상태 보기 (S)">
+                <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+                <span id="hudQText">-</span>
+              </button>
+              <span id="hudRec" class="hud-pill rec" hidden><i class="dot"></i><span id="hudRecTime">0:00</span></span>
+            </div>
+            <p id="hudTip" class="hud-tip">화면을 클릭하면 조작이 시작됩니다 · Esc로 멈춤</p>
+
+            <div id="statsPanel" class="panel panel-left" hidden>
+              <div class="panel-head"><h3>연결 상태</h3><button class="icon-btn small" type="button" data-close="statsPanel" aria-label="닫기"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+              <dl class="stats">
+                <div class="wide"><dt>상태</dt><dd id="cStatus">끊김</dd></div>
+                <div><dt>수신</dt><dd id="cRate">-</dd></div>
+                <div><dt>왕복 지연 (RTT)</dt><dd id="cRtt">-</dd></div>
+                <div><dt>입력→화면</dt><dd id="cLatency">-</dd></div>
+                <div><dt>표시 지연</dt><dd id="cBuffer">-</dd></div>
+                <div><dt>화면 끊김</dt><dd id="cHitch">-</dd></div>
+                <div><dt>플레이 시간</dt><dd id="cPlayed">-</dd></div>
+              </dl>
+              <div class="spark"><span>왕복 지연 <b id="sparkRttNow"></b></span><canvas id="sparkRtt" width="480" height="80"></canvas></div>
+              <div class="spark"><span>초당 프레임 <b id="sparkFpsNow"></b></span><canvas id="sparkFps" width="480" height="80"></canvas></div>
+            </div>
+
+            <div id="keysPanel" class="panel panel-left" hidden>
+              <div class="panel-head"><h3>키 배치 <span id="keysName" class="muted small"></span></h3><button class="icon-btn small" type="button" data-close="keysPanel" aria-label="닫기"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+              <dl id="keysList" class="layout-list"></dl>
+              <p class="muted small">바꾸려면 <b>설정 → 입력 매핑</b></p>
+            </div>
+
+            <div id="optPanel" class="panel panel-right" hidden>
+              <div class="panel-head"><h3>화면·소리·연결</h3><button class="icon-btn small" type="button" data-close="optPanel" aria-label="닫기"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+              <div id="optPanelSlot"></div>
+            </div>
+
+            <div class="hud-bar" id="hudBar">
+              <button id="hudDisconnect" class="hb danger" type="button" title="연결 끊기"><svg class="ic" aria-hidden="true"><use href="#i-power"/></svg><span>끊기</span></button>
+              <span class="grow"></span>
+              <button id="hudMute" class="hb" type="button" title="소리 켜기·끄기 (M)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use id="hudMuteIcon" href="#i-volume"/></svg></button>
+              <button id="hudShot" class="hb" type="button" title="스크린샷 (P)"><svg class="ic" aria-hidden="true"><use href="#i-camera"/></svg></button>
+              <button id="hudRecBtn" class="hb" type="button" title="녹화 (R)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use id="hudRecIcon" href="#i-record"/></svg></button>
+              <button id="hudStats" class="hb" type="button" title="연결 상태 (S)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg></button>
+              <button id="hudKeys" class="hb" type="button" title="키 배치 (K)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-keyboard"/></svg></button>
+              <button id="hudOpts" class="hb" type="button" title="화면·소리·연결 설정 (O)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg></button>
+              <button id="hudTheater" class="hb" type="button" title="넓게 보기 (T)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-wide"/></svg></button>
+              <button id="hudFull" class="hb" type="button" title="전체 화면 (F)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use id="hudFullIcon" href="#i-expand"/></svg></button>
+            </div>
+          </div>
+          <div id="shotFlash" class="shot-flash" aria-hidden="true"></div>
+          <!-- The pad for a touch screen: filled in by touch.ts, shown while connected with "터치 패드" on. -->
+          <div id="touchLayer" class="touch-layer" hidden><p class="touch-turn">가로로 돌리면 더 편합니다</p></div>
+        </section>
+
+        <aside class="side">
           <section class="card" aria-labelledby="h-console">
             <div class="card-head">
               <h2 id="h-console">내 PS5</h2>
-              <button id="ps5Refresh" class="btn ghost small" type="button">새로고침</button>
+              <button id="ps5Refresh" class="icon-btn small" type="button" aria-label="새로고침" title="새로고침"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
             </div>
             <div id="ps5Consoles" class="consoles"></div>
             <ol id="ps5Steps" class="steps" aria-label="준비 단계"></ol>
@@ -44,6 +170,60 @@
             <p id="ps5CtaNote" class="muted small"></p>
             <p id="ps5Msg" class="callout" role="status" hidden></p>
             <button id="addConsole" class="btn ghost small" type="button">+ 콘솔 추가</button>
+          </section>
+
+          <section class="card" aria-labelledby="h-opts">
+            <div class="card-head"><h2 id="h-opts">연결 옵션</h2></div>
+            <div id="optSlot">
+              <!-- These move into the player's panel while it plays (so they are in reach in full screen), and back. -->
+              <div id="connOptions" class="opts">
+                <div class="opt">
+                  <label for="qualityPreset">화질</label>
+                  <select id="qualityPreset">
+                    <option value="saver">데이터 절약</option>
+                    <option value="balanced" selected>균형</option>
+                    <option value="low-latency">저지연</option>
+                    <option value="quality">고화질</option>
+                  </select>
+                  <span id="qualityNote" class="muted small"></span>
+                  <span class="muted small">연결 중에 바꾸면 잠깐 끊겼다가 새 화질로 다시 연결됩니다.</span>
+                </div>
+                <div class="opt" title="부드럽게: 늦게 도착한 프레임이 멈춤으로 보이지 않도록, 최근 1분 동안 본 지연만큼만 늦춰 일정한 박자로 표시합니다. 균형: 같은 방식이되 덜 늦춥니다. 최소 지연: 도착하는 대로 표시합니다.">
+                  <label for="playoutMode">표시 방식</label>
+                  <select id="playoutMode">
+                    <option value="smooth" selected>부드럽게 (최대 +100ms)</option>
+                    <option value="balanced">균형 (최대 +50ms)</option>
+                    <option value="immediate">최소 지연</option>
+                  </select>
+                </div>
+                <div class="opt opt-sound" title="PS5의 소리(Opus)를 이 페이지에서 재생합니다. 브라우저가 소리를 풀 수 없으면 이유가 아래에 나옵니다. iPhone은 iOS 26 이상이어야 하고, 무음 스위치가 켜져 있어도 나오도록 설정하지만 소리가 안 나면 스위치와 볼륨을 확인하세요.">
+                  <label class="switch"><input id="soundToggle" type="checkbox" checked><span>소리</span></label>
+                  <input id="volume" class="range" type="range" min="0" max="100" step="1" value="100" aria-label="볼륨">
+                  <span id="soundNote" class="muted small"></span>
+                </div>
+                <div class="opt" title="잠그지 않으면, 내 다른 기기의 Great Theft P.S가 이 PS5에 연결하려 할 때 이 연결을 자동으로 넘겨줍니다. 잠그면 넘겨주지 않습니다. 이 규칙은 같은 등록 정보를 가진 Great Theft P.S끼리만 통하고, 공식 앱이나 chiaki에는 적용되지 않습니다.">
+                  <label class="switch"><input id="lockToggle" type="checkbox"><span>다른 기기가 가져가지 못하게 잠금</span></label>
+                </div>
+                <div class="opt" title="화면에 가상 패드를 띄워 손가락으로 조작합니다. 연결되면 화면이 가득 차고 조작 버튼이 그 위에 나옵니다. 휴대폰에서는 자동으로 켜집니다.">
+                  <label class="switch"><input id="touchToggle" type="checkbox"><span>터치 패드 (손가락으로 조작)</span></label>
+                </div>
+                <details class="look">
+                <summary>화면 모양</summary>
+                <div class="opt">
+                  <label for="fitMode">맞춤</label>
+                  <select id="fitMode">
+                    <option value="contain">비율 유지 (여백 있음)</option>
+                    <option value="cover">꽉 채우기 (가장자리 잘림)</option>
+                    <option value="fill">늘려서 채우기</option>
+                  </select>
+                </div>
+                <label class="slider">밝기 <output id="o_lookBrightness"></output><input id="lookBrightness" class="range" type="range" min="50" max="150" step="5"></label>
+                <label class="slider">대비 <output id="o_lookContrast"></output><input id="lookContrast" class="range" type="range" min="50" max="150" step="5"></label>
+                <label class="slider">채도 <output id="o_lookSaturation"></output><input id="lookSaturation" class="range" type="range" min="0" max="200" step="5"></label>
+                <button id="lookReset" class="btn ghost small" type="button">화면 모양 초기화</button>
+                </details>
+              </div>
+            </div>
           </section>
 
           <section class="card" aria-labelledby="h-route">
@@ -56,85 +236,20 @@
             <div id="routeDiagram"></div>
             <p id="routeStatus" class="muted small"></p>
           </section>
-        </div>
-
-        <section class="stagecard" aria-label="화면">
-          <div class="stage-toolbar">
-            <span class="chip" id="ps5Badge">실제 PS5</span>
-            <span class="chip good" id="padChip" hidden></span>
-            <dl class="stats">
-              <div><dt>상태</dt><dd id="cStatus">끊김</dd></div>
-              <div><dt>수신</dt><dd id="cRate">-</dd></div>
-              <div><dt>RTT</dt><dd id="cRtt">-</dd></div>
-              <div><dt>입력→화면</dt><dd id="cLatency">-</dd></div>
-              <div><dt>표시 지연</dt><dd id="cBuffer">-</dd></div>
-              <div><dt>화면 끊김</dt><dd id="cHitch">-</dd></div>
-            </dl>
-            <label class="inline">화질
-              <select id="qualityPreset">
-                <option value="saver">데이터 절약</option>
-                <option value="balanced" selected>균형</option>
-                <option value="low-latency">저지연</option>
-                <option value="quality">고화질</option>
-              </select>
-            </label>
-            <span id="qualityNote" class="muted small"></span>
-            <label class="inline" title="부드럽게: 늦게 도착한 프레임이 멈춤으로 보이지 않도록, 최근 1분 동안 본 지연만큼만 늦춰 일정한 박자로 표시합니다. 균형: 같은 방식이되 덜 늦춥니다. 최소 지연: 도착하는 대로 표시합니다.">표시
-              <select id="playoutMode">
-                <option value="smooth" selected>부드럽게 (최대 +100ms)</option>
-                <option value="balanced">균형 (최대 +50ms)</option>
-                <option value="immediate">최소 지연</option>
-              </select>
-            </label>
-            <label class="inline" title="PS5의 소리(Opus)를 이 페이지에서 재생합니다. 브라우저가 소리를 풀 수 없으면 이유가 아래에 나옵니다. iPhone은 iOS 26 이상이어야 하고, 무음 스위치가 켜져 있어도 나오도록 설정하지만 소리가 안 나면 스위치와 볼륨을 확인하세요.">
-              <input id="soundToggle" type="checkbox" checked> 소리
-            </label>
-            <span id="soundNote" class="muted small"></span>
-            <label class="inline" title="잠그지 않으면, 내 다른 기기의 Great Theft P.S가 이 PS5에 연결하려 할 때 이 연결을 자동으로 넘겨줍니다. 잠그면 넘겨주지 않습니다. 이 규칙은 같은 등록 정보를 가진 Great Theft P.S끼리만 통하고, 공식 앱이나 chiaki에는 적용되지 않습니다.">
-              <input id="lockToggle" type="checkbox"> 잠금
-            </label>
-            <label class="inline" title="화면에 가상 패드를 띄워 손가락으로 조작합니다. 연결되면 화면이 가득 차고 조작 버튼이 그 위에 나옵니다. 휴대폰에서는 자동으로 켜집니다.">
-              <input id="touchToggle" type="checkbox"> 터치 패드
-            </label>
-          </div>
-          <div class="stage-frame" id="ps5Stage">
-            <div id="stageBox" class="stagebox">
-              <canvas id="game" width="640" height="360" tabindex="0" aria-label="화면. 클릭하면 마우스가 잠깁니다."></canvas>
-              <p id="hintFps" class="hint">
-                화면을 클릭하면 마우스가 잠깁니다 (Esc로 해제).
-                <b>W A S D</b> 이동 · <b>마우스</b> 시점 · <b>좌클릭</b> 사격 · <b>우클릭</b> 조준(ADS) · <b>Shift</b> 달리기 · <b>X</b> 천천히 걷기
-              </p>
-              <div id="hintTps" class="hint" hidden>
-                <p>화면을 클릭하면 마우스가 잠깁니다 (Esc로 해제).</p>
-                <p>
-                  <b>걸을 때</b>: <b>W A S D</b> 이동(스틱을 얼마나 밀었는지에 따라 걷기·조깅·달리기) · <b>Shift 누르고 있기</b> 스프린트(X 자동 연타) ·
-                  <b>X</b> 천천히 걷기 · <b>Space</b> 점프(□) · <b>우클릭</b> 조준(L2) · <b>좌클릭</b> 사격(R2) ·
-                  <b>F</b> 차량 탑승/하차(△, 그리고 차량 조작으로 전환)
-                </p>
-                <p>
-                  <b>운전할 때</b>: <b>W</b> 가속(R2) · <b>S</b> 브레이크/후진(L2) · <b>A D</b> 조향 · <b>Space</b> 핸드브레이크 · 마우스 시점. 차 근처(3.5m)에서 F.
-                </p>
-                <p class="note">
-                  GTA V(PlayStation)에서 확인된 것: 스프린트=X 연타, 점프=□, 조준=L2, 탑승=△, 엄폐=R1, 차량 가속=R2. 그 외(브레이크 L2, 핸드브레이크 □, 모든 속도·카메라 수치, 시점 가속 공식)는
-                  <b>테스트베드의 가정</b>이며 실제 게임과 다를 수 있습니다.
-                </p>
-              </div>
-              <div id="hintConsole" class="hint" hidden>
-                <p>화면을 클릭하면 마우스가 잠기고, 키보드와 마우스가 PS5로 전달됩니다 (Esc로 해제). 음성은 아직 나오지 않습니다.</p>
-                <details id="layoutLegend" open>
-                  <summary>키 배치 <span id="layoutName" class="muted small"></span></summary>
-                  <dl id="layoutList" class="layout-list"></dl>
-                  <p class="muted small">바꾸려면 <b>설정 → 입력 매핑</b>. 게임마다 다른 이름으로 저장해 둘 수 있습니다.</p>
-                </details>
-              </div>
-            </div>
-            <div id="ps5Overlay" class="overlay"><p id="ps5OverlayText">연결하면 여기에 화면이 나옵니다</p></div>
-            <!-- The pad for a touch screen: filled in by touch.ts, shown while connected with "터치 패드" on. -->
-            <div id="touchLayer" class="touch-layer" hidden><p class="touch-turn">가로로 돌리면 더 편합니다</p></div>
-          </div>
-        </section>
+        </aside>
       </div>
-      <!-- The connect and disconnect handlers live in the page's script; the one button on the left presses them. -->
+
+      <section class="card keycard" aria-label="키 배치">
+        <div id="hintConsole" class="hint" hidden>
+          <p>화면을 클릭하면 마우스가 잠기고, 키보드와 마우스가 PS5로 전달됩니다 (Esc로 해제). <kbd>F</kbd> 전체 화면, <kbd>?</kbd> 단축키 도움말.</p>
+          <details id="layoutLegend" open>
+            <summary>키 배치 <span id="layoutName" class="muted small"></span></summary>
+            <dl id="layoutList" class="layout-list"></dl>
+            <p class="muted small">바꾸려면 <b>설정 → 입력 매핑</b>. 게임마다 다른 이름으로 저장해 둘 수 있습니다.</p>
+          </details>
+        </div>
+      </section>
+      <!-- The connect and disconnect handlers live in the page's script; the buttons press them. -->
       <span hidden><button id="bridgeConnect" type="button">연결</button><button id="bridgeDisconnect" type="button">끊기</button></span>
     </section>
 
@@ -249,12 +364,39 @@
       <div class="view-head"><h2>설정</h2></div>
       <div class="settings-layout">
         <nav class="subnav" aria-label="설정 항목">
-          <button type="button" data-pane="paneInput" aria-pressed="true">입력 매핑</button>
+          <button type="button" data-pane="paneGeneral" aria-pressed="true">일반</button>
+          <button type="button" data-pane="paneInput" aria-pressed="false">입력 매핑</button>
           <button type="button" data-pane="paneConsoles" aria-pressed="false">콘솔 관리</button>
           <button type="button" data-pane="paneAdvanced" aria-pressed="false">고급</button>
         </nav>
         <div class="settings-body">
-          <div id="paneInput" class="pane">
+          <div id="paneGeneral" class="pane">
+            <h3>화면 색</h3>
+            <div id="themeSeg" class="seg" role="group" aria-label="화면 색">
+              <button type="button" data-theme-choice="auto"><svg class="ic" aria-hidden="true"><use href="#i-auto"/></svg>자동</button>
+              <button type="button" data-theme-choice="light"><svg class="ic" aria-hidden="true"><use href="#i-sun"/></svg>밝게</button>
+              <button type="button" data-theme-choice="dark"><svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg>어둡게</button>
+            </div>
+            <p class="muted small">자동은 이 기기의 설정을 따릅니다. 이 브라우저에만 저장됩니다.</p>
+
+            <h3>시작할 때</h3>
+            <div class="opt" title="이 주소를 열면 PS5를 (대기 모드면 깨워서) 바로 연결합니다. 열 때마다 사용 시간이 흐르니, 쓸 때만 켜 두세요.">
+              <label class="switch"><input id="autoConnect" type="checkbox"><span>페이지를 열면 바로 연결</span></label>
+            </div>
+            <p class="muted small">PS5가 대기 모드여도 깨워서 연결합니다. 소리는 브라우저 규칙상 화면을 한 번 클릭해야 나옵니다. 이 기기에서만 적용됩니다.</p>
+
+            <h3>컨트롤러</h3>
+            <p id="padStatus" class="callout">연결된 컨트롤러가 없습니다. 컨트롤러(DualSense 등)를 USB나 블루투스로 연결하고 아무 버튼이나 누르세요.</p>
+
+            <h3>단축키</h3>
+            <p class="muted small">PS5 화면에서 마우스가 잠겨 있지 않을 때 쓸 수 있습니다. (잠긴 동안에는 모든 키가 PS5로 갑니다. Esc로 풀면 됩니다.)</p>
+            <div class="row"><button id="shortcutsOpen" class="btn small" type="button">단축키 전체 보기 (?)</button></div>
+
+            <h3>앱처럼 쓰기</h3>
+            <p class="muted small"><b>iPhone</b>: Safari 공유 버튼 → "홈 화면에 추가". 주소창 없이 전체 화면으로 열립니다. <b>Android·컴퓨터 Chrome</b>: 메뉴 → "앱 설치" 또는 "홈 화면에 추가".</p>
+          </div>
+
+          <div id="paneInput" class="pane" hidden>
             <h3>프로필 <span class="muted small">(게임마다 따로 저장해 두고 골라 씁니다)</span></h3>
             <div class="row profile-row">
               <label class="inline">불러오기
@@ -351,7 +493,7 @@
               <button id="consoleCalibrateApply" class="btn small" type="button" hidden>프로필에 적용</button>
             </div>
             <p id="consoleCalibrateStatus" class="muted small" role="status"></p>
-            <pre id="consoleCalibrateResult" class="muted small" style="white-space:pre-wrap"></pre>
+            <pre id="consoleCalibrateResult" class="muted small pre-wrap"></pre>
             <div id="consoleCalibratePlot"></div>
 
             <h3>프로필 글 <span class="muted small">(전체 내용. 다른 사람과 주고받을 때 이 글을 복사합니다)</span></h3>
@@ -464,6 +606,52 @@
     <p id="usersMsg" class="callout" role="alert" hidden></p>
     <div id="usersInvite" class="invitebox" hidden></div>
   </dialog>
+
+  <dialog id="shortcutsDialog" aria-labelledby="shortcutsTitle">
+    <div class="dialog-head"><h2 id="shortcutsTitle">단축키</h2><button id="shortcutsClose" class="btn ghost small" type="button">닫기</button></div>
+    <p class="muted small">PS5 화면에서, 마우스가 잠겨 있지 않을 때 씁니다. 화면을 클릭해 마우스가 잠기면 모든 키가 PS5로 가고, <kbd>Esc</kbd>를 누르면 다시 풀립니다.</p>
+    <dl class="shortcuts">
+      <div><dt><kbd>F</kbd></dt><dd>전체 화면 켜기·끄기</dd></div>
+      <div><dt><kbd>T</kbd></dt><dd>넓게 보기: 옆 카드를 접고 화면을 크게</dd></div>
+      <div><dt><kbd>M</kbd></dt><dd>소리 켜기·끄기</dd></div>
+      <div><dt><kbd>P</kbd></dt><dd>스크린샷을 이미지로 저장</dd></div>
+      <div><dt><kbd>R</kbd></dt><dd>녹화 시작·끝 (최대 5분, 끝나면 파일로 저장)</dd></div>
+      <div><dt><kbd>S</kbd></dt><dd>연결 상태 (지연, 프레임, 그래프)</dd></div>
+      <div><dt><kbd>K</kbd></dt><dd>키 배치 보기</dd></div>
+      <div><dt><kbd>O</kbd></dt><dd>화면·소리·연결 설정 패널</dd></div>
+      <div><dt><kbd>?</kbd></dt><dd>이 도움말</dd></div>
+      <div><dt><kbd>Esc</kbd></dt><dd>마우스를 풀고 조작을 멈춤 (전체 화면에서는 길게 누르면 전체 화면이 꺼집니다)</dd></div>
+    </dl>
+  </dialog>
+
+  <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+
+  <!-- Icons: each is drawn once here and used with <use href="#i-name">. -->
+  <svg class="sprite" aria-hidden="true" width="0" height="0" focusable="false">
+    <symbol id="i-gamepad" viewBox="0 0 24 24"><path d="M7 8h10a4 4 0 0 1 4 4.5l-.7 4a2 2 0 0 1-3.4.9L15 15H9l-1.9 2.4a2 2 0 0 1-3.4-.9l-.7-4A4 4 0 0 1 7 8z"/><path d="M8.5 10.5v3M7 12h3M16 11.5h.01M18 13h.01"/></symbol>
+    <symbol id="i-flask" viewBox="0 0 24 24"><path d="M9 3h6M10 3v6L5 18a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M8 14h8"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+    <symbol id="i-shrink" viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l1.6-2.5h6.8L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+    <symbol id="i-record" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2.5"/></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9.5v5h4l5 4v-13l-5 4z"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
+    <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9.5v5h4l5 4v-13l-5 4z"/><path d="M17 9.5l4 5M21 9.5l-4 5"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 20v-7M12 20V5M19 20v-10"/></symbol>
+    <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2.5"/><path d="M7 10h.01M10.5 10h.01M14 10h.01M17.5 10h.01M8 14h8"/></symbol>
+    <symbol id="i-wide" viewBox="0 0 24 24"><rect x="2.5" y="7" width="19" height="10" rx="2.5"/></symbol>
+    <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3.5v8M6.7 6.7a7.5 7.5 0 1 0 10.6 0"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 11A7.5 7.5 0 1 0 17.3 16.3M19.5 4.5V11H13"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9.5l6 6 6-6"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></symbol>
+    <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="9" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 6.2a3 3 0 0 1 0 5.6M18.5 19a5 5 0 0 0-2.4-4.2"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M10 4H5v16h5M15 8l4 4-4 4M19 12H9"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  </svg>
 
   <pre id="selftest" hidden></pre>
   <script type="module" src="/web/app.ts"></script>

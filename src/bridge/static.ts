@@ -15,7 +15,12 @@ const CONTENT_TYPES: Record<string, string> = {
   '.mjs': 'text/javascript; charset=utf-8',
   '.ts': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
 };
+/** Files that are bytes, not text: read as they are (reading them as text would change them). */
+const BINARY = new Set(['.png']);
 
 export const SECURITY_HEADERS: Record<string, string> = {
   'Cache-Control': 'no-store',
@@ -23,7 +28,7 @@ export const SECURITY_HEADERS: Record<string, string> = {
   'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'",
 };
 
-export function send(res: ServerResponse, status: number, headers: Record<string, string>, body?: string): void {
+export function send(res: ServerResponse, status: number, headers: Record<string, string>, body?: string | Uint8Array): void {
   res.writeHead(status, { ...SECURITY_HEADERS, ...headers });
   res.end(body);
 }
@@ -96,6 +101,10 @@ export async function handleStatic(req: IncomingMessage, res: ServerResponse, ro
     const type = CONTENT_TYPES[ext];
     if (!type) return send(res, 404, { 'Content-Type': 'text/plain' }, 'Not found');
 
+    if (BINARY.has(ext)) {
+      const bytes = await readFile(file);
+      return send(res, 200, { 'Content-Type': type }, req.method === 'HEAD' ? undefined : bytes);
+    }
     const source = await readFile(file, 'utf8');
     const body = ext === '.ts' ? stripTypeScriptTypes(source, { mode: 'strip' }) : source;
     send(res, 200, { 'Content-Type': type }, req.method === 'HEAD' ? undefined : body);

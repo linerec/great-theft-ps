@@ -11,6 +11,8 @@ import './account-ui.ts';
 import './dev-reload.ts';
 import { setMode, type Mode } from './tester.ts';
 import './ps5.ts';
+import './player-ui.ts';
+import { applyTheme, currentTheme, setTheme, THEME_TEXT, type Theme } from './ui.ts';
 
 type View = 'ps5' | 'lab' | 'settings';
 const VIEWS: Record<View, string> = { ps5: 'consolePanel', lab: 'viewLab', settings: 'viewSettings' };
@@ -35,6 +37,7 @@ function setView(next: View, push = true): void {
   }
   if (push) history.replaceState(null, '', `${location.pathname}${location.search}#${next}`);
   window.scrollTo({ top: 0 });
+  document.dispatchEvent(new CustomEvent('gtp:view', { detail: next }));
 }
 
 for (const b of document.querySelectorAll<HTMLButtonElement>('.nav button')) b.addEventListener('click', () => setView(b.dataset.view as View));
@@ -48,7 +51,31 @@ function setPane(id: string): void {
   for (const b of document.querySelectorAll<HTMLButtonElement>('.subnav button')) b.setAttribute('aria-pressed', String(b.dataset.pane === id));
 }
 for (const b of document.querySelectorAll<HTMLButtonElement>('.subnav button')) b.addEventListener('click', () => setPane(b.dataset.pane!));
-setPane('paneInput');
+setPane('paneGeneral');
+
+// Light, dark, or whatever the device says: the button in the header goes round them, the settings pick one.
+const THEME_ICON: Record<Theme, string> = { auto: '#i-auto', light: '#i-sun', dark: '#i-moon' };
+function paintTheme(): void {
+  const t = currentTheme();
+  $('themeIcon').setAttribute('href', THEME_ICON[t]);
+  $<HTMLButtonElement>('themeBtn').setAttribute('aria-label', `화면 색: ${THEME_TEXT[t]} (누르면 바뀜)`);
+  $<HTMLButtonElement>('themeBtn').title = `화면 색: ${THEME_TEXT[t]}`;
+  for (const b of document.querySelectorAll<HTMLButtonElement>('[data-theme-choice]')) b.setAttribute('aria-pressed', String(b.dataset.themeChoice === t));
+}
+$<HTMLButtonElement>('themeBtn').addEventListener('click', () => {
+  const order: Theme[] = ['auto', 'light', 'dark'];
+  setTheme(order[(order.indexOf(currentTheme()) + 1) % order.length]!);
+  paintTheme();
+});
+for (const b of document.querySelectorAll<HTMLButtonElement>('[data-theme-choice]')) {
+  b.addEventListener('click', () => {
+    setTheme(b.dataset.themeChoice as Theme);
+    paintTheme();
+  });
+}
+matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => applyTheme(currentTheme()));
+applyTheme(currentTheme());
+paintTheme();
 
 // Buttons elsewhere that open the dialogs of the PS5 page.
 $<HTMLButtonElement>('setAdd').addEventListener('click', () => {

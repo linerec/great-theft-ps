@@ -44,6 +44,7 @@ Requires Node.js 24 or newer. No dependencies to install.
 ```sh
 npm run dev      # the bridge to your PS5, for this computer and, over Tailscale, for a phone; open the printed URL
 npm test         # unit and integration tests (node --test)
+npm run preview  # the page with a pretend console, to look at the interface (--accounts adds logins; port 8799)
 npm run e2e      # real-browser end-to-end check (headless Chrome <-> bridge <-> a test double, no console)
 npm run e2e:look # the same for measuring a game's camera response, against a made-up game with a known response (about a minute)
 npm run discover # look for PlayStation consoles on the local network
@@ -252,10 +253,10 @@ src/bridge/      the bridge
   playout.ts                                       when to show each frame (used by the page)
   handover.ts                                      handing the console over between your own clients
   protocol.ts, quality.ts, h264.ts                 wire format shared with the page, quality presets, H.264 helpers
-web/             the page: PS5 view, test beds, settings, video player, bridge client
+web/             the page: PS5 view and its player (full screen, controls, clips), test beds, settings, video player, bridge client
 tools/           connect, discover, register, consoles, handover, snap-console (real console + real browser), e2e-browser
 test/            tests, the reference's vectors, and test doubles (test/support/)
-docs/            status-and-next.md (start here), keyboard-mouse-mapping.md, stream-research.md, ts-protocol-port.md, gtp-core-contract.md
+docs/            status-and-next.md (start here), player.md (the interface), keyboard-mouse-mapping.md, stream-research.md, ts-protocol-port.md, gtp-core-contract.md
 ```
 ## How mouse look works
 

@@ -354,3 +354,32 @@ describe('ending', () => {
     assert.equal(w.data.closed, 1, 'and it is still given back');
   });
 });
+
+describe('AudioPlayer.captureStream (the sound of a recorded clip)', () => {
+  it('has nothing before a tap has made the audio context', () => {
+    const w = world();
+    assert.equal(new AudioPlayer(w.deps).captureStream(), null);
+  });
+
+  it('gives a stream that the volume stage feeds, and the same one when asked again', () => {
+    const w = world();
+    const connected: unknown[] = [];
+    const tap = { stream: { fake: 'stream' }, connect() {} };
+    let made = 0;
+    (w.ctx as any).createGain = () => ({ gain: w.ctx.gain, connect: (to: unknown) => connected.push(to) });
+    (w.ctx as any).createMediaStreamDestination = () => (made++, tap);
+    const p = new AudioPlayer(w.deps);
+    p.unlock();
+    assert.equal(p.captureStream(), tap.stream);
+    assert.equal(p.captureStream(), tap.stream);
+    assert.equal(made, 1, 'one destination, however often it is asked');
+    assert.ok(connected.includes(tap), 'the gain is connected to it, so a muted page records silence');
+  });
+
+  it('has nothing where the browser cannot make one', () => {
+    const w = world();
+    const p = new AudioPlayer(w.deps);
+    p.unlock();
+    assert.equal(p.captureStream(), null);
+  });
+});

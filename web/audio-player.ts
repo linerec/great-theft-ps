@@ -55,6 +55,8 @@ export interface AudioContextLike {
   createBuffer(channels: number, length: number, sampleRate: number): AudioBufferLike;
   createBufferSource(): AudioNodeLike & { buffer: unknown; start(when: number): void };
   createGain(): AudioNodeLike & { gain: { value: number } };
+  /** A destination that makes a MediaStream of what reaches it (for recording a clip). Not every browser has it. */
+  createMediaStreamDestination?(): AudioNodeLike & { stream: unknown };
   resume(): Promise<void>;
   suspend(): Promise<void>;
   close(): Promise<void>;
@@ -127,6 +129,7 @@ export class AudioPlayer {
   #deps: Required<AudioPlayerDeps>;
   #ctx: AudioContextLike | null = null;
   #gain: (AudioNodeLike & { gain: { value: number } }) | null = null;
+  #tap: (AudioNodeLike & { stream: unknown }) | null = null;
   #decoder: AudioDecoderLike | null = null;
   #scheduler = new AudioScheduler({ targetDelaySec: DEFAULT_DELAY_SEC });
   #frameSec = 0.01;
@@ -281,6 +284,22 @@ export class AudioPlayer {
     this.#applyGain();
   }
 
+  /**
+   * The sound as a MediaStream, for a recorder to put into a clip. It is taken after the volume and the mute, so a clip
+   * has what the person hears. Null when there is no audio context yet (nothing was played) or the browser cannot make one.
+   */
+  captureStream(): unknown {
+    const ctx = this.#ctx;
+    if (!ctx || !this.#gain || !ctx.createMediaStreamDestination) return null;
+    try {
+      this.#tap ??= ctx.createMediaStreamDestination();
+      this.#gain.connect(this.#tap); // connecting the same two nodes again changes nothing
+      return this.#tap.stream;
+    } catch {
+      return null;
+    }
+  }
+
   /** Nobody listens to a hidden tab: nothing is decoded; shown again, the schedule starts afresh. */
   setVisible(visible: boolean): void {
     if (visible === this.#visible) return;
@@ -307,6 +326,7 @@ export class AudioPlayer {
     const ctx = this.#ctx;
     this.#ctx = null;
     this.#gain = null;
+    this.#tap = null;
     if (ctx) void ctx.close().catch(() => {});
   }
 

@@ -254,3 +254,14 @@ HTTPS address works and asks for a login, but nobody has pressed connect from ou
 browser (the mapping follows the browser's standard layout and is tested with a fake pad); how much of the NAS's CPU a
 1080p60 stream needs; Safari on an iPhone with a controller; the minutes counted over a real evening.
 
+
+## The interface (2026-11-24)
+
+The PS5 page was redone around the picture: a player with a big button before the stream, a bar over the picture while it plays,
+full screen, screenshots and clips, a connection indicator with charts, light and dark, an account menu with the time left,
+toasts, and a phone layout with a bottom bar. `docs/player.md` has the list and what was checked. Not yet seen: an iPhone, an
+Android phone, a real DualSense, and any of it on a real stream.
+
+One thing it changed that was wrong before: the time left in the header was counted down by the page even when no stream was
+running (the bridge counts only from the moment the picture starts), so it showed less than a member had. It is counted down
+only while a stream runs now.

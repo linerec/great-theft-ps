@@ -21,6 +21,7 @@ import { AudioPlayer } from './audio-player.ts';
 import { mountConsoleCalibration } from './calibrate-console.ts';
 import { GamepadInput, mergeGamepad, type PadSample } from './gamepad.ts';
 import { VideoPlayer } from './video-player.ts';
+import { toast } from './ui.ts';
 
 const TICK = 0.004;
 type Mode = 'fps' | 'tps' | 'console';
@@ -568,6 +569,7 @@ let hitchesSeen = 0;
 const touchToggle = $<HTMLInputElement>('touchToggle');
 const touch = mountTouch($<HTMLElement>('touchLayer'), {
   onDisconnect: () => client.disconnect(),
+  onFullscreen: () => document.dispatchEvent(new CustomEvent('gtp:toggle-fullscreen')),
   sound: {
     isOn: () => soundToggle.checked,
     set: (on) => {
@@ -621,6 +623,8 @@ setInterval(() => {
   touch.setStatus(`수신 ${client.fpsIn} fps · ${client.kbpsIn} kbps · 표시 지연 ${delay.toFixed(0)} ms · 화면 끊김 ${hitchesSeen}회`);
   $<HTMLElement>('cBuffer').textContent = player.playout.mode === 'immediate' ? `0 ms (늦은 프레임 최대 ${player.playout.worstLateMs.toFixed(0)} ms)` : `${delay.toFixed(0)} ms`;
   $<HTMLElement>('cHitch').textContent = `${hitchesSeen}회`;
+  // The same numbers for the signal indicator and the charts over the picture (player-ui.ts).
+  document.dispatchEvent(new CustomEvent('gtp:stats', { detail: { fps: client.fpsIn, kbps: client.kbpsIn, rttMs: client.rttMs, latencyMs: client.inputLatencyMs, delayMs: delay, hitches: sample.hitches, hitchesTotal: hitchesSeen } }));
   if (sample.shown === 0 && sample.underruns === 0) return;
   // The bridge keeps these next to its own measurements (GET /api/stream/stats), so a study sees both ends.
   client.sendJson({
@@ -895,8 +899,26 @@ document.addEventListener('pointerlockchange', () => {
   if (!isLocked()) {
     engine.releaseAll();
     lockNote = '해제됨';
+    // Esc means "stop sending my keys": without this the canvas would keep the keyboard, and the page's own shortcuts
+    // (F for full screen, M for mute ...) would be eaten as game keys.
+    if (document.activeElement === view) view.blur();
   }
 });
+
+/**
+ * What the controls over the picture (player-ui.ts) need from here: the canvas, the mouse lock, the volume, the sound
+ * as a stream for a clip. The rest of the input stays in this file.
+ */
+export const stage = {
+  canvas: view,
+  get locked(): boolean {
+    return isLocked();
+  },
+  lock: (): Promise<void> => lockPointer(),
+  unlock: (): void => document.exitPointerLock(),
+  setVolume: (v: number): void => audio.setVolume(v),
+  captureAudio: (): MediaStream | null => audio.captureStream() as MediaStream | null,
+};
 
 window.addEventListener('blur', () => engine.releaseAll());
 
@@ -1088,7 +1110,10 @@ const gamepads = new GamepadInput();
 let padNow: PadSample | null = null;
 {
   const chip = document.getElementById('padChip');
+  const status = document.getElementById('padStatus');
   gamepads.onChange = (name) => {
+    if (status) status.textContent = name === null ? '연결된 컨트롤러가 없습니다. 컨트롤러(DualSense 등)를 USB나 블루투스로 연결하고 아무 버튼이나 누르세요.' : `${name} 연결됨: 키보드·마우스와 함께 쓸 수 있습니다.`;
+    toast(name === null ? '컨트롤러 연결이 끊어졌습니다' : `${name} 연결됨`, name === null ? 'warn' : 'ok');
     if (!chip) return;
     chip.hidden = name === null;
     if (name !== null) chip.textContent = `${name} 연결됨`;
@@ -1575,6 +1600,56 @@ async function runE2e(): Promise<void> {
     touchToggle.checked = false;
     touchToggle.dispatchEvent(new Event('change'));
     check('turning the touch controls off puts the page back', layer.hidden && !document.body.classList.contains('touch-live'));
+
+    // The controls over the picture and the rest of the interface (player-ui.ts, app.ts).
+    const click = (id: string): void => $<HTMLButtonElement>(id).click();
+    const toasts = (): string => document.getElementById('toasts')?.textContent ?? '';
+    check('the bar over the picture is up while connected', !$<HTMLElement>('hud').hidden && $<HTMLElement>('ps5Stage').dataset.live === 'true');
+    click('hudStats');
+    await sleep(50);
+    check('the stats button opens the connection panel', !$<HTMLElement>('statsPanel').hidden && $<HTMLElement>('hudStats').getAttribute('aria-pressed') === 'true');
+    click('hudStats');
+    click('hudOpts');
+    await sleep(50);
+    check('the options move into the player while its panel is open (in reach in full screen)', $<HTMLElement>('optPanelSlot').contains($<HTMLElement>('qualityPreset')) && !$<HTMLElement>('optSlot').contains($<HTMLElement>('qualityPreset')));
+    const bright = $<HTMLInputElement>('lookBrightness');
+    bright.value = '120';
+    bright.dispatchEvent(new Event('input'));
+    check('the picture look reaches the picture (brightness 120)', view.style.filter.includes('brightness(120%)'), view.style.filter);
+    click('lookReset');
+    check('and goes back to nothing at all when reset', view.style.filter === 'none', view.style.filter);
+    click('hudOpts');
+    check('the options go back to their card when the panel closes', $<HTMLElement>('optSlot').contains($<HTMLElement>('qualityPreset')) && $<HTMLElement>('optPanel').hidden);
+    click('hudShot');
+    await until(() => toasts().includes('스크린샷'), 4000);
+    check('a screenshot is made and said so', toasts().includes('스크린샷을 저장했습니다'), toasts());
+    if (typeof MediaRecorder !== 'undefined' && typeof view.captureStream === 'function') {
+      click('hudRecBtn');
+      await sleep(1500);
+      check('recording shows its mark while it runs', !$<HTMLElement>('hudRec').hidden && $<HTMLButtonElement>('hudRecBtn').getAttribute('aria-pressed') === 'true');
+      click('hudRecBtn');
+      await until(() => toasts().includes('녹화를 저장'), 6000);
+      check('a clip is saved when the recording ends', toasts().includes('녹화를 저장했습니다') && $<HTMLElement>('hudRec').hidden, toasts());
+    }
+    const soundBefore = soundToggle.checked;
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyM', bubbles: true, cancelable: true }));
+    check('M mutes when the game does not have the mouse', soundToggle.checked !== soundBefore);
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyM', bubbles: true, cancelable: true }));
+    check('and unmutes', soundToggle.checked === soundBefore);
+    click('hudFull');
+    await sleep(400);
+    // A headless browser has no person to have asked, so the real full screen may be refused: then the player covers the window.
+    const covered = document.fullscreenElement !== null || document.body.classList.contains('stage-full');
+    check('the full screen button puts the player over the whole screen', covered && $<HTMLButtonElement>('hudFull').getAttribute('aria-pressed') === 'true', document.fullscreenElement ? 'browser full screen' : 'covering the window');
+    click('hudFull');
+    await sleep(400);
+    check('and the same button brings the page back', document.fullscreenElement === null && !document.body.classList.contains('stage-full') && $<HTMLButtonElement>('hudFull').getAttribute('aria-pressed') === 'false');
+    click('themeBtn');
+    const t1 = document.documentElement.dataset.theme;
+    click('themeBtn');
+    const t2 = document.documentElement.dataset.theme;
+    click('themeBtn');
+    check('the colour button goes light, dark, then back to the device', t1 === 'light' && t2 === 'dark' && document.documentElement.dataset.theme === undefined, `${t1} ${t2} ${document.documentElement.dataset.theme}`);
     engine.keyDown('KeyW');
     engine.mouseButton(0, true);
     await sleep(200);

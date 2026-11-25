@@ -4,6 +4,8 @@
 // Talks to the bridge's /api/ only. Never sees a key: the bridge keeps them.
 
 import { getBridgeToken, setConsoleMac, whyNoApi } from './tester.ts';
+import { describeClosed } from './player-logic.ts';
+import { save, saved } from './ui.ts';
 import { detectRoute, PATHS, pathById, STEPS, VERDICTS, type PathId, type RoutePath, type StepId } from './routes.ts';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -53,6 +55,8 @@ const S = {
 };
 
 const selectedConsole = (): ConsoleInfo | undefined => S.consoles.find((c) => c.mac === S.selected) ?? S.consoles[0];
+/** The name of the console the page is set to connect to, for the bar over the picture. */
+export const consoleName = (): string => selectedConsole()?.nickname || 'PS5';
 
 // ------------------------------------------------------------------ loading
 
@@ -76,6 +80,22 @@ async function load(): Promise<void> {
   S.interfaces = (n?.data.interfaces ?? []) as Array<{ address: string; netmask: string }>;
   render();
   await Promise.all(S.consoles.map(probe));
+  autoConnect();
+}
+
+// "Open the page and it connects" (settings → 일반): once per page load, only when asked for, only from the PS5 page, and only
+// when the one button says "연결" or "깨우고 연결" (so never over a stream, never without a registered console).
+let autoTried = false;
+function autoConnect(): void {
+  if (autoTried) return;
+  autoTried = true;
+  if (saved('gtp.autoconnect') !== '1') return;
+  const hash = location.hash.slice(1);
+  if (hash === 'lab' || hash === 'settings' || new URLSearchParams(location.search).has('mode')) return;
+  if (S.link.state !== 'idle') return;
+  const c = cta();
+  if (c.disabled || !c.kind || c.kind !== 'primary') return;
+  if (c.label === '연결' || c.label === '깨우고 연결') void c.run();
 }
 
 // ------------------------------------------------------------------ the one button
@@ -182,6 +202,17 @@ function renderCta(): void {
   b.disabled = !!c.disabled || S.busy;
   b.className = `btn ${c.kind ?? 'primary'}`;
   b.onclick = () => void c.run();
+  // The same button, big, in the middle of the picture: before the stream there is one thing to do and it is there.
+  const big = $<HTMLButtonElement>('ps5Cta2');
+  const connecting = S.link.state === 'connecting';
+  big.textContent = S.busy ? '확인하는 중…' : connecting ? '취소' : S.link.state === 'closed' && c.label === '연결' ? '다시 연결' : c.label;
+  big.disabled = !!c.disabled || S.busy;
+  big.className = `btn ${c.kind ?? 'primary'} big`;
+  big.onclick = () => void c.run();
+  // Before the stream the big button in the picture is the one to press; this one is for ending it.
+  const streaming = S.link.state === 'ready' || connecting;
+  b.hidden = !streaming;
+  $<HTMLElement>('ps5CtaNote').hidden = !streaming;
   $<HTMLElement>('ps5CtaNote').textContent = c.note;
   const m = $<HTMLElement>('ps5Msg');
   m.textContent = S.message;
@@ -222,11 +253,22 @@ function renderRouteCard(): void {
   $<HTMLElement>('routeStatus').textContent = path.status;
 }
 
+/** What the middle of the picture says before the stream, while it starts, and after it ends. */
 function renderStage(): void {
   const live = S.link.state === 'ready';
-  $<HTMLElement>('ps5Overlay').hidden = live;
-  $<HTMLElement>('ps5OverlayText').textContent =
-    S.link.state === 'connecting' ? (S.link.detail.startsWith('connecting: ') ? S.link.detail.slice(12) : '연결하는 중…') : S.link.state === 'closed' ? `끊어짐${S.link.detail ? ` · ${S.link.detail}` : ''}` : '연결하면 여기에 화면이 나옵니다';
+  const overlay = $<HTMLElement>('ps5Overlay');
+  overlay.hidden = live;
+  const c = selectedConsole();
+  const state = S.link.state === 'connecting' ? 'connecting' : S.link.state === 'closed' ? 'closed' : 'idle';
+  overlay.dataset.state = state;
+  const presence = c ? PRESENCE[S.presence[c.mac] ?? 'checking'] : null;
+  $<HTMLElement>('heroTitle').textContent = !S.apiOk ? '서버에 연결되지 않았습니다' : !c ? 'PS5를 등록하세요' : state === 'connecting' ? `${c.nickname || 'PS5'}에 연결하는 중` : state === 'closed' ? '연결이 끝났습니다' : c.nickname || 'PS5';
+  $<HTMLElement>('heroSub').textContent =
+    state === 'connecting' ? (S.link.detail.startsWith('connecting: ') ? S.link.detail.slice(12) : '잠시만 기다려 주세요…')
+    : state === 'closed' ? describeClosed(S.link.detail)
+    : c && presence ? `${presence.text} · ${c.target.toUpperCase().replace('-', ' ')}`
+    : '';
+  $<HTMLElement>('heroNote').textContent = state === 'idle' ? cta().note : state === 'connecting' ? '대기 모드면 깨우는 데 10~20초 걸립니다.' : '';
   $<HTMLElement>('ps5Badge').textContent = S.link.name === 'core' ? 'gtp-core' : '실제 PS5';
 }
 
@@ -329,6 +371,11 @@ function matrix(): HTMLElement {
 
 // ------------------------------------------------------------------ wiring
 
+{
+  const box = $<HTMLInputElement>('autoConnect');
+  box.checked = saved('gtp.autoconnect') === '1';
+  box.addEventListener('change', () => save('gtp.autoconnect', box.checked ? '1' : '0'));
+}
 $<HTMLButtonElement>('ps5Refresh').addEventListener('click', () => void load());
 $<HTMLButtonElement>('addConsole').addEventListener('click', () => $<HTMLDialogElement>('addDialog').showModal());
 for (const id of ['addClose', 'addClose2']) $<HTMLButtonElement>(id).addEventListener('click', () => $<HTMLDialogElement>('addDialog').close());

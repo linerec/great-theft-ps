@@ -10,6 +10,8 @@
     "test": "node --test --test-timeout=60000 \"test/*.test.ts\"",
     "dev": "node src/bridge/main.ts --live",
     "bridge": "node src/bridge/main.ts",
+    "preview": "node tools/preview.mjs",
+    "icons": "node tools/make-icons.mjs",
     "e2e": "node tools/e2e-browser.mjs",
     "e2e:look": "node tools/e2e-look.mjs",
     "connect": "node tools/connect.mjs",

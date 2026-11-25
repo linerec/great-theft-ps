@@ -9,6 +9,8 @@ against a simulated console, and what to do next).
 - `npm run dev` starts the bridge and the page at http://127.0.0.1:8788 with **live reload**: save a file under
   `web/` or `src/` and the open page reloads (not while a game is running). Changes to the bridge itself (`src/bridge`,
   `src/console`) need a restart.
+- `npm run preview` opens the page with a pretend console (`--accounts` for logins) to look at and try the interface without
+  a PlayStation; `docs/player.md` says what the interface does and how far each part was checked.
 - `npm test` must pass before every push (about 15 s). `npm run e2e` runs the page in a real browser (needs Chrome).
 - Push to `main`. A server at home runs this repository (`docs/deploy-nas.md`): its supervisor takes each new commit
   within about a minute, **after starting it on the side and finding that nobody is playing**. So `main` must always
