@@ -99,7 +99,8 @@ try {
   console.log(`${registerOk ? 'ok  ' : 'FAIL'} the bridge got the login code from the page, fetched the account id, and used it for the registration (target ${registerCall?.target})`);
   // The scores the page made in the study of the mouse feel are on the server, as the person who played (nobody logs in here: "local").
   const kept = study.list('local');
-  const studyOk = kept.length === 2 && kept[0].rating.preset === 'r1-01' && kept[0].rating.score === 8 && kept[0].rating.flags.stop === -1 && kept[1].rating.score === 4;
+  // The page scored #01 (7), then #02 with a mark (4), took that back, and scored #02 again (9): the server has the two that count.
+  const studyOk = kept.length === 2 && kept[0].rating.preset === 'r1-01' && kept[0].rating.score === 7 && kept[1].rating.preset === 'r1-02' && kept[1].rating.score === 9 && kept[1].rating.flags.stop === undefined;
   console.log(`${studyOk ? 'ok  ' : 'FAIL'} the server kept the scores of the study (${kept.map((k) => `${k.rating.preset}:${k.rating.score}`).join(', ')})`);
   exitCode = report.pass && serverOk && registerOk && studyOk ? 0 : 1;
   console.log(exitCode === 0 ? '\nE2E PASS' : '\nE2E FAIL');

@@ -61,7 +61,7 @@ So the way to work is: push to `main`, and about a minute later the server runs 
 
 ## People
 
-Log in as the owner, then **사용자** (the button in the header): invite someone with a name and minutes per day; they get
+Log in as the owner, then **Manage users** (in the account menu in the header): invite someone with a name and minutes per day; they get
 a link and choose their own password. The owner has no limit. A member's play time is counted from the moment the
 picture starts, shown in their header, and the stream ends when it runs out (a day ends at midnight in `GTP_TIMEZONE`).
 Members cannot register consoles, change measurements or manage people. The files are in `data/accounts/` (hashes only).

@@ -50,7 +50,7 @@ try {
     console.log('Using the account id saved from an earlier registration.');
     accountText = store.accountId;
   }
-  if (!accountText) console.log('No account id yet. The page ("PSN 계정 ID를 모르면 여기서 가져오기" in npm run bridge) can fetch and save it, or type it in below.');
+  if (!accountText) console.log('No account id yet. The page of npm run bridge can fetch and save it (open its registration form and look for the PSN account id helper), or type it in below.');
   accountText ??= await ask('PSN account id (decimal number or base64): ');
 
   const result = await register({ host, target, pin, accountId: accountText, log: (line) => console.log(`  ${line}`) });

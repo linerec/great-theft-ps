@@ -12,6 +12,7 @@
 // World: X points east, Z points south, Y up (metres). yaw 0 = east and positive yaw turns right.
 // Pitch is positive when the camera looks UP.
 
+import { t } from '../i18n/index.ts';
 import { BUTTON, type VirtualPadState } from '../engine/types.ts';
 import { gameLookRates, type LookModel } from './fps.ts';
 
@@ -257,15 +258,15 @@ export class TpsGame {
     return Math.abs(this.inVehicle ? this.car.speed : this.speed) * 3.6;
   }
 
-  /** A short name for what the character is doing. */
+  /** A short name for what the character is doing, in the language of the page (it is drawn again every frame). */
   get movementName(): string {
-    if (this.inVehicle) return '운전';
-    if (this.aiming) return '조준';
-    if (this.speed < 0.2) return '정지';
-    if (this.speed < 2) return '걷기';
-    if (this.speed < 4.2) return '조깅';
-    if (this.speed < 5.6) return '달리기';
-    return '스프린트';
+    if (this.inVehicle) return t('Driving');
+    if (this.aiming) return t('Aiming');
+    if (this.speed < 0.2) return t('Standing');
+    if (this.speed < 2) return t('Walking');
+    if (this.speed < 4.2) return t('Jogging');
+    if (this.speed < 5.6) return t('Running');
+    return t('Sprinting');
   }
 
   update(pad: VirtualPadState, dt: number): void {

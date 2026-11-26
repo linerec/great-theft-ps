@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -22,7 +22,8 @@
   <header class="top">
     <div class="brand"><span class="logo" aria-hidden="true">GTP</span><span class="brandname">Great Theft P.S</span></div>
     <div class="top-end">
-      <button id="themeBtn" class="icon-btn" type="button" aria-label="화면 색">
+      <button id="langBtn" class="btn ghost small lang-btn" type="button" data-lang-toggle data-i18n-attr="title aria-label" title="Language" aria-label="Language"></button>
+      <button id="themeBtn" class="icon-btn" type="button" data-i18n-attr="aria-label" aria-label="Screen color">
         <svg class="ic" aria-hidden="true"><use id="themeIcon" href="#i-auto"/></svg>
       </button>
       <div id="acct" class="acct" hidden>
@@ -38,20 +39,20 @@
             <div><strong id="acctMenuName"></strong><div id="acctRole" class="muted small"></div></div>
           </div>
           <div id="acctQuota" class="quota" hidden>
-            <div class="quota-line"><span>오늘 남은 시간</span><strong id="acctQuotaText"></strong></div>
+            <div class="quota-line"><span data-i18n>Time left today</span><strong id="acctQuotaText"></strong></div>
             <div class="meter" aria-hidden="true"><span id="acctQuotaBar"></span></div>
           </div>
-          <button id="acctUsers" class="menu-item" type="button" role="menuitem" hidden><svg class="ic" aria-hidden="true"><use href="#i-users"/></svg>사용자 관리</button>
-          <button id="acctOut" class="menu-item" type="button" role="menuitem"><svg class="ic" aria-hidden="true"><use href="#i-logout"/></svg>로그아웃</button>
+          <button id="acctUsers" class="menu-item" type="button" role="menuitem" hidden><svg class="ic" aria-hidden="true"><use href="#i-users"/></svg><span data-i18n>Manage users</span></button>
+          <button id="acctOut" class="menu-item" type="button" role="menuitem"><svg class="ic" aria-hidden="true"><use href="#i-logout"/></svg><span data-i18n>Log out</span></button>
         </div>
       </div>
     </div>
   </header>
   <!-- On a computer this sits at the top in the middle; on a phone it is the bar at the bottom. -->
-  <nav class="nav" aria-label="메뉴">
+  <nav class="nav" data-i18n-attr="aria-label" aria-label="Menu">
     <button type="button" data-view="ps5" aria-current="page"><svg class="ic" aria-hidden="true"><use href="#i-gamepad"/></svg><span>PS5</span></button>
-    <button type="button" data-view="lab"><svg class="ic" aria-hidden="true"><use href="#i-flask"/></svg><span>연습장</span></button>
-    <button type="button" data-view="settings"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg><span>설정</span></button>
+    <button type="button" data-view="lab"><svg class="ic" aria-hidden="true"><use href="#i-flask"/></svg><span data-i18n>Practice range</span></button>
+    <button type="button" data-view="settings"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg><span data-i18n>Settings</span></button>
   </nav>
 
   <main>
@@ -59,33 +60,33 @@
     <section id="consolePanel" class="view" aria-label="PS5">
       <div class="ps5grid">
         <!-- The player: the picture, what shows before it (the one big button), and the controls over it while it plays. -->
-        <section class="player" id="ps5Stage" aria-label="화면">
+        <section class="player" id="ps5Stage" data-i18n-attr="aria-label" aria-label="Screen">
           <div id="stageBox" class="stagebox">
-            <canvas id="game" width="640" height="360" tabindex="0" aria-label="화면. 클릭하면 마우스가 잠깁니다."></canvas>
-            <p id="hintFps" class="hint">
-              화면을 클릭하면 마우스가 잠깁니다 (Esc로 해제).
-              <b>W A S D</b> 이동 · <b>마우스</b> 시점 · <b>좌클릭</b> 사격 · <b>우클릭</b> 조준(ADS) · <b>Shift</b> 달리기 · <b>X</b> 천천히 걷기
+            <canvas id="game" width="640" height="360" tabindex="0" data-i18n-attr="aria-label" aria-label="Screen. Click to lock the mouse."></canvas>
+            <p id="hintFps" class="hint" data-i18n>
+              Click the screen to lock the mouse (Esc to release).
+              <b>W A S D</b> move · <b>Mouse</b> look · <b>Left click</b> shoot · <b>Right click</b> aim (ADS) · <b>Shift</b> run · <b>X</b> walk slowly
             </p>
             <div id="hintTps" class="hint" hidden>
-              <p>화면을 클릭하면 마우스가 잠깁니다 (Esc로 해제).</p>
-              <p>
-                <b>걸을 때</b>: <b>W A S D</b> 이동(스틱을 얼마나 밀었는지에 따라 걷기·조깅·달리기) · <b>Shift 누르고 있기</b> 스프린트(X 자동 연타) ·
-                <b>X</b> 천천히 걷기 · <b>Space</b> 점프(□) · <b>우클릭</b> 조준(L2) · <b>좌클릭</b> 사격(R2) ·
-                <b>F</b> 차량 탑승/하차(△, 그리고 차량 조작으로 전환)
+              <p data-i18n>Click the screen to lock the mouse (Esc to release).</p>
+              <p data-i18n>
+                <b>On foot</b>: <b>W A S D</b> move (walk, jog or run depending on how far the stick is pushed) · <b>Hold Shift</b> sprint (X auto-tapped) ·
+                <b>X</b> walk slowly · <b>Space</b> jump (□) · <b>Right click</b> aim (L2) · <b>Left click</b> shoot (R2) ·
+                <b>F</b> get in or out of a vehicle (△, and switch to driving controls)
               </p>
-              <p>
-                <b>운전할 때</b>: <b>W</b> 가속(R2) · <b>S</b> 브레이크/후진(L2) · <b>A D</b> 조향 · <b>Space</b> 핸드브레이크 · 마우스 시점. 차 근처(3.5m)에서 F.
+              <p data-i18n>
+                <b>Driving</b>: <b>W</b> accelerate (R2) · <b>S</b> brake/reverse (L2) · <b>A D</b> steer · <b>Space</b> handbrake · mouse to look. Press F within 3.5 m of a car.
               </p>
-              <p class="note">
-                GTA V(PlayStation)에서 확인된 것: 스프린트=X 연타, 점프=□, 조준=L2, 탑승=△, 엄폐=R1, 차량 가속=R2. 그 외(브레이크 L2, 핸드브레이크 □, 모든 속도·카메라 수치, 시점 가속 공식)는
-                <b>테스트베드의 가정</b>이며 실제 게임과 다를 수 있습니다.
+              <p class="note" data-i18n>
+                Confirmed in GTA V (PlayStation): sprint = X taps, jump = □, aim = L2, get in = △, take cover = R1, vehicle accelerate = R2. Everything else (brake L2, handbrake □, all speed and camera values, the look acceleration formula) is
+                <b>an assumption of the test bed</b> and may differ from the real game.
               </p>
             </div>
           </div>
 
           <!-- Before the picture, while it connects, and after it ends. -->
           <div id="ps5Overlay" class="overlay" data-state="idle">
-            <button id="heroFull" class="icon-btn hero-full" type="button" aria-pressed="false" aria-label="전체 화면" title="전체 화면 (F)"><svg class="ic" aria-hidden="true"><use id="heroFullIcon" href="#i-expand"/></svg></button>
+            <button id="heroFull" class="icon-btn hero-full" type="button" aria-pressed="false" data-i18n-attr="aria-label title" aria-label="Full screen" title="Full screen (F)"><svg class="ic" aria-hidden="true"><use id="heroFullIcon" href="#i-expand"/></svg></button>
             <div class="hero">
               <div id="heroIcon" class="hero-icon" aria-hidden="true">
                 <svg class="ic xl"><use href="#i-gamepad"/></svg>
@@ -93,10 +94,10 @@
               </div>
               <h2 id="heroTitle">PS5</h2>
               <p id="heroSub" class="hero-sub"></p>
-              <button id="ps5Cta2" class="btn primary big" type="button">불러오는 중…</button>
+              <button id="ps5Cta2" class="btn primary big" type="button" data-i18n>Loading…</button>
               <p id="heroNote" class="muted small hero-note"></p>
               <div class="hero-meta">
-                <span class="chip" id="ps5Badge">실제 PS5</span>
+                <span class="chip" id="ps5Badge" data-i18n>Real PS5</span>
                 <span class="chip good" id="padChip" hidden></span>
               </div>
             </div>
@@ -106,193 +107,163 @@
           <div id="hud" class="hud" hidden data-visible="false">
             <div class="hud-top">
               <span class="hud-pill" id="hudConn"><i class="dot"></i><span id="hudName">PS5</span></span>
-              <button id="hudQuality" class="hud-pill hud-signal" type="button" data-q="none" title="연결 상태 보기 (S)">
+              <button id="hudQuality" class="hud-pill hud-signal" type="button" data-q="none" data-i18n-attr="title" title="Show connection status (S)">
                 <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
                 <span id="hudQText">-</span>
               </button>
               <span id="hudRec" class="hud-pill rec" hidden><i class="dot"></i><span id="hudRecTime">0:00</span></span>
             </div>
-            <p id="hudTip" class="hud-tip">화면을 클릭하면 조작이 시작됩니다 · Esc로 멈춤</p>
+            <p id="hudTip" class="hud-tip" data-i18n>Click the screen to start controlling · Esc to stop</p>
 
             <div id="statsPanel" class="panel panel-left" hidden>
-              <div class="panel-head"><h3>연결 상태</h3><button class="icon-btn small" type="button" data-close="statsPanel" aria-label="닫기"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+              <div class="panel-head"><h3 data-i18n>Connection status</h3><button class="icon-btn small" type="button" data-close="statsPanel" data-i18n-attr="aria-label" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
               <dl class="stats">
-                <div class="wide"><dt>상태</dt><dd id="cStatus">끊김</dd></div>
-                <div><dt>수신</dt><dd id="cRate">-</dd></div>
-                <div><dt>왕복 지연 (RTT)</dt><dd id="cRtt">-</dd></div>
-                <div><dt>입력→화면</dt><dd id="cLatency">-</dd></div>
-                <div><dt>표시 지연</dt><dd id="cBuffer">-</dd></div>
-                <div><dt>화면 끊김</dt><dd id="cHitch">-</dd></div>
-                <div><dt>플레이 시간</dt><dd id="cPlayed">-</dd></div>
+                <div class="wide"><dt data-i18n>Status</dt><dd id="cStatus" data-i18n>Disconnected</dd></div>
+                <div><dt data-i18n>Received</dt><dd id="cRate">-</dd></div>
+                <div><dt data-i18n>Round-trip delay (RTT)</dt><dd id="cRtt">-</dd></div>
+                <div><dt data-i18n>Input → screen</dt><dd id="cLatency">-</dd></div>
+                <div><dt data-i18n>Display delay</dt><dd id="cBuffer">-</dd></div>
+                <div><dt data-i18n>Picture stalls</dt><dd id="cHitch">-</dd></div>
+                <div><dt data-i18n>Play time</dt><dd id="cPlayed">-</dd></div>
               </dl>
-              <div class="spark"><span>왕복 지연 <b id="sparkRttNow"></b></span><canvas id="sparkRtt" width="480" height="80"></canvas></div>
-              <div class="spark"><span>초당 프레임 <b id="sparkFpsNow"></b></span><canvas id="sparkFps" width="480" height="80"></canvas></div>
+              <div class="spark"><span><span data-i18n>Round-trip delay</span> <b id="sparkRttNow"></b></span><canvas id="sparkRtt" width="480" height="80"></canvas></div>
+              <div class="spark"><span><span data-i18n>Frames per second</span> <b id="sparkFpsNow"></b></span><canvas id="sparkFps" width="480" height="80"></canvas></div>
             </div>
 
             <div id="keysPanel" class="panel panel-left" hidden>
-              <div class="panel-head"><h3>키 배치 <span id="keysName" class="muted small"></span></h3><button class="icon-btn small" type="button" data-close="keysPanel" aria-label="닫기"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+              <div class="panel-head"><h3><span data-i18n>Key layout</span> <span id="keysName" class="muted small"></span></h3><button class="icon-btn small" type="button" data-close="keysPanel" data-i18n-attr="aria-label" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
               <dl id="keysList" class="layout-list"></dl>
-              <p class="muted small">바꾸려면 <b>설정 → 입력 매핑</b></p>
+              <p class="muted small" data-i18n>To change it, go to <b>Settings → Input mapping</b></p>
             </div>
 
             <div id="feelPanel" class="panel panel-left feel" hidden>
-              <div class="panel-head"><h3>마우스 느낌</h3><button class="icon-btn small" type="button" data-close="feelPanel" aria-label="닫기"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
-              <div id="feelPresets" class="seg" role="group" aria-label="느낌 고르기"></div>
+              <div class="panel-head"><h3 data-i18n>Mouse feel</h3><button class="icon-btn small" type="button" data-close="feelPanel" data-i18n-attr="aria-label" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+              <div id="feelPresets" class="seg" role="group" data-i18n-attr="aria-label" aria-label="Pick a feel"></div>
               <p id="feelHint" class="muted small"></p>
               <div class="feel-delay">
-                <div class="feel-delay-head"><span>화면 지연</span><output id="q_delay">-</output></div>
-                <div id="feelDelay" class="seg" role="group" aria-label="화면 표시 방식">
-                  <button type="button" data-playout="smooth">부드럽게</button>
-                  <button type="button" data-playout="balanced">균형</button>
-                  <button type="button" data-playout="immediate">최소 지연</button>
+                <div class="feel-delay-head"><span data-i18n>Screen delay</span><output id="q_delay">-</output></div>
+                <div id="feelDelay" class="seg" role="group" data-i18n-attr="aria-label" aria-label="How the picture is shown">
+                  <button type="button" data-playout="smooth" data-i18n>Smooth</button>
+                  <button type="button" data-playout="balanced" data-i18n>Balanced</button>
+                  <button type="button" data-playout="immediate" data-i18n>Minimum delay</button>
                 </div>
-                <p class="muted small">조준은 지연에 가장 민감합니다. 영상이 가끔 멈칫하면 한 단계 올리세요.</p>
+                <p class="muted small" data-i18n>Aiming is the most sensitive to delay. If the picture sometimes hitches, go up one step.</p>
               </div>
-              <label>감도 <output id="q_sens"></output>
+              <label><span data-i18n>Sensitivity</span> <output id="q_sens"></output>
                 <input id="qSens" type="range" min="0.005" max="0.3" step="0.001">
               </label>
-              <label title="값이 클수록 움직임이 매끄럽지만 늦게 따라옵니다.">부드러움 (ms) <output id="q_smooth"></output>
+              <label data-i18n-attr="title" title="Higher values make movement smoother but slower to follow."><span data-i18n>Smoothness (ms)</span> <output id="q_smooth"></output>
                 <input id="qSmooth" type="range" min="0" max="60" step="1">
               </label>
-              <label title="빠르게 돌릴 때는 지연만 생기므로, 이 속도(°/s)의 절반부터 부드러움이 줄어 이 속도에서는 없어집니다. 0이면 모든 속도에 같은 부드러움을 씁니다.">속도 오르면 부드러움 해제 (°/s) <output id="q_fade"></output>
+              <label data-i18n-attr="title" title="When turning fast, smoothing only adds delay, so from half of this speed (°/s) the smoothness fades and at this speed it is gone. At 0, every speed gets the same smoothness."><span data-i18n>Release smoothness at speed (°/s)</span> <output id="q_fade"></output>
                 <input id="qFade" type="range" min="0" max="200" step="5">
               </label>
-              <label title="손이 게임이 돌 수 있는 속도보다 빨리 움직였을 때, 못 돌린 각도를 손을 멈춘 뒤에 이어서 돌리는 최대 시간입니다. 보통 속도의 움직임에는 영향이 없고, 0이면 빠르게 휘두를수록 덜 돕니다.">빠른 휘두름 이어 돌기 (ms) <output id="q_carry"></output>
+              <label data-i18n-attr="title" title="When your hand moves faster than the game can turn, this is the longest time the angle that could not be turned keeps turning after you stop. It has no effect on movement at a normal speed; at 0, the faster you swing, the less you turn."><span data-i18n>Fast-swing carry-over (ms)</span> <output id="q_carry"></output>
                 <input id="qCarry" type="range" min="0" max="600" step="20">
               </label>
-              <p class="muted small">마우스가 잠겨 있는 동안: <kbd>PageUp</kbd> <kbd>PageDown</kbd> 감도, <kbd>Home</kbd> 느낌 바꾸기</p>
+              <p class="muted small" data-i18n>While the mouse is locked: <kbd>PageUp</kbd> <kbd>PageDown</kbd> sensitivity, <kbd>Home</kbd> change feel</p>
               <div class="feel-cal">
-                <button id="feelCal" class="btn small" type="button">게임에 맞게 자동 보정</button>
-                <button id="feelCalStop" class="btn small" type="button" hidden>멈추기</button>
-                <button id="feelCalApply" class="btn small primary" type="button" hidden>프로필에 적용</button>
-                <p id="feelCalStatus" class="muted small">약 40초 동안 시점이 저절로 돕니다. 차 안이나 장면이 바뀌는 중이 아닌, 주변이 트인 곳에서 하세요. 이 동안 키보드·마우스는 무시됩니다.</p>
+                <button id="feelCal" class="btn small" type="button" data-i18n>Auto-calibrate to the game</button>
+                <button id="feelCalStop" class="btn small" type="button" hidden data-i18n>Stop</button>
+                <button id="feelCalApply" class="btn small primary" type="button" hidden data-i18n>Apply to profile</button>
+                <p id="feelCalStatus" class="muted small" data-i18n>The view turns by itself for about 40 seconds. Do it in an open area, not inside a car or while the scene is changing. Keyboard and mouse are ignored meanwhile.</p>
               </div>
             </div>
 
+            <!-- The study of the mouse feel: its body is drawn by study-ui.ts (it changes with every step), the head is here. -->
             <div id="studyPanel" class="panel panel-left study" hidden>
-              <div class="panel-head"><h3>느낌 실험</h3><button class="icon-btn small" type="button" data-close="studyPanel" aria-label="닫기"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
-              <div id="studyIdle">
-                <p class="muted small">후보 48개를 하나씩 써 보고 점수를 매깁니다. 값은 숨겨져 있어서 선입견 없이 평가할 수 있고, 점수가 모이면 어떤 값이 좋은지 분석합니다. 끝내면 원래 값으로 돌아갑니다(감도는 그대로).</p>
-                <p id="studyIdleCount" class="muted small"></p>
-                <button id="studyStart" class="btn primary" type="button">실험 시작</button>
-              </div>
-              <div id="studyRun" hidden>
-                <div class="study-head"><b id="studyId">-</b><span id="studyProgress" class="muted small"></span></div>
-                <details class="study-values"><summary>값 보기 (보면 선입견이 생깁니다)</summary><p id="studyValues" class="muted small"></p></details>
-                <div class="study-label"><span>점수</span><output id="studyScoreOut">-</output></div>
-                <div id="studyScore" class="study-scale" role="group" aria-label="점수 1~10"></div>
-                <p class="muted small study-anchor"><span>1 못 쓰겠다</span><span>10 진짜 키보드·마우스 같다</span></p>
-                <div id="studyScene" class="seg" role="group" aria-label="무엇을 하며 써 봤나"></div>
-                <div class="study-actions">
-                  <button id="studyBack" class="btn small" type="button">이전</button>
-                  <button id="studySkip" class="btn small" type="button">건너뛰기</button>
-                  <button id="studySave" class="btn small primary" type="button">저장하고 다음</button>
-                </div>
-                <details class="study-more">
-                  <summary>상황별 표시·메모 (선택)</summary>
-                  <p class="muted small">해당하는 것만 누르세요. 안 누르면 보통입니다.</p>
-                  <div id="studySituations" class="study-sit"></div>
-                  <input id="studyNote" type="text" maxlength="200" placeholder="메모 (선택)" autocomplete="off">
-                </details>
-                <p class="muted small">마우스가 잠겨 있는 동안: <kbd>=</kbd> <kbd>-</kbd> 점수, <kbd>5</kbd>~<kbd>0</kbd> 아쉬웠던 점(천천히·휘두름·따라가기·멈춤·시작·매끄러움), <kbd>]</kbd> 저장하고 다음, <kbd>[</kbd> 이전</p>
-              </div>
-              <div class="study-tools">
-                <button id="studyReport" class="btn small" type="button">분석 보기</button>
-                <button id="studyCopy" class="btn small" type="button">기록 복사</button>
-                <button id="studyEnd" class="btn small" type="button" hidden>끝내기 (원래 값)</button>
-                <p id="studySync" class="muted small"></p>
-              </div>
-              <details class="study-list"><summary>내 기록 <span id="studyListCount"></span></summary><ol id="studyList"></ol></details>
+              <div class="panel-head"><h3 data-i18n>Mouse feel study</h3><button class="icon-btn small" type="button" data-close="studyPanel" data-i18n-attr="aria-label" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+              <div id="studyBody"></div>
             </div>
 
             <div id="optPanel" class="panel panel-right" hidden>
-              <div class="panel-head"><h3>화면·소리·연결</h3><button class="icon-btn small" type="button" data-close="optPanel" aria-label="닫기"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+              <div class="panel-head"><h3 data-i18n>Picture, sound, connection</h3><button class="icon-btn small" type="button" data-close="optPanel" data-i18n-attr="aria-label" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
               <div id="optPanelSlot"></div>
             </div>
 
             <div class="hud-bar" id="hudBar">
-              <button id="hudDisconnect" class="hb danger" type="button" title="연결 끊기"><svg class="ic" aria-hidden="true"><use href="#i-power"/></svg><span>끊기</span></button>
+              <button id="hudDisconnect" class="hb danger" type="button" data-i18n-attr="title" title="Disconnect from PS5"><svg class="ic" aria-hidden="true"><use href="#i-power"/></svg><span data-i18n>Hang up</span></button>
               <span class="grow"></span>
-              <button id="hudMute" class="hb" type="button" title="소리 켜기·끄기 (M)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use id="hudMuteIcon" href="#i-volume"/></svg></button>
-              <button id="hudShot" class="hb" type="button" title="스크린샷 (P)"><svg class="ic" aria-hidden="true"><use href="#i-camera"/></svg></button>
-              <button id="hudRecBtn" class="hb" type="button" title="녹화 (R)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use id="hudRecIcon" href="#i-record"/></svg></button>
-              <button id="hudStats" class="hb" type="button" title="연결 상태 (S)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg></button>
-              <button id="hudFeel" class="hb" type="button" title="마우스 느낌 (G)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-mouse"/></svg></button>
-              <button id="hudStudy" class="hb" type="button" title="느낌 실험: 후보를 써 보고 점수 매기기 (L)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg></button>
-              <button id="hudKeys" class="hb" type="button" title="키 배치 (K)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-keyboard"/></svg></button>
-              <button id="hudOpts" class="hb" type="button" title="화면·소리·연결 설정 (O)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg></button>
-              <button id="hudTheater" class="hb" type="button" title="넓게 보기 (T)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-wide"/></svg></button>
-              <button id="hudFull" class="hb" type="button" title="전체 화면 (F)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use id="hudFullIcon" href="#i-expand"/></svg></button>
+              <button id="hudMute" class="hb" type="button" data-i18n-attr="title" title="Sound on/off (M)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use id="hudMuteIcon" href="#i-volume"/></svg></button>
+              <button id="hudShot" class="hb" type="button" data-i18n-attr="title" title="Screenshot (P)"><svg class="ic" aria-hidden="true"><use href="#i-camera"/></svg></button>
+              <button id="hudRecBtn" class="hb" type="button" data-i18n-attr="title" title="Record (R)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use id="hudRecIcon" href="#i-record"/></svg></button>
+              <button id="hudStats" class="hb" type="button" data-i18n-attr="title" title="Connection status (S)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg></button>
+              <button id="hudFeel" class="hb" type="button" data-i18n-attr="title" title="Mouse feel (G)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-mouse"/></svg></button>
+              <button id="hudStudy" class="hb" type="button" data-i18n-attr="title" title="Mouse feel study: try settings and score them (L)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg></button>
+              <button id="hudKeys" class="hb" type="button" data-i18n-attr="title" title="Key layout (K)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-keyboard"/></svg></button>
+              <button id="hudOpts" class="hb" type="button" data-i18n-attr="title" title="Picture, sound and connection settings (O)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg></button>
+              <button id="hudTheater" class="hb" type="button" data-i18n-attr="title" title="Wide view (T)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-wide"/></svg></button>
+              <button id="hudFull" class="hb" type="button" data-i18n-attr="title" title="Full screen (F)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use id="hudFullIcon" href="#i-expand"/></svg></button>
             </div>
           </div>
           <div id="shotFlash" class="shot-flash" aria-hidden="true"></div>
-          <!-- The pad for a touch screen: filled in by touch.ts, shown while connected with "터치 패드" on. -->
-          <div id="touchLayer" class="touch-layer" hidden><p class="touch-turn">가로로 돌리면 더 편합니다</p></div>
+          <!-- The pad for a touch screen: filled in by touch.ts, shown while connected with "Touch pad" on. -->
+          <div id="touchLayer" class="touch-layer" hidden><p class="touch-turn" data-i18n>Landscape is more comfortable</p></div>
         </section>
 
         <aside class="side">
           <section class="card" aria-labelledby="h-console">
             <div class="card-head">
-              <h2 id="h-console">내 PS5</h2>
-              <button id="ps5Refresh" class="icon-btn small" type="button" aria-label="새로고침" title="새로고침"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
+              <h2 id="h-console" data-i18n>My PS5</h2>
+              <button id="ps5Refresh" class="icon-btn small" type="button" data-i18n-attr="aria-label title" aria-label="Refresh" title="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
             </div>
             <div id="ps5Consoles" class="consoles"></div>
-            <ol id="ps5Steps" class="steps" aria-label="준비 단계"></ol>
-            <button id="ps5Cta" class="btn primary" type="button">불러오는 중…</button>
+            <ol id="ps5Steps" class="steps" data-i18n-attr="aria-label" aria-label="Setup steps"></ol>
+            <button id="ps5Cta" class="btn primary" type="button" data-i18n>Loading…</button>
             <p id="ps5CtaNote" class="muted small"></p>
             <p id="ps5Msg" class="callout" role="status" hidden></p>
-            <button id="addConsole" class="btn ghost small" type="button">+ 콘솔 추가</button>
+            <button id="addConsole" class="btn ghost small" type="button" data-i18n>+ Add console</button>
           </section>
 
           <section class="card" aria-labelledby="h-opts">
-            <div class="card-head"><h2 id="h-opts">연결 옵션</h2></div>
-            <div id="optSlot">
+            <div class="card-head"><h2 id="h-opts" data-i18n>Connection options</h2></div>
+            <div id="optSlot" data-i18n-attr="data-note" data-note="While connected, change these in the ⚙ panel over the picture.">
               <!-- These move into the player's panel while it plays (so they are in reach in full screen), and back. -->
               <div id="connOptions" class="opts">
                 <div class="opt">
-                  <label for="qualityPreset">화질</label>
+                  <label for="qualityPreset" data-i18n>Quality</label>
                   <select id="qualityPreset">
-                    <option value="saver">데이터 절약</option>
-                    <option value="balanced" selected>균형</option>
-                    <option value="low-latency">저지연</option>
-                    <option value="quality">고화질</option>
+                    <option value="saver" data-i18n>Data saver</option>
+                    <option value="balanced" selected data-i18n>Balanced</option>
+                    <option value="low-latency" data-i18n>Low latency</option>
+                    <option value="quality" data-i18n>High quality</option>
                   </select>
                   <span id="qualityNote" class="muted small"></span>
-                  <span class="muted small">연결 중에 바꾸면 잠깐 끊겼다가 새 화질로 다시 연결됩니다.</span>
+                  <span class="muted small" data-i18n>Changing this while connected briefly disconnects, then reconnects at the new quality.</span>
                 </div>
-                <div class="opt" title="부드럽게: 늦게 도착한 프레임이 멈춤으로 보이지 않도록, 최근 1분 동안 본 지연만큼만 늦춰 일정한 박자로 표시합니다. 균형: 같은 방식이되 덜 늦춥니다. 최소 지연: 도착하는 대로 표시합니다.">
-                  <label for="playoutMode">표시 방식</label>
+                <div class="opt" data-i18n-attr="title" title="Smooth: frames are shown at a steady beat, delayed only by the lag seen in the last minute, so late frames do not look like stalls. Balanced: the same, but delayed less. Minimum delay: frames are shown as they arrive.">
+                  <label for="playoutMode" data-i18n>Display mode</label>
                   <select id="playoutMode">
-                    <option value="smooth" selected>부드럽게 (최대 +100ms)</option>
-                    <option value="balanced">균형 (최대 +50ms)</option>
-                    <option value="immediate">최소 지연</option>
+                    <option value="smooth" selected data-i18n>Smooth (up to +100ms)</option>
+                    <option value="balanced" data-i18n>Balanced (up to +50ms)</option>
+                    <option value="immediate" data-i18n>Minimum delay</option>
                   </select>
                 </div>
-                <div class="opt opt-sound" title="PS5의 소리(Opus)를 이 페이지에서 재생합니다. 브라우저가 소리를 풀 수 없으면 이유가 아래에 나옵니다. iPhone은 iOS 26 이상이어야 하고, 무음 스위치가 켜져 있어도 나오도록 설정하지만 소리가 안 나면 스위치와 볼륨을 확인하세요.">
-                  <label class="switch"><input id="soundToggle" type="checkbox" checked><span>소리</span></label>
-                  <input id="volume" class="range" type="range" min="0" max="100" step="1" value="100" aria-label="볼륨">
+                <div class="opt opt-sound" data-i18n-attr="title" title="Plays the PS5's sound (Opus) on this page. If the browser cannot decode it, the reason is shown below. iPhone needs iOS 26 or later; the sound is set to play even with the silent switch on, but if you hear nothing, check the switch and the volume.">
+                  <label class="switch"><input id="soundToggle" type="checkbox" checked><span data-i18n>Sound</span></label>
+                  <input id="volume" class="range" type="range" min="0" max="100" step="1" value="100" data-i18n-attr="aria-label" aria-label="Volume">
                   <span id="soundNote" class="muted small"></span>
                 </div>
-                <div class="opt" title="잠그지 않으면, 내 다른 기기의 Great Theft P.S가 이 PS5에 연결하려 할 때 이 연결을 자동으로 넘겨줍니다. 잠그면 넘겨주지 않습니다. 이 규칙은 같은 등록 정보를 가진 Great Theft P.S끼리만 통하고, 공식 앱이나 chiaki에는 적용되지 않습니다.">
-                  <label class="switch"><input id="lockToggle" type="checkbox"><span>다른 기기가 가져가지 못하게 잠금</span></label>
+                <div class="opt" data-i18n-attr="title" title="If it is not locked, this connection is handed over automatically when Great Theft P.S on another of your devices tries to connect to this PS5. If it is locked, it is not handed over. This rule only works between copies of Great Theft P.S with the same registration, not with the official app or chiaki.">
+                  <label class="switch"><input id="lockToggle" type="checkbox"><span data-i18n>Lock so other devices cannot take over</span></label>
                 </div>
-                <div class="opt" title="화면에 가상 패드를 띄워 손가락으로 조작합니다. 연결되면 화면이 가득 차고 조작 버튼이 그 위에 나옵니다. 휴대폰에서는 자동으로 켜집니다.">
-                  <label class="switch"><input id="touchToggle" type="checkbox"><span>터치 패드 (손가락으로 조작)</span></label>
+                <div class="opt" data-i18n-attr="title" title="Shows a virtual pad on screen that you control with your fingers. Once connected, the picture fills the screen and the buttons appear over it. It turns on automatically on phones.">
+                  <label class="switch"><input id="touchToggle" type="checkbox"><span data-i18n>Touch pad (play with your fingers)</span></label>
                 </div>
                 <details class="look">
-                <summary>화면 모양</summary>
+                <summary data-i18n>Picture look</summary>
                 <div class="opt">
-                  <label for="fitMode">맞춤</label>
+                  <label for="fitMode" data-i18n>Fit</label>
                   <select id="fitMode">
-                    <option value="contain">비율 유지 (여백 있음)</option>
-                    <option value="cover">꽉 채우기 (가장자리 잘림)</option>
-                    <option value="fill">늘려서 채우기</option>
+                    <option value="contain" data-i18n>Keep aspect ratio (with margins)</option>
+                    <option value="cover" data-i18n>Fill (edges cropped)</option>
+                    <option value="fill" data-i18n>Stretch to fill</option>
                   </select>
                 </div>
-                <label class="slider">밝기 <output id="o_lookBrightness"></output><input id="lookBrightness" class="range" type="range" min="50" max="150" step="5"></label>
-                <label class="slider">대비 <output id="o_lookContrast"></output><input id="lookContrast" class="range" type="range" min="50" max="150" step="5"></label>
-                <label class="slider">채도 <output id="o_lookSaturation"></output><input id="lookSaturation" class="range" type="range" min="0" max="200" step="5"></label>
-                <button id="lookReset" class="btn ghost small" type="button">화면 모양 초기화</button>
+                <label class="slider"><span data-i18n>Brightness</span> <output id="o_lookBrightness"></output><input id="lookBrightness" class="range" type="range" min="50" max="150" step="5"></label>
+                <label class="slider"><span data-i18n>Contrast</span> <output id="o_lookContrast"></output><input id="lookContrast" class="range" type="range" min="50" max="150" step="5"></label>
+                <label class="slider"><span data-i18n>Saturation</span> <output id="o_lookSaturation"></output><input id="lookSaturation" class="range" type="range" min="0" max="200" step="5"></label>
+                <button id="lookReset" class="btn ghost small" type="button" data-i18n>Reset picture look</button>
                 </details>
               </div>
             </div>
@@ -300,8 +271,8 @@
 
           <section class="card" aria-labelledby="h-route">
             <div class="card-head">
-              <h2 id="h-route">접속 경로</h2>
-              <button id="routeMore" class="btn ghost small" type="button">모든 경로 보기</button>
+              <h2 id="h-route" data-i18n>Connection route</h2>
+              <button id="routeMore" class="btn ghost small" type="button" data-i18n>Show all routes</button>
             </div>
             <p class="route-name"><strong id="routeName"></strong></p>
             <p id="routeReason" class="muted small"></p>
@@ -311,293 +282,300 @@
         </aside>
       </div>
 
-      <section class="card keycard" aria-label="키 배치">
+      <section class="card keycard" data-i18n-attr="aria-label" aria-label="Key layout">
         <div id="hintConsole" class="hint" hidden>
-          <p>화면을 클릭하면 마우스가 잠기고, 키보드와 마우스가 PS5로 전달됩니다 (Esc로 해제). <kbd>F</kbd> 전체 화면, <kbd>?</kbd> 단축키 도움말.</p>
+          <p data-i18n>Click the screen to lock the mouse; the keyboard and mouse are then sent to the PS5 (Esc to release). <kbd>F</kbd> full screen, <kbd>?</kbd> shortcut help.</p>
           <details id="layoutLegend" open>
-            <summary>키 배치 <span id="layoutName" class="muted small"></span></summary>
+            <summary><span data-i18n>Key layout</span> <span id="layoutName" class="muted small"></span></summary>
             <dl id="layoutList" class="layout-list"></dl>
-            <p class="muted small">바꾸려면 <b>설정 → 입력 매핑</b>. 게임마다 다른 이름으로 저장해 둘 수 있습니다.</p>
+            <p class="muted small" data-i18n>To change it, go to <b>Settings → Input mapping</b>. You can save a separate one for each game under its own name.</p>
           </details>
         </div>
       </section>
       <!-- The connect and disconnect handlers live in the page's script; the buttons press them. -->
-      <span hidden><button id="bridgeConnect" type="button">연결</button><button id="bridgeDisconnect" type="button">끊기</button></span>
+      <span hidden><button id="bridgeConnect" type="button" data-i18n>Connect</button><button id="bridgeDisconnect" type="button" data-i18n>Hang up</button></span>
     </section>
 
-    <!-- ============================================================ 연습장 -->
-    <section id="viewLab" class="view" hidden aria-label="연습장">
+    <!-- ============================================================ Practice range -->
+    <section id="viewLab" class="view" hidden data-i18n-attr="aria-label" aria-label="Practice range">
       <div class="view-head">
         <div>
-          <h2>연습장</h2>
-          <p class="muted">키보드와 마우스가 가상 패드로 바뀌는 모습을 눈으로 확인하는 테스트 게임입니다. 게임은 패드 값만 받습니다.</p>
+          <h2 data-i18n>Practice range</h2>
+          <p class="muted" data-i18n>Test games that let you see with your own eyes how a keyboard and mouse turn into a virtual pad. The game only receives pad values.</p>
         </div>
-        <label class="inline">게임
+        <label class="inline"><span data-i18n>Game</span>
           <select id="gameMode">
-            <option value="fps">1인칭 FPS (간단한 레이캐스팅)</option>
-            <option value="tps">GTA V 스타일 3인칭 (보행·조준·차량)</option>
+            <option value="fps" data-i18n>First-person FPS (simple raycasting)</option>
+            <option value="tps" data-i18n>GTA V-style third person (walking, aiming, vehicles)</option>
           </select>
         </label>
       </div>
       <div class="lab-grid">
         <div class="stage-frame" id="labStage"></div>
         <div class="lab-side">
-          <h3>시점 회전 검증</h3>
+          <h3 data-i18n>View rotation check</h3>
           <dl class="readout" id="readout">
-            <div><dt>마우스 누적 X</dt><dd id="mCounts">0 counts</dd></div>
-            <div><dt>실제 회전</dt><dd id="mTurned">0.0°</dd></div>
-            <div><dt>실측 °/count</dt><dd id="mRatio">-</dd></div>
-            <div><dt>설정 °/count (오차)</dt><dd id="mExpected">-</dd></div>
-            <div><dt>회전 속도</dt><dd id="rRate">0 / 0 °/s</dd></div>
-            <div><dt>속도 상한 사용률</dt><dd id="rUse">0%</dd></div>
-            <div><dt>상한 도달</dt><dd id="rCap"><span class="badge off">아니오</span></dd></div>
-            <div><dt>오른쪽 스틱</dt><dd id="rStick">0.000</dd></div>
-            <div><dt>활성 레이어</dt><dd id="rLayers">default</dd></div>
-            <div><dt>상태</dt><dd id="rState">-</dd></div>
-            <div><dt>자이로 (rad/s)</dt><dd id="rGyro">0 / 0 / 0</dd></div>
-            <div><dt>위치</dt><dd id="rPos">-</dd></div>
-            <div><dt>마우스 잠금</dt><dd id="rLock">해제됨</dd></div>
+            <div><dt data-i18n>Mouse total X</dt><dd id="mCounts">0 counts</dd></div>
+            <div><dt data-i18n>Actual rotation</dt><dd id="mTurned">0.0°</dd></div>
+            <div><dt data-i18n>Measured °/count</dt><dd id="mRatio">-</dd></div>
+            <div><dt data-i18n>Set °/count (error)</dt><dd id="mExpected">-</dd></div>
+            <div><dt data-i18n>Turn speed</dt><dd id="rRate">0 / 0 °/s</dd></div>
+            <div><dt data-i18n>Speed cap usage</dt><dd id="rUse">0%</dd></div>
+            <div><dt data-i18n>Cap reached</dt><dd id="rCap"><span class="badge off" data-i18n>No</span></dd></div>
+            <div><dt data-i18n>Right stick</dt><dd id="rStick">0.000</dd></div>
+            <div><dt data-i18n>Active layer</dt><dd id="rLayers">default</dd></div>
+            <div><dt data-i18n>Status</dt><dd id="rState">-</dd></div>
+            <div><dt data-i18n>Gyro (rad/s)</dt><dd id="rGyro">0 / 0 / 0</dd></div>
+            <div><dt data-i18n>Position</dt><dd id="rPos">-</dd></div>
+            <div><dt data-i18n>Mouse lock</dt><dd id="rLock" data-i18n>Released</dd></div>
           </dl>
           <div class="row">
-            <button id="resetMeasure" class="btn small" type="button">측정 초기화</button>
-            <button id="resetGame" class="btn small" type="button">게임 처음부터</button>
-            <button id="clearLatch" class="btn small" type="button">차량 레이어 해제</button>
+            <button id="resetMeasure" class="btn small" type="button" data-i18n>Reset measurement</button>
+            <button id="resetGame" class="btn small" type="button" data-i18n>Restart game</button>
+            <button id="clearLatch" class="btn small" type="button" data-i18n>Release vehicle layer</button>
           </div>
-          <p class="muted small">초기화한 뒤 마우스를 가로로 움직이면 누적 카운트와 실제 회전 각도의 비율이 설정값과 같은지 바로 비교됩니다. 360° 한 바퀴에 필요한 카운트는 360 ÷ 감도입니다.
-            차량에서는 카메라가 차 뒤로 알아서 돌아오므로 측정은 걸어 다니는 상태에서 하세요.</p>
+          <p class="muted small" data-i18n>After resetting, move the mouse sideways and you can compare at once whether the ratio of the counts so far to the angle actually turned matches the set value. The counts needed for one 360° turn are 360 ÷ sensitivity.
+            In a vehicle the camera swings back behind the car by itself, so measure while walking.</p>
 
-          <h3>가상 패드 (게임에 전달되는 값)</h3>
-          <canvas id="pad" width="760" height="340" aria-label="가상 패드 상태"></canvas>
+          <h3 data-i18n>Virtual pad (values sent to the game)</h3>
+          <canvas id="pad" width="760" height="340" data-i18n-attr="aria-label" aria-label="Virtual pad state"></canvas>
 
           <div id="fpsSettings">
-            <h3>테스트 게임 내부 설정 <span class="muted small">(실제 게임에서는 알 수 없는 값)</span></h3>
-            <label>데드존 <output id="o_gInnerDeadzone"></output>
+            <h3 data-i18n>Test game internal settings <span class="muted small">(values that cannot be known in a real game)</span></h3>
+            <label><span data-i18n>Deadzone</span> <output id="o_gInnerDeadzone"></output>
               <input id="gInnerDeadzone" type="range" min="0" max="0.5" step="0.01">
             </label>
-            <label>최대 회전 속도 (°/s) <output id="o_gMaxTurnRate"></output>
+            <label><span data-i18n>Max turn speed (°/s)</span> <output id="o_gMaxTurnRate"></output>
               <input id="gMaxTurnRate" type="range" min="60" max="1000" step="10">
             </label>
-            <label>응답 곡선 <output id="o_gResponseCurve"></output>
+            <label><span data-i18n>Response curve</span> <output id="o_gResponseCurve"></output>
               <input id="gResponseCurve" type="range" min="0.5" max="3" step="0.05">
             </label>
-            <label>세로/가로 회전 비율 <output id="o_gVerticalRatio"></output>
+            <label><span data-i18n>Vertical/horizontal turn ratio</span> <output id="o_gVerticalRatio"></output>
               <input id="gVerticalRatio" type="range" min="0.2" max="2" step="0.05">
             </label>
-            <label>조준(ADS) 시 시점 배율 <output id="o_gAdsLookScale"></output>
+            <label><span data-i18n>Look scale when aiming (ADS)</span> <output id="o_gAdsLookScale"></output>
               <input id="gAdsLookScale" type="range" min="0.2" max="1" step="0.05">
             </label>
-            <label>데드존 모양
+            <label><span data-i18n>Deadzone shape</span>
               <select id="gShape">
-                <option value="radial">원형</option>
-                <option value="axial">축별</option>
+                <option value="radial" data-i18n>Circular</option>
+                <option value="axial" data-i18n>Per axis</option>
               </select>
             </label>
-            <label class="check"><input id="gGyro" type="checkbox"> 자이로 조준 사용</label>
+            <label class="check"><input id="gGyro" type="checkbox"> <span data-i18n>Use gyro aiming</span></label>
           </div>
 
           <div id="tpsSettings" hidden>
-            <h3>GTA 스타일 게임 내부 설정 <span class="muted small">(실제 게임에서는 알 수 없는 값)</span></h3>
-            <label>시점 데드존 <output id="o_tInnerDeadzone"></output>
+            <h3 data-i18n>GTA-style game internal settings <span class="muted small">(values that cannot be known in a real game)</span></h3>
+            <label><span data-i18n>Look deadzone</span> <output id="o_tInnerDeadzone"></output>
               <input id="tInnerDeadzone" type="range" min="0" max="0.5" step="0.01">
             </label>
-            <label>시점 최대 회전 속도 (°/s) <output id="o_tMaxTurnRate"></output>
+            <label><span data-i18n>Max look turn speed (°/s)</span> <output id="o_tMaxTurnRate"></output>
               <input id="tMaxTurnRate" type="range" min="60" max="1000" step="10">
             </label>
-            <label>응답 곡선 <output id="o_tResponseCurve"></output>
+            <label><span data-i18n>Response curve</span> <output id="o_tResponseCurve"></output>
               <input id="tResponseCurve" type="range" min="0.5" max="3" step="0.05">
             </label>
-            <label>세로/가로 회전 비율 <output id="o_tVerticalRatio"></output>
+            <label><span data-i18n>Vertical/horizontal turn ratio</span> <output id="o_tVerticalRatio"></output>
               <input id="tVerticalRatio" type="range" min="0.2" max="2" step="0.05">
             </label>
-            <label>시점 가속 (GTA의 Look Acceleration에 해당) <output id="o_tLookAcceleration"></output>
+            <label><span data-i18n>Look acceleration (matches GTA's Look Acceleration)</span> <output id="o_tLookAcceleration"></output>
               <input id="tLookAcceleration" type="range" min="0" max="1" step="0.05">
             </label>
-            <label>조준(L2) 중 시점 배율 <output id="o_tAimLookScale"></output>
+            <label><span data-i18n>Look scale while aiming (L2)</span> <output id="o_tAimLookScale"></output>
               <input id="tAimLookScale" type="range" min="0.2" max="1" step="0.05">
             </label>
-            <label>데드존 모양
+            <label><span data-i18n>Deadzone shape</span>
               <select id="tShape">
-                <option value="radial">원형</option>
-                <option value="axial">축별</option>
+                <option value="radial" data-i18n>Circular</option>
+                <option value="axial" data-i18n>Per axis</option>
               </select>
             </label>
-            <label class="check"><input id="tAimAssist" type="checkbox"> 보조 조준 (조준 중 목표 쪽으로 카메라가 살짝 끌림)</label>
+            <label class="check"><input id="tAimAssist" type="checkbox"> <span data-i18n>Aim assist (the camera is pulled slightly toward the target while aiming)</span></label>
           </div>
 
-          <div class="row"><button id="autoCalibrate" class="btn small" type="button">게임을 측정해 자동 보정</button></div>
-          <p class="muted small">게임 내부 값을 바꾸면 매핑이 모르는 상태가 되어 회전 각도가 어긋납니다. 자동 보정은 게임을 스틱으로 직접 돌려 보며 측정해 표, 세로 비율, 데드존 모양, 조준 시 배율을 프로필에 채웁니다.
-            시점 가속은 시간에 따라 변해서 표로는 보정되지 않습니다(느린 움직임에서는 영향이 없고, 빠르게 오래 쓸어 넘기면 커집니다).</p>
+          <div class="row"><button id="autoCalibrate" class="btn small" type="button" data-i18n>Measure the game and auto-calibrate</button></div>
+          <p class="muted small" data-i18n>If you change the game's internal values, the mapping no longer knows them and the turn angle drifts. Auto-calibration turns the game with the stick by itself, measures it, and fills the table, vertical ratio, deadzone shape and aiming scale into the profile.
+            Look acceleration changes over time, so a table cannot calibrate it (it has no effect on slow movement and grows with long, fast sweeps).</p>
         </div>
       </div>
     </section>
 
-    <!-- ============================================================ 설정 -->
-    <section id="viewSettings" class="view" hidden aria-label="설정">
-      <div class="view-head"><h2>설정</h2></div>
+    <!-- ============================================================ Settings -->
+    <section id="viewSettings" class="view" hidden data-i18n-attr="aria-label" aria-label="Settings">
+      <div class="view-head"><h2 data-i18n>Settings</h2></div>
       <div class="settings-layout">
-        <nav class="subnav" aria-label="설정 항목">
-          <button type="button" data-pane="paneGeneral" aria-pressed="true">일반</button>
-          <button type="button" data-pane="paneInput" aria-pressed="false">입력 매핑</button>
-          <button type="button" data-pane="paneConsoles" aria-pressed="false">콘솔 관리</button>
-          <button type="button" data-pane="paneAdvanced" aria-pressed="false">고급</button>
+        <nav class="subnav" data-i18n-attr="aria-label" aria-label="Settings sections">
+          <button type="button" data-pane="paneGeneral" aria-pressed="true" data-i18n>General</button>
+          <button type="button" data-pane="paneInput" aria-pressed="false" data-i18n>Input mapping</button>
+          <button type="button" data-pane="paneConsoles" aria-pressed="false" data-i18n>Consoles</button>
+          <button type="button" data-pane="paneAdvanced" aria-pressed="false" data-i18n>Advanced</button>
         </nav>
         <div class="settings-body">
           <div id="paneGeneral" class="pane">
-            <h3>화면 색</h3>
-            <div id="themeSeg" class="seg" role="group" aria-label="화면 색">
-              <button type="button" data-theme-choice="auto"><svg class="ic" aria-hidden="true"><use href="#i-auto"/></svg>자동</button>
-              <button type="button" data-theme-choice="light"><svg class="ic" aria-hidden="true"><use href="#i-sun"/></svg>밝게</button>
-              <button type="button" data-theme-choice="dark"><svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg>어둡게</button>
+            <h3 data-i18n>Language</h3>
+            <div id="langSeg" class="seg" role="group" data-i18n-attr="aria-label" aria-label="Language">
+              <button type="button" data-lang-choice="en"></button>
+              <button type="button" data-lang-choice="ko"></button>
             </div>
-            <p class="muted small">자동은 이 기기의 설정을 따릅니다. 이 브라우저에만 저장됩니다.</p>
+            <p class="muted small" data-i18n>Kept in this browser. English is the default.</p>
 
-            <h3>시작할 때</h3>
-            <div class="opt" title="이 주소를 열면 PS5를 (대기 모드면 깨워서) 바로 연결합니다. 열 때마다 사용 시간이 흐르니, 쓸 때만 켜 두세요.">
-              <label class="switch"><input id="autoConnect" type="checkbox"><span>페이지를 열면 바로 연결</span></label>
+            <h3 data-i18n>Screen color</h3>
+            <div id="themeSeg" class="seg" role="group" data-i18n-attr="aria-label" aria-label="Screen color">
+              <button type="button" data-theme-choice="auto"><svg class="ic" aria-hidden="true"><use href="#i-auto"/></svg><span data-i18n>Auto</span></button>
+              <button type="button" data-theme-choice="light"><svg class="ic" aria-hidden="true"><use href="#i-sun"/></svg><span data-i18n>Light</span></button>
+              <button type="button" data-theme-choice="dark"><svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg><span data-i18n>Dark</span></button>
             </div>
-            <p class="muted small">PS5가 대기 모드여도 깨워서 연결합니다. 소리는 브라우저 규칙상 화면을 한 번 클릭해야 나옵니다. 이 기기에서만 적용됩니다.</p>
+            <p class="muted small" data-i18n>Auto follows this device's setting. It is kept in this browser only.</p>
 
-            <h3>컨트롤러</h3>
-            <p id="padStatus" class="callout">연결된 컨트롤러가 없습니다. 컨트롤러(DualSense 등)를 USB나 블루투스로 연결하고 아무 버튼이나 누르세요.</p>
+            <h3 data-i18n>On start</h3>
+            <div class="opt" data-i18n-attr="title" title="Opening this address connects to the PS5 right away (waking it if it is in standby). Your play time runs every time you open it, so keep this on only when you use it.">
+              <label class="switch"><input id="autoConnect" type="checkbox"><span data-i18n>Connect as soon as the page opens</span></label>
+            </div>
+            <p class="muted small" data-i18n>It wakes the PS5 and connects even from standby. Because of browser rules, sound only plays after you click the screen once. Applies on this device only.</p>
 
-            <h3>단축키</h3>
-            <p class="muted small">PS5 화면에서 마우스가 잠겨 있지 않을 때 쓸 수 있습니다. (잠긴 동안에는 모든 키가 PS5로 갑니다. Esc로 풀면 됩니다.)</p>
-            <div class="row"><button id="shortcutsOpen" class="btn small" type="button">단축키 전체 보기 (?)</button></div>
+            <h3 data-i18n>Controller</h3>
+            <p id="padStatus" class="callout" data-i18n>No controller connected. Connect a controller (DualSense etc.) by USB or Bluetooth and press any button.</p>
 
-            <h3>앱처럼 쓰기</h3>
-            <p class="muted small"><b>iPhone</b>: Safari 공유 버튼 → "홈 화면에 추가". 주소창 없이 전체 화면으로 열립니다. <b>Android·컴퓨터 Chrome</b>: 메뉴 → "앱 설치" 또는 "홈 화면에 추가".</p>
+            <h3 data-i18n>Shortcuts</h3>
+            <p class="muted small" data-i18n>Available on the PS5 screen while the mouse is not locked. (While it is locked, every key goes to the PS5. Press Esc to release it.)</p>
+            <div class="row"><button id="shortcutsOpen" class="btn small" type="button" data-i18n>Show all shortcuts (?)</button></div>
+
+            <h3 data-i18n>Use it like an app</h3>
+            <p class="muted small" data-i18n><b>iPhone</b>: Safari Share button → "Add to Home Screen". It opens full screen without an address bar. <b>Android and Chrome on a computer</b>: menu → "Install app" or "Add to Home screen".</p>
           </div>
 
           <div id="paneInput" class="pane" hidden>
-            <h3>프로필 <span class="muted small">(게임마다 따로 저장해 두고 골라 씁니다)</span></h3>
+            <h3 data-i18n>Profile <span class="muted small">(saved separately for each game; pick one to use)</span></h3>
             <div class="row profile-row">
-              <label class="inline">불러오기
-                <select id="profilePick" aria-label="프로필 불러오기"></select>
+              <label class="inline"><span data-i18n>Load</span>
+                <select id="profilePick" data-i18n-attr="aria-label" aria-label="Load profile"></select>
               </label>
-              <label class="inline">이름
-                <input id="profileName" type="text" maxlength="80" spellcheck="false" autocomplete="off" placeholder="게임 이름">
+              <label class="inline"><span data-i18n>Name</span>
+                <input id="profileName" type="text" maxlength="80" spellcheck="false" autocomplete="off" data-i18n-attr="placeholder" placeholder="Game name">
               </label>
-              <button id="profileSave" class="btn small" type="button">이 이름으로 저장</button>
-              <button id="profileDelete" class="btn ghost small" type="button">삭제</button>
+              <button id="profileSave" class="btn small" type="button" data-i18n>Save under this name</button>
+              <button id="profileDelete" class="btn ghost small" type="button" data-i18n>Delete</button>
             </div>
             <p id="profileMsg" class="msg" role="status"></p>
 
-            <h3>키 배치</h3>
-            <p class="muted small">패드의 버튼마다 어떤 키로 누를지 정합니다. <b>+ 키</b>를 누른 뒤 쓰고 싶은 키나 마우스 버튼을 누르면 됩니다. 기본은 모두 <b>누르는 동안</b>(패드와 똑같이, 지연 없이)이고, 게임이 한 버튼의 짧게/길게를 다른 동작으로 쓸 때만 방식을 바꾸세요: 한 키는 <b>짧게 한 번</b>, 다른 키는 <b>길게 유지</b>. 한 키에 <b>길게 누르면/두 번 누르면</b>을 따로 두면 그 키의 일반 누름은 키를 뗄 때 나가서 조금 늦어집니다.</p>
+            <h3 data-i18n>Key layout</h3>
+            <p class="muted small" data-i18n>Choose which key presses each button of the pad. Press <b>+ Key</b>, then press the key or mouse button you want. By default everything is <b>while pressed</b> (exactly like a pad, with no delay); change the mode only when a game uses a short press and a long press of one button for different actions: one key as <b>short tap</b>, another as <b>long hold</b>. If you give one key separate <b>long press / double press</b> actions, that key's plain press is sent when the key is released, so it comes a little later.</p>
             <div id="keymap" class="keymap"></div>
 
-            <h3>누르는 시간 <span class="muted small">(위의 탭, 홀드, 길게/두 번 누르기에 쓰는 값)</span></h3>
-            <label>탭 길이 (ms) <output id="o_tapMs"></output>
+            <h3 data-i18n>Press timing <span class="muted small">(values used for the tap, hold, long press and double press above)</span></h3>
+            <label><span data-i18n>Tap length (ms)</span> <output id="o_tapMs"></output>
               <input id="tapMs" type="range" min="30" max="300" step="10">
             </label>
-            <label>홀드 최소 길이 (ms) <output id="o_holdMs"></output>
+            <label><span data-i18n>Minimum hold length (ms)</span> <output id="o_holdMs"></output>
               <input id="holdMs" type="range" min="200" max="2000" step="50">
             </label>
-            <label>길게 누르기로 보는 시간 (ms) <output id="o_longPressMs"></output>
+            <label><span data-i18n>Time counted as a long press (ms)</span> <output id="o_longPressMs"></output>
               <input id="longPressMs" type="range" min="150" max="1000" step="10">
             </label>
-            <label>두 번 누르기로 보는 간격 (ms) <output id="o_doublePressMs"></output>
+            <label><span data-i18n>Interval counted as a double press (ms)</span> <output id="o_doublePressMs"></output>
               <input id="doublePressMs" type="range" min="150" max="600" step="10">
             </label>
 
-            <h3>마우스 매핑</h3>
-            <p class="muted small">마우스 느낌을 위해 <b>게임 안의 설정</b>도 맞추세요: 시점(카메라) 감도는 최대로, 데드존은 최소로, 가속이나 스무딩 옵션은 있으면 끄기. 그래야 마우스가 스틱으로 낼 수 있는 속도 범위가 넓어지고, 손의 움직임과 화면이 같은 비율로 움직입니다. 그 다음 아래 감도로 맞춥니다.</p>
-            <label>대상
+            <h3 data-i18n>Mouse mapping</h3>
+            <p class="muted small" data-i18n>For a good mouse feel, set the <b>in-game settings</b> too: look (camera) sensitivity to maximum, deadzone to minimum, and turn off acceleration or smoothing options if there are any. That widens the speed range the mouse can produce through the stick, and your hand and the screen move in the same proportion. Then tune it with the sensitivity below.</p>
+            <label><span data-i18n>Target</span>
               <select id="mouseTarget">
-                <option value="right_stick">오른쪽 스틱</option>
-                <option value="gyro">가상 자이로 (게임의 자이로 조준을 켜야 함)</option>
-                <option value="off">끔</option>
+                <option value="right_stick" data-i18n>Right stick</option>
+                <option value="gyro" data-i18n>Virtual gyro (the game's gyro aiming must be on)</option>
+                <option value="off" data-i18n>Mouse mapping off</option>
               </select>
             </label>
-            <label>감도 (카운트당 °) <output id="o_degPerCount"></output>
+            <label><span data-i18n>Sensitivity (° per count)</span> <output id="o_degPerCount"></output>
               <input id="degPerCount" type="range" min="0.005" max="0.3" step="0.005">
             </label>
-            <label>응답 곡선 (1 = 선형) <output id="o_curve"></output>
+            <label><span data-i18n>Response curve (1 = linear)</span> <output id="o_curve"></output>
               <input id="curve" type="range" min="0.5" max="3" step="0.05">
             </label>
-            <label>스무딩 (ms) <output id="o_smoothingMs"></output>
+            <label><span data-i18n>Smoothing (ms)</span> <output id="o_smoothingMs"></output>
               <input id="smoothingMs" type="range" min="0" max="100" step="1">
             </label>
-            <label title="느리고 정밀한 움직임은 스무딩이 도움이 되지만, 빠르게 돌릴 때는 지연만 생깁니다. 이 속도(°/s)의 절반부터 스무딩이 줄어 이 속도에서는 완전히 없어집니다. 0이면 모든 속도에 같은 스무딩을 씁니다.">속도에 따른 스무딩 해제 (°/s, 0 = 안 함) <output id="o_smoothingFadeRate"></output>
+            <label data-i18n-attr="title" title="Smoothing helps with slow, precise movement, but when you turn fast it only adds delay. From half of this speed (°/s) smoothing fades, and at this speed it is gone completely. At 0, every speed gets the same smoothing."><span data-i18n>Release smoothing by speed (°/s, 0 = off)</span> <output id="o_smoothingFadeRate"></output>
               <input id="smoothingFadeRate" type="range" min="0" max="200" step="5">
             </label>
-            <label>속도 상한 (°/s) <output id="o_maxTurnRate"></output>
+            <label><span data-i18n>Speed cap (°/s)</span> <output id="o_maxTurnRate"></output>
               <input id="maxTurnRate" type="range" min="20" max="1500" step="10">
             </label>
-            <label title="손이 속도 상한보다 빨리 움직였을 때, 못 돌린 만큼을 손이 멈춘 뒤에도 이어서 돌리는 최대 시간입니다. 0이면 넘친 만큼은 버려져 빠르게 쓸수록 덜 돕니다. 길수록 이동 거리가 잘 지켜지지만 손을 멈춘 뒤에도 그만큼 더 돕니다.">이동 이월 (ms) <output id="o_carryMs"></output>
+            <label data-i18n-attr="title" title="When your hand moves faster than the speed cap, this is the longest time the part that could not be turned keeps turning after your hand stops. At 0 the excess is thrown away, so the faster you sweep, the less you turn. The longer it is, the better the distance moved is kept, but the view also keeps turning that long after you stop."><span data-i18n>Movement carry-over (ms)</span> <output id="o_carryMs"></output>
               <input id="carryMs" type="range" min="0" max="1000" step="50">
             </label>
-            <label>스틱 최대 편향 <output id="o_maxDeflection"></output>
+            <label><span data-i18n>Max stick deflection</span> <output id="o_maxDeflection"></output>
               <input id="maxDeflection" type="range" min="0.1" max="1" step="0.05">
             </label>
-            <label>세로 배율 <output id="o_verticalScale"></output>
+            <label><span data-i18n>Vertical scale</span> <output id="o_verticalScale"></output>
               <input id="verticalScale" type="range" min="0.2" max="2" step="0.05">
             </label>
-            <label class="check"><input id="invertY" type="checkbox"> 세로 반전</label>
+            <label class="check"><input id="invertY" type="checkbox"> <span data-i18n>Invert vertical</span></label>
 
-            <h3>프로필에 기록한 게임 내 설정 <span class="muted small">(내가 안다고 선언한 값)</span></h3>
-            <label>안쪽 데드존 <output id="o_innerDeadzone"></output>
+            <h3 data-i18n>In-game settings recorded in the profile <span class="muted small">(values I declare that I know)</span></h3>
+            <label><span data-i18n>Inner deadzone</span> <output id="o_innerDeadzone"></output>
               <input id="innerDeadzone" type="range" min="0" max="0.5" step="0.01">
             </label>
-            <label>최대 편향에서 회전 속도 (°/s) <output id="o_maxTurnRateAtFullStick"></output>
+            <label><span data-i18n>Turn speed at full deflection (°/s)</span> <output id="o_maxTurnRateAtFullStick"></output>
               <input id="maxTurnRateAtFullStick" type="range" min="60" max="1000" step="10">
             </label>
-            <label>응답 곡선 <output id="o_responseCurve"></output>
+            <label><span data-i18n>Response curve</span> <output id="o_responseCurve"></output>
               <input id="responseCurve" type="range" min="0.5" max="3" step="0.05">
             </label>
-            <label>세로/가로 회전 비율 <output id="o_verticalRateRatio"></output>
+            <label><span data-i18n>Vertical/horizontal turn ratio</span> <output id="o_verticalRateRatio"></output>
               <input id="verticalRateRatio" type="range" min="0.2" max="2" step="0.05">
             </label>
-            <label>조준 중 게임의 시점 배율 (aim 레이어) <output id="o_aimLayerScale"></output>
+            <label><span data-i18n>The game's look scale while aiming (aim layer)</span> <output id="o_aimLayerScale"></output>
               <input id="aimLayerScale" type="range" min="0.2" max="2" step="0.05">
             </label>
-            <label>데드존 모양
+            <label><span data-i18n>Deadzone shape</span>
               <select id="inShape">
-                <option value="radial">원형 (스틱 벡터 기준, 대부분의 게임)</option>
-                <option value="axial">축별</option>
+                <option value="radial" data-i18n>Circular (by stick vector, most games)</option>
+                <option value="axial" data-i18n>Per axis</option>
               </select>
             </label>
 
-            <h3>콘솔 게임 자동 보정 <span class="muted small">(PS5 영상으로 측정)</span></h3>
-            <p class="muted small">PS5에서 게임을 켜고, 카메라가 자유롭게 도는 장면(메뉴·컷신이 아닌 플레이 중, 캐릭터는 가만히 서 있게)에서 시작하세요.
-              오른쪽 스틱을 자동으로 움직이며 화면이 얼마나 도는지 재서 위 "게임 내 설정"과 반응 표를 채웁니다. 약 40초 걸리고, 그동안 키보드·마우스·터치 입력은 무시됩니다.
-              한 바퀴를 도는 동안 캐릭터가 움직이거나 차가 지나가도 괜찮지만, 단색 배경이나 로딩 화면은 안 됩니다.</p>
+            <h3 data-i18n>Console game auto-calibration <span class="muted small">(measured from the PS5 video)</span></h3>
+            <p class="muted small" data-i18n>Start the game on the PS5 and begin in a scene where the camera can turn freely (during play, not in a menu or cutscene, with the character standing still).
+              It moves the right stick by itself, measures how far the picture turns, and fills in the "In-game settings" above and the response table. It takes about 40 seconds, and keyboard, mouse and touch input are ignored meanwhile.
+              It is fine if the character moves or a car passes during a turn, but a plain background or a loading screen will not work.</p>
             <div class="row">
-              <button id="consoleCalibrate" class="btn small" type="button">측정 시작</button>
-              <button id="consoleCalibrateStop" class="btn small ghost" type="button" hidden>중지</button>
-              <button id="consoleCalibrateApply" class="btn small" type="button" hidden>프로필에 적용</button>
+              <button id="consoleCalibrate" class="btn small" type="button" data-i18n>Start measuring</button>
+              <button id="consoleCalibrateStop" class="btn small ghost" type="button" hidden data-i18n>Stop measuring</button>
+              <button id="consoleCalibrateApply" class="btn small" type="button" hidden data-i18n>Apply to profile</button>
             </div>
             <p id="consoleCalibrateStatus" class="muted small" role="status"></p>
             <pre id="consoleCalibrateResult" class="muted small pre-wrap"></pre>
             <div id="consoleCalibratePlot"></div>
 
-            <h3>프로필 글 <span class="muted small">(전체 내용. 다른 사람과 주고받을 때 이 글을 복사합니다)</span></h3>
-            <textarea id="profileJson" rows="10" spellcheck="false" aria-label="프로필 JSON"></textarea>
+            <h3 data-i18n>Profile text <span class="muted small">(the whole content; copy this text to share it with someone else)</span></h3>
+            <textarea id="profileJson" rows="10" spellcheck="false" data-i18n-attr="aria-label" aria-label="Profile JSON"></textarea>
             <div class="row">
-              <button id="applyJson" class="btn small" type="button">글 적용</button>
-              <button id="resetProfile" class="btn small" type="button">기본 배치로 되돌리기</button>
+              <button id="applyJson" class="btn small" type="button" data-i18n>Apply text</button>
+              <button id="resetProfile" class="btn small" type="button" data-i18n>Restore default layout</button>
             </div>
           </div>
 
           <div id="paneConsoles" class="pane" hidden>
-            <h3>등록한 콘솔</h3>
-            <p class="muted small">이 컴퓨터에 저장돼 있습니다. 콘솔을 켜고 연결하는 데 쓰는 키는 화면으로 보내지 않습니다. 목록에서 지워도 PS5 쪽의 기기 목록은 그대로입니다.</p>
+            <h3 data-i18n>Registered consoles</h3>
+            <p class="muted small" data-i18n>They are stored on this computer. The key used to wake and connect a console is never sent to the screen. Removing one from the list leaves the PS5's own device list as it is.</p>
             <ul id="regList"></ul>
             <div class="row">
-              <button id="setAdd" class="btn small" type="button">+ 콘솔 추가</button>
-              <button id="setRoutes" class="btn small" type="button">접속 경로 지도</button>
+              <button id="setAdd" class="btn small" type="button" data-i18n>+ Add console</button>
+              <button id="setRoutes" class="btn small" type="button" data-i18n>Connection route map</button>
             </div>
-            <p class="muted small">등록 정보는 컴퓨터의 <code>~/.gtp/consoles.json</code>에 저장되어, 다시 등록하거나 PSN에 로그인할 일이 없습니다. 다른 컴퓨터로 옮기려면 <code>npm run consoles</code> 명령을 쓰세요.</p>
+            <p class="muted small" data-i18n>Registration details are stored in <code>~/.gtp/consoles.json</code> on your computer, so you never need to register again or log in to PSN. To move to another computer, use the <code>npm run consoles</code> command.</p>
           </div>
 
           <div id="paneAdvanced" class="pane" hidden>
-            <h3>브리지</h3>
-            <label>브리지 주소 (WebSocket)
-              <input id="bridgeUrl" type="text" spellcheck="false" autocomplete="off" aria-label="브리지 WebSocket 주소">
+            <h3 data-i18n>Bridge</h3>
+            <label><span data-i18n>Bridge address (WebSocket)</span>
+              <input id="bridgeUrl" type="text" spellcheck="false" autocomplete="off" data-i18n-attr="aria-label" aria-label="Bridge WebSocket address">
             </label>
-            <p class="muted small">보통은 바꿀 필요가 없습니다. 이 페이지를 연 브리지의 주소가 자동으로 들어 있습니다.</p>
-            <h3>진단</h3>
-            <p class="muted small"><a href="?selftest=1">셀프 테스트 열기</a> · 브라우저 안에서 매핑 엔진과 영상 재생기를 점검합니다.</p>
+            <p class="muted small" data-i18n>You rarely need to change this. The address of the bridge that served this page is filled in automatically.</p>
+            <h3 data-i18n>Diagnostics</h3>
+            <p class="muted small" data-i18n><a href="?selftest=1">Open the self-test</a> · Checks the mapping engine and the video player inside the browser.</p>
           </div>
         </div>
       </div>
@@ -607,105 +585,106 @@
 
   <!-- ============================================================ dialogs -->
   <dialog id="addDialog" aria-labelledby="addTitle">
-    <div class="dialog-head"><h2 id="addTitle">콘솔 등록</h2><button id="addClose" class="btn ghost small" type="button">닫기</button></div>
-    <p class="muted small">처음 한 번만 합니다. 콘솔을 <b>켜 두고</b>, <b>설정 → 시스템 → 원격 플레이 → 기기 연결</b>(PS5) 화면을 연 채로 거기 나온 8자리 코드를 입력하세요. 코드는 몇 분 안에 바뀝니다.</p>
-    <div class="row"><button id="regScan" class="btn small" type="button">콘솔 찾기</button></div>
-    <label>찾은 콘솔
-      <select id="regHost" aria-label="찾은 콘솔"><option value="">(찾기를 누르세요)</option></select>
+    <div class="dialog-head"><h2 id="addTitle" data-i18n>Register console</h2><button id="addClose" class="btn ghost small" type="button" data-i18n>Close</button></div>
+    <p class="muted small" data-i18n>You only do this once. Keep the console <b>on</b>, open the <b>Settings → System → Remote Play → Link Device</b> screen (PS5), and enter the 8-digit code shown there. The code changes within a few minutes.</p>
+    <div class="row"><button id="regScan" class="btn small" type="button" data-i18n>Find console</button></div>
+    <label><span data-i18n>Consoles found</span>
+      <select id="regHost" data-i18n-attr="aria-label" aria-label="Consoles found"><option value="" data-i18n>(press Find)</option></select>
     </label>
-    <label>콘솔 IP 주소 <span class="muted small">(목록에 없으면 직접 입력)</span>
-      <input id="regAddr" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" aria-label="콘솔 IP 주소">
+    <label><span data-i18n>Console IP address <span class="muted small">(type it in if it is not in the list)</span></span>
+      <input id="regAddr" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" data-i18n-attr="aria-label" aria-label="Console IP address">
     </label>
-    <label>8자리 코드
-      <input id="regPin" type="text" inputmode="numeric" maxlength="9" spellcheck="false" autocomplete="off" aria-label="콘솔에 표시된 8자리 코드">
+    <label><span data-i18n>8-digit code</span>
+      <input id="regPin" type="text" inputmode="numeric" maxlength="9" spellcheck="false" autocomplete="off" data-i18n-attr="aria-label" aria-label="8-digit code shown on the console">
     </label>
     <details id="psnBox">
-      <summary>PSN 계정 ID를 모르면 여기서 가져오기</summary>
-      <p class="muted small">Sony 로그인 페이지에 직접 로그인한 뒤, 나온 주소의 일회용 코드로 <b>계정 ID 숫자만</b> 가져와 이 컴퓨터에 저장합니다.
-        이 방식은 <b>Sony 공식 Remote Play 앱의 인증 정보</b>(chiaki-ng 공개 소스의 값)로 코드를 교환합니다. 비공식 클라이언트가 그 정보를 쓰는 것이라 Sony 약관상 회색지대이니 본인 계정에만 쓰세요.
-        받은 접근 토큰은 저장하지도 기록하지도 않고 바로 버립니다. 주소의 <code>code=</code> 는 일회용 로그인 코드이므로 이 칸 밖에는 붙여 넣지 마세요.</p>
-      <label class="check"><input id="psnAck" type="checkbox"> 위 내용을 이해했고, 내 계정으로 진행합니다</label>
-      <p><a id="psnLogin" href="#" target="_blank" rel="noopener noreferrer">1. Sony 로그인 열기 (새 탭)</a></p>
-      <label>2. 로그인 후 “redirect”라고 뜬 페이지의 <b>주소창 주소 전체</b>를 붙여넣기
-        <input id="psnUrl" type="password" spellcheck="false" autocomplete="off" aria-label="로그인 후 주소">
+      <summary data-i18n>If you do not know your PSN account ID, get it here</summary>
+      <p class="muted small" data-i18n>Log in on Sony's own login page, then use the one-time code in the address you land on to fetch <b>the account ID number only</b> and store it on this computer.
+        This works by exchanging the code with <b>the credentials of Sony's official Remote Play app</b> (values from the public chiaki-ng source). An unofficial client using those credentials is a gray area under Sony's terms, so use it only with your own account.
+        The access token you receive is neither stored nor logged; it is discarded at once. The <code>code=</code> in the address is a one-time login code, so do not paste it anywhere except this box.</p>
+      <label class="check"><input id="psnAck" type="checkbox"> <span data-i18n>I understand the above and will proceed with my own account</span></label>
+      <p><a id="psnLogin" href="#" target="_blank" rel="noopener noreferrer" data-i18n>1. Open Sony login (new tab)</a></p>
+      <label><span data-i18n>2. After logging in, paste <b>the whole address from the address bar</b> of the page that says “redirect”</span>
+        <input id="psnUrl" type="password" spellcheck="false" autocomplete="off" data-i18n-attr="aria-label" aria-label="Address after login">
       </label>
-      <div class="row"><button id="psnGo" class="btn small" type="button" disabled>3. 계정 ID 가져오기</button></div>
+      <div class="row"><button id="psnGo" class="btn small" type="button" disabled data-i18n>3. Get account ID</button></div>
     </details>
-    <label>PSN 계정 ID <span class="muted small" id="regAccountNote">(숫자 또는 Base64. 처음 한 번만 필요)</span>
-      <input id="regAccount" type="password" spellcheck="false" autocomplete="off" aria-label="PSN 계정 ID">
+    <label><span data-i18n>PSN account ID</span> <span class="muted small" id="regAccountNote" data-i18n>(number or Base64. Needed only the first time)</span>
+      <input id="regAccount" type="password" spellcheck="false" autocomplete="off" data-i18n-attr="aria-label" aria-label="PSN account ID">
     </label>
-    <div class="row"><button id="regGo" class="btn primary" type="button">등록</button><button id="addClose2" class="btn ghost" type="button">닫기</button></div>
+    <div class="row"><button id="regGo" class="btn primary" type="button" data-i18n>Register</button><button id="addClose2" class="btn ghost" type="button" data-i18n>Close</button></div>
     <p id="regMsg" class="callout" role="status"></p>
   </dialog>
 
   <dialog id="routeDialog" aria-labelledby="routeTitle" class="wide">
-    <div class="dialog-head"><h2 id="routeTitle">접속 경로 지도</h2><button id="routeClose" class="btn ghost small" type="button">닫기</button></div>
-    <p class="muted small">PC에서 PS5까지 가는 길은 집 안과 밖에서 다릅니다. 경로와 단계를 눌러 보세요. “확인됨”은 이 프로젝트가 실제 PS5로 본 것만 해당합니다.</p>
+    <div class="dialog-head"><h2 id="routeTitle" data-i18n>Connection route map</h2><button id="routeClose" class="btn ghost small" type="button" data-i18n>Close</button></div>
+    <p class="muted small" data-i18n>The way from your PC to the PS5 differs at home and away. Click a route and its steps. “Verified” applies only to what this project has actually seen with a real PS5.</p>
     <div id="routeExplorer"></div>
   </dialog>
 
   <!-- A bridge with accounts: nothing works before this is done. It cannot be closed. -->
   <dialog id="loginDialog" aria-labelledby="loginTitle">
-    <div class="dialog-head"><h2 id="loginTitle">로그인</h2></div>
+    <div class="dialog-head"><h2 id="loginTitle" data-i18n>Log in</h2></div>
     <p id="loginNote" class="muted small"></p>
     <form id="loginForm">
-      <label id="loginNameRow">이름
-        <input id="loginName" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" aria-label="이름">
+      <label id="loginNameRow"><span data-i18n>Name</span>
+        <input id="loginName" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" data-i18n-attr="aria-label" aria-label="Name">
       </label>
-      <label>비밀번호
-        <input id="loginPass" type="password" autocomplete="current-password" aria-label="비밀번호">
+      <label><span data-i18n>Password</span>
+        <input id="loginPass" type="password" autocomplete="current-password" data-i18n-attr="aria-label" aria-label="Password">
       </label>
-      <label id="loginPass2Row" hidden>비밀번호 다시
-        <input id="loginPass2" type="password" autocomplete="new-password" aria-label="비밀번호 확인">
+      <label id="loginPass2Row" hidden><span data-i18n>Password again</span>
+        <input id="loginPass2" type="password" autocomplete="new-password" data-i18n-attr="aria-label" aria-label="Confirm password">
       </label>
-      <div class="row"><button id="loginGo" class="btn primary" type="submit">로그인</button></div>
+      <div class="row"><button id="loginGo" class="btn primary" type="submit" data-i18n>Log in</button></div>
     </form>
     <p id="loginMsg" class="callout" role="alert" hidden></p>
+    <p class="lang-line"><button class="btn ghost small" type="button" data-lang-toggle></button></p>
   </dialog>
 
   <dialog id="usersDialog" class="wide" aria-labelledby="usersTitle">
-    <div class="dialog-head"><h2 id="usersTitle">사용자</h2><button id="usersClose" class="btn ghost small" type="button">닫기</button></div>
-    <p class="muted small">주인은 시간 제한이 없습니다. 다른 사람은 하루에 쓸 수 있는 분을 정합니다. 하루는 서버의 시간대 기준 자정에 바뀝니다. 비워 두면 제한이 없습니다.</p>
+    <div class="dialog-head"><h2 id="usersTitle" data-i18n>Users</h2><button id="usersClose" class="btn ghost small" type="button" data-i18n>Close</button></div>
+    <p class="muted small" data-i18n>The owner has no time limit. For everyone else you set how many minutes they can play per day. A day rolls over at midnight in the server's time zone. Leave it empty for no limit.</p>
     <div class="tablewrap">
       <table class="users">
-        <thead><tr><th>이름</th><th>하루 사용 시간</th><th>오늘 사용</th><th>상태</th><th></th></tr></thead>
+        <thead><tr><th data-i18n>Name</th><th data-i18n>Daily play time</th><th data-i18n>Used today</th><th data-i18n>Status</th><th></th></tr></thead>
         <tbody id="usersBody"></tbody>
       </table>
     </div>
-    <h3>새 사람 초대</h3>
+    <h3 data-i18n>Invite a new person</h3>
     <form id="usersAdd" class="row wrap">
-      <label>이름 <input id="usersNewName" type="text" maxlength="24" autocomplete="off" required></label>
-      <label>하루 분 <input id="usersNewMinutes" type="number" min="0" max="1440" step="5" value="120" placeholder="제한 없음"></label>
-      <button class="btn" type="submit">초대 링크 만들기</button>
+      <label><span data-i18n>Name</span> <input id="usersNewName" type="text" maxlength="24" autocomplete="off" required></label>
+      <label><span data-i18n>Minutes per day</span> <input id="usersNewMinutes" type="number" min="0" max="1440" step="5" value="120" data-i18n-attr="placeholder" placeholder="No limit"></label>
+      <button class="btn" type="submit" data-i18n>Create invite link</button>
     </form>
     <p id="usersMsg" class="callout" role="alert" hidden></p>
     <div id="usersInvite" class="invitebox" hidden></div>
   </dialog>
 
   <dialog id="studyReportDialog" class="wide" aria-labelledby="studyReportTitle">
-    <div class="dialog-head"><h2 id="studyReportTitle">느낌 실험 분석</h2><span><button id="studyReportCopy" class="btn small" type="button">복사</button> <button id="studyReportClose" class="btn ghost small" type="button">닫기</button></span></div>
+    <div class="dialog-head"><h2 id="studyReportTitle" data-i18n>Mouse feel study: analysis</h2><span><button id="studyReportCopy" class="btn small" type="button" data-i18n>Copy</button> <button id="studyReportClose" class="btn ghost small" type="button" data-i18n>Close</button></span></div>
     <pre id="studyReportText" class="study-report"></pre>
   </dialog>
 
   <dialog id="shortcutsDialog" aria-labelledby="shortcutsTitle">
-    <div class="dialog-head"><h2 id="shortcutsTitle">단축키</h2><button id="shortcutsClose" class="btn ghost small" type="button">닫기</button></div>
-    <p class="muted small">PS5 화면에서, 마우스가 잠겨 있지 않을 때 씁니다. 화면을 클릭해 마우스가 잠기면 모든 키가 PS5로 가고, <kbd>Esc</kbd>를 누르면 다시 풀립니다.</p>
+    <div class="dialog-head"><h2 id="shortcutsTitle" data-i18n>Shortcuts</h2><button id="shortcutsClose" class="btn ghost small" type="button" data-i18n>Close</button></div>
+    <p class="muted small" data-i18n>On the PS5 screen, while the mouse is not locked. Click the screen to lock the mouse and every key goes to the PS5; press <kbd>Esc</kbd> to release it again.</p>
     <dl class="shortcuts">
-      <div><dt><kbd>F</kbd></dt><dd>전체 화면 켜기·끄기</dd></div>
-      <div><dt><kbd>T</kbd></dt><dd>넓게 보기: 옆 카드를 접고 화면을 크게</dd></div>
-      <div><dt><kbd>M</kbd></dt><dd>소리 켜기·끄기</dd></div>
-      <div><dt><kbd>P</kbd></dt><dd>스크린샷을 이미지로 저장</dd></div>
-      <div><dt><kbd>R</kbd></dt><dd>녹화 시작·끝 (최대 5분, 끝나면 파일로 저장)</dd></div>
-      <div><dt><kbd>S</kbd></dt><dd>연결 상태 (지연, 프레임, 그래프)</dd></div>
-      <div><dt><kbd>K</kbd></dt><dd>키 배치 보기</dd></div>
-      <div><dt><kbd>G</kbd></dt><dd>마우스 느낌: 감도, 부드러움, 빠른 휘두름 이어 돌기</dd></div>
-      <div><dt><kbd>L</kbd></dt><dd>느낌 실험: 후보 설정을 하나씩 써 보고 점수 매기기</dd></div>
-      <div><dt><kbd>O</kbd></dt><dd>화면·소리·연결 설정 패널</dd></div>
-      <div><dt><kbd>PageUp</kbd> <kbd>PageDown</kbd></dt><dd>감도 올리기·내리기. 마우스가 잠겨 있는 동안에도 됩니다</dd></div>
-      <div><dt><kbd>Home</kbd></dt><dd>마우스 느낌 바꾸기 (또렷하게 → 균형 → 부드럽게). 잠겨 있는 동안에도 됩니다</dd></div>
-      <div><dt><kbd>=</kbd> <kbd>-</kbd></dt><dd>실험 중 점수 올리기·내리기 (마우스가 잠겨 있는 동안에도). <kbd>5</kbd>~<kbd>0</kbd> 아쉬웠던 점 표시, <kbd>]</kbd> 저장하고 다음, <kbd>[</kbd> 이전</dd></div>
-      <div><dt><kbd>?</kbd></dt><dd>이 도움말</dd></div>
-      <div><dt><kbd>Esc</kbd></dt><dd>마우스를 풀고 조작을 멈춤 (전체 화면에서는 길게 누르면 전체 화면이 꺼집니다)</dd></div>
+      <div><dt><kbd>F</kbd></dt><dd data-i18n>Turn full screen on or off</dd></div>
+      <div><dt><kbd>T</kbd></dt><dd data-i18n>Wide view: fold the side cards and enlarge the picture</dd></div>
+      <div><dt><kbd>M</kbd></dt><dd data-i18n>Turn sound on or off</dd></div>
+      <div><dt><kbd>P</kbd></dt><dd data-i18n>Save a screenshot as an image</dd></div>
+      <div><dt><kbd>R</kbd></dt><dd data-i18n>Start or stop recording (up to 5 minutes, saved as a file at the end)</dd></div>
+      <div><dt><kbd>S</kbd></dt><dd data-i18n>Connection status (delay, frames, graph)</dd></div>
+      <div><dt><kbd>K</kbd></dt><dd data-i18n>Show the key layout</dd></div>
+      <div><dt><kbd>G</kbd></dt><dd data-i18n>Mouse feel: sensitivity, smoothness, fast-swing carry-over</dd></div>
+      <div><dt><kbd>L</kbd></dt><dd data-i18n>Mouse feel study: try settings one after another and score them</dd></div>
+      <div><dt><kbd>O</kbd></dt><dd data-i18n>Picture, sound and connection settings panel</dd></div>
+      <div><dt><kbd>PageUp</kbd> <kbd>PageDown</kbd></dt><dd data-i18n>Raise or lower the sensitivity. Works while the mouse is locked too</dd></div>
+      <div><dt><kbd>Home</kbd></dt><dd data-i18n>Change the mouse feel (crisp → balanced → smooth). Works while it is locked too</dd></div>
+      <div><dt><kbd>1</kbd>–<kbd>9</kbd> <kbd>0</kbd></dt><dd data-i18n>During the study, while the mouse is locked: score the setting (0 = 10) and go on to the next. <kbd>Y</kbd> <kbd>U</kbd> <kbd>I</kbd> <kbd>H</kbd> <kbd>J</kbd> <kbd>K</kbd> mark what felt off, <kbd>[</kbd> undoes, <kbd>]</kbd> skips</dd></div>
+      <div><dt><kbd>?</kbd></dt><dd data-i18n>This help</dd></div>
+      <div><dt><kbd>Esc</kbd></dt><dd data-i18n>Release the mouse and stop controlling (in full screen, holding it down leaves full screen)</dd></div>
     </dl>
   </dialog>
 

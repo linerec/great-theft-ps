@@ -31,7 +31,7 @@ angle the hand asked for, *if* the game responds as the profile says. A simulati
 values of 0.14 for a slow drift, 0.36 for a normal turn and 0.75 for a fast one: small values that a game with a larger
 deadzone or a camera that speeds up with time barely turns for. So the profile's idea of the game is what is wrong.
 
-`web/calibrate-console.ts` (panel in the settings, 콘솔 게임 자동 보정) runs `src/engine/lookcalibrate.ts`: one full turn at
+`web/calibrate-console.ts` (panel in the settings, "Auto-calibrate to the game") runs `src/engine/lookcalibrate.ts`: one full turn at
 full deflection for the scale and the delay, 14 horizontal levels measured in a window of 0.1 to 0.7 s after the first
 movement (the window of a mouse flick), up to three vertical pushes at moderate rates (the camera cannot look far up or
 down). It builds the table (`buildTable`: monotone, deadzone where the rising part meets zero, ends at full deflection) and
@@ -121,7 +121,7 @@ Decided:
 Then, on the phone, in this order (each failure changes the plan):
 
 1. On home Wi-Fi first: does the page load, does the console card show.
-2. Quality "데이터 절약", connect: **does a picture appear.** If not, iPhone Safari does not decode this stream through
+2. Quality "Data saver", connect: **does a picture appear.** If not, iPhone Safari does not decode this stream through
    WebCodecs (it has the API from iOS 16.4) and another path is needed (a `<video>` element fed through Managed Media
    Source is the candidate; it would also give full screen, which an iPhone only has for video elements).
 3. Touch: buttons, the stick, dragging for the camera; the hitch counter in the menu.
@@ -281,8 +281,25 @@ turn; that was the 12 ms filter (92 ms). The carry-over only acts on a swipe fas
 
 **Not known:** whether any of it can be felt. Everything above is the engine on its own or a browser with a pretend console;
 a locked mouse cannot be given to a script, and the measuring of the real game has never been run. The first thing to try in
-the game: pick "균형" in the panel (the profile saved in the browser still has the old values until then), set GTA's own
-look sensitivity high and its dead zone low, run "게임에 맞게 자동 보정" once, and compare the three starting points with `Home`.
+the game: pick "Balanced" in the panel (the profile saved in the browser still has the old values until then), set GTA's own
+look sensitivity high and its dead zone low, run "Auto-calibrate to the game" once, and compare the three starting points with `Home`.
+
+## English by default, Korean on request; the study made easier (2026-11-26)
+
+Everything a person reads is now English in the code and has its Korean in a dictionary (`docs/i18n.md`): the page, what the
+bridge says while connecting (in the language the page names in `hello`), the analysis report (also `--lang ko` on the CLI).
+A button in the header, the settings and the login box switch it; English is the default whatever the browser says. Checked:
+`test/i18n.test.ts` (every sentence has Korean, none is left over, no Hangul outside the dictionary), and the page's own
+self-test in a real Chrome switching to Korean and visiting the panels and the study (`npm run e2e`). **Not checked:** every
+state of the page in Korean by eye (the idle page, the study and the panels were looked at in both languages); the Korean of the
+server's messages was written by hand from the old text and read by no native speaker but the owner; a few texts made once
+stay in the old language until they are made again (`docs/i18n.md`, "Not done").
+
+The study (`docs/feel-study.md`) is quicker to do: Start locks the mouse and puts the panel away; a strip over the picture shows
+the number, the progress and whether there has been time to score; **one number key scores and moves on** (`1`–`9`, `0` = 10),
+`Y U I H J K` mark what felt off, `[` undoes (the score is dropped), `]` skips; a score pressed too early is saved by itself
+when the 8 s are there. The keys while the mouse is locked were exercised by calling the page's functions, not with a locked
+mouse (a script cannot lock it).
 
 ## The study of the mouse feel (2026-11-25)
 

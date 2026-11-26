@@ -110,7 +110,7 @@ try {
     for (const c of result.kept) console.log(`kept    ${describe(c).trim()}  (this computer already has the same or a newer registration)`);
     if (result.accountId === 'taken') console.log('PSN account id: taken from the copy.');
     if (!result.added.length && !result.updated.length && result.accountId !== 'taken') console.log('Nothing new in that copy.');
-    console.log('Next: open the PS5 page and press "연결 확인". That proves the console accepts this registration from this computer.');
+    console.log('Next: open the PS5 page and connect to the console once. That proves the console accepts this registration from this computer.');
     console.log('Then delete the copy file.');
   } else {
     console.log('usage: npm run consoles -- list | path | export <file> [--force] | import <file>');

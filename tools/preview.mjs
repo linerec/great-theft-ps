@@ -5,7 +5,7 @@
 // PNG frames that draw the pad it receives). Nothing here talks to a network or a real console.
 //
 //   npm run preview                 http://127.0.0.1:8799, console ready
-//   npm run preview -- --standby    the console is in rest mode (the button says "깨우고 연결")
+//   npm run preview -- --standby    the console is in rest mode (the button offers to wake it and connect)
 //   npm run preview -- --absent     the console does not answer
 //   npm run preview -- --port 9000
 //   npm run preview -- --accounts   with logins, to see the user menu and the time left: "owner" (no limit) and "aiden"
@@ -36,7 +36,7 @@ store.merge({
   version: 1,
   consoles: [
     {
-      mac: '0123456789ab', nickname: '거실 PS5', target: 'ps5-1', host: '192.168.1.20', registeredAt: new Date().toISOString(),
+      mac: '0123456789ab', nickname: 'Living room PS5', target: 'ps5-1', host: '192.168.1.20', registeredAt: new Date().toISOString(),
       rpKey: '00112233445566778899aabbccddeeff', registKey: '61626364656667680000000000000000',
     },
   ],
@@ -60,7 +60,7 @@ const bridge = await startBridge({
   devReload: new DevReload({ dirs: [path.join(root, 'web'), path.join(root, 'src')] }),
   api: {
     discover: async () => ({
-      hosts: state === 'absent' ? [] : [{ address: '192.168.1.20', state, statusCode: state === 'ready' ? 200 : 620, hostId: '0123456789AB', hostName: '거실 PS5', hostType: 'PS5', isPs5: true, target: 'ps5-1' }],
+      hosts: state === 'absent' ? [] : [{ address: '192.168.1.20', state, statusCode: state === 'ready' ? 200 : 620, hostId: '0123456789AB', hostName: 'Living room PS5', hostType: 'PS5', isPs5: true, target: 'ps5-1' }],
     }),
   },
   createLink: () => new FakeLink(),

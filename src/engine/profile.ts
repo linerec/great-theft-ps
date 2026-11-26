@@ -4,6 +4,7 @@
 // and normalised before use, unknown fields are dropped, and nothing in it is
 // ever executed. That is what makes it safe to download profiles from others.
 
+import { N_ } from '../i18n/index.ts';
 import { BUTTON, type ButtonName } from './types.ts';
 import { validateCalibration, type CalPoint } from './calibration.ts';
 
@@ -406,11 +407,11 @@ export function shooterProfile(): Profile {
   return p;
 }
 
-/** The presets a person can start from. */
+/** The presets a person can start from. The names are sentences for t(): the page shows them in its language. */
 export const PRESETS: ReadonlyArray<{ id: string; name: string; make: () => Profile }> = [
-  { id: 'default', name: '기본 (범용)', make: defaultProfile },
-  { id: 'shooter', name: '슈터 예시 (짧게/길게를 다른 키로)', make: shooterProfile },
-  { id: 'gta', name: 'GTA V 스타일', make: gtaProfile },
+  { id: 'default', name: N_('Default (general)'), make: defaultProfile },
+  { id: 'shooter', name: N_('Shooter example (short and long press on different keys)'), make: shooterProfile },
+  { id: 'gta', name: N_('GTA V style'), make: gtaProfile },
 ];
 
 export type ParseResult = { ok: true; profile: Profile } | { ok: false; errors: string[] };

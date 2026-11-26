@@ -5,12 +5,14 @@
 // The translation itself (counts to stick) is in src/engine/mouse.ts; this file only picks values for it.
 
 import type { Feel } from '../src/engine/feel-study.ts';
+import { N_ } from '../src/i18n/index.ts';
 
 /** The mouse settings of the profile that these controls change (defined with the study of the feel, which records them). */
 export type { Feel };
 
 export interface FeelPreset {
   id: 'sharp' | 'balanced' | 'smooth';
+  /** A sentence to be shown through t() (the table is kept, the language can change). */
   name: string;
   hint: string;
   /** The values it sets (the sensitivity stays what the person chose). */
@@ -29,9 +31,9 @@ export interface FeelPreset {
  * The carry-over stays at 300 ms in all three: it only acts on a swipe faster than the game can turn.
  */
 export const FEEL_PRESETS: readonly FeelPreset[] = [
-  { id: 'sharp', name: '또렷하게', hint: '지연이 전혀 없습니다. 아주 천천히 움직일 때 시점이 조금 떨릴 수 있습니다.', set: { smoothingMs: 0, smoothingFadeRate: 0, carryMs: 300, curve: 1 } },
-  { id: 'balanced', name: '균형', hint: '천천히 움직일 땐 부드럽게, 돌릴 땐 지연 없이. 먼저 써 보기를 권합니다.', set: { smoothingMs: 12, smoothingFadeRate: 40, carryMs: 300, curve: 1 } },
-  { id: 'smooth', name: '부드럽게', hint: '기존 기본값. 항상 부드럽지만, 돌리기 시작할 때 조금 늦고 손을 멈춘 뒤에도 0.1초쯤 더 돕니다.', set: { smoothingMs: 12, smoothingFadeRate: 0, carryMs: 300, curve: 1 } },
+  { id: 'sharp', name: N_('Crisp'), hint: N_('No delay at all. The view may tremble a little when you move very slowly.'), set: { smoothingMs: 0, smoothingFadeRate: 0, carryMs: 300, curve: 1 } },
+  { id: 'balanced', name: N_('Balanced'), hint: N_('Smooth when you move slowly, no delay when you turn. Try this one first.'), set: { smoothingMs: 12, smoothingFadeRate: 40, carryMs: 300, curve: 1 } },
+  { id: 'smooth', name: N_('Smooth'), hint: N_('The old default. Always smooth, but it starts a little late when you begin to turn and runs on for about 0.1 s after your hand stops.'), set: { smoothingMs: 12, smoothingFadeRate: 0, carryMs: 300, curve: 1 } },
 ];
 
 /** The preset these values are, or null when they have been changed by hand. */

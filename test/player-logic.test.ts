@@ -2,9 +2,20 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { setLang, t } from '../src/i18n/index.ts';
 import {
-  captureName, DEFAULT_LOOK, describeClosed, formatClock, HudVisibility, initialOf, lookFilter, pickClipFormat, rateConnection, readLook, Series, timeLeft, warningsCrossed, warningText,
+  captureName, DEFAULT_LOOK, describeClosed, formatClock, HudVisibility, initialOf, lookFilter, pickClipFormat, QUALITY_TEXT, rateConnection, readLook, Series, timeLeft, warningsCrossed, warningText,
 } from '../web/player-logic.ts';
+
+/** Runs `body` with the page in Korean, and puts English back whatever happens. */
+function inKorean(body: () => void): void {
+  setLang('ko');
+  try {
+    body();
+  } finally {
+    setLang('en');
+  }
+}
 
 describe('the controls over the picture (HudVisibility)', () => {
   it('are not there before there is a picture', () => {
@@ -92,6 +103,10 @@ describe('rateConnection', () => {
   it('does not judge the frame rate when the wanted one is not known', () => {
     assert.equal(rateConnection({ ...ok, wantFps: 0, fps: 20 }), 'great');
   });
+  it('has a word for each rating, in the language of the page when it is shown', () => {
+    assert.deepEqual(Object.values(QUALITY_TEXT).map((w) => t(w)), ['Excellent', 'Good', 'Fair', 'Poor', 'No signal']);
+    inKorean(() => assert.deepEqual(Object.values(QUALITY_TEXT).map((w) => t(w)), ['매우 좋음', '좋음', '보통', '나쁨', '신호 없음']));
+  });
 });
 
 describe('Series', () => {
@@ -166,8 +181,14 @@ describe('the time left', () => {
     assert.deepEqual(warningsCrossed(300, 299), []);
   });
   it('says it in words', () => {
-    assert.match(warningText(300), /5분/);
-    assert.match(warningText(60), /1분 남았습니다/);
+    assert.equal(warningText(300), '5 min left today.');
+    assert.equal(warningText(60), '1 min left. The connection will end soon.');
+  });
+  it('says it in the language of the page', () => {
+    inKorean(() => {
+      assert.equal(warningText(300), '오늘 남은 시간이 5분입니다.');
+      assert.equal(warningText(60), '1분 남았습니다. 곧 연결이 끝납니다.');
+    });
   });
 });
 
@@ -182,11 +203,19 @@ describe('initialOf', () => {
 
 describe('describeClosed', () => {
   it('turns the connection\'s English reasons into words, and passes anything else on as it is', () => {
-    assert.match(describeClosed('disconnected'), /끊었습니다/);
-    assert.match(describeClosed(''), /끊었습니다/);
-    assert.match(describeClosed('connection failed'), /서버에 연결하지 못했습니다/);
-    assert.match(describeClosed('another client is connected'), /다른 기기/);
-    assert.equal(describeClosed('오늘 사용할 수 있는 시간이 끝났습니다'), '오늘 사용할 수 있는 시간이 끝났습니다');
+    assert.equal(describeClosed('disconnected'), 'Disconnected.');
+    assert.equal(describeClosed(''), 'Disconnected.');
+    assert.match(describeClosed('connection failed'), /^Could not reach the server\./);
+    assert.match(describeClosed('another client is connected'), /^Another device is using this PS5/);
+    assert.equal(describeClosed('Your time for today is up'), 'Your time for today is up');
+  });
+  it('says the reasons in Korean when the page is Korean, and still passes anything else on', () => {
+    inKorean(() => {
+      assert.match(describeClosed('disconnected'), /끊었습니다/);
+      assert.match(describeClosed('connection failed'), /서버에 연결하지 못했습니다/);
+      assert.match(describeClosed('another client is connected'), /다른 기기/);
+      assert.equal(describeClosed('오늘 사용할 수 있는 시간이 끝났습니다'), '오늘 사용할 수 있는 시간이 끝났습니다');
+    });
   });
 });
 

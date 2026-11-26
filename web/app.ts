@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The shell: three places and the way between them.
-//   PS5      the main page (console, route, picture)
-//   연습장    the test games that show what a keyboard and mouse do to a pad
-//   설정      input mapping, consoles, advanced
-// The picture area (#stageBox) is one element that is moved between PS5 and 연습장, because the input engine and the video
-// player both draw on the same canvas.
+//   PS5             the main page (console, route, picture)
+//   Practice range  the test games that show what a keyboard and mouse do to a pad
+//   Settings        input mapping, consoles, advanced
+// The picture area (#stageBox) is one element that is moved between PS5 and the practice range, because the input engine and
+// the video player both draw on the same canvas.
 
+// The language first: everything below draws words, and finds it set.
+import './lang.ts';
+import { locale, onLang, t } from '../src/i18n/index.ts';
 import './account-ui.ts';
 import './dev-reload.ts';
 import { setMode, type Mode } from './tester.ts';
@@ -56,12 +59,15 @@ setPane('paneGeneral');
 // Light, dark, or whatever the device says: the button in the header goes round them, the settings pick one.
 const THEME_ICON: Record<Theme, string> = { auto: '#i-auto', light: '#i-sun', dark: '#i-moon' };
 function paintTheme(): void {
-  const t = currentTheme();
-  $('themeIcon').setAttribute('href', THEME_ICON[t]);
-  $<HTMLButtonElement>('themeBtn').setAttribute('aria-label', `화면 색: ${THEME_TEXT[t]} (누르면 바뀜)`);
-  $<HTMLButtonElement>('themeBtn').title = `화면 색: ${THEME_TEXT[t]}`;
-  for (const b of document.querySelectorAll<HTMLButtonElement>('[data-theme-choice]')) b.setAttribute('aria-pressed', String(b.dataset.themeChoice === t));
+  const theme = currentTheme();
+  const name = t(THEME_TEXT[theme]);
+  $('themeIcon').setAttribute('href', THEME_ICON[theme]);
+  $<HTMLButtonElement>('themeBtn').setAttribute('aria-label', t('Screen color: {theme} (click to change)', { theme: name }));
+  $<HTMLButtonElement>('themeBtn').title = t('Screen color: {theme}', { theme: name });
+  for (const b of document.querySelectorAll<HTMLButtonElement>('[data-theme-choice]')) b.setAttribute('aria-pressed', String(b.dataset.themeChoice === theme));
 }
+// The button's words are drawn from the theme, so they follow the language too (this runs after the page's own words changed).
+onLang(paintTheme);
 $<HTMLButtonElement>('themeBtn').addEventListener('click', () => {
   const order: Theme[] = ['auto', 'light', 'dark'];
   setTheme(order[(order.indexOf(currentTheme()) + 1) % order.length]!);
@@ -92,12 +98,28 @@ setView(hash === 'lab' || hash === 'settings' ? hash : gameParam === 'fps' || ga
 $<HTMLSelectElement>('gameMode').value = labGame;
 
 // What is running, in small print at the bottom: after a push, this is how to see that the server has it.
+interface Version {
+  commit?: string;
+  subject?: string;
+  startedAt?: string;
+}
+let version: Version | null = null;
+// Kept and drawn again when the language changes: the words and the date format belong to it.
+function paintVersion(): void {
+  const el = document.getElementById('versionLine');
+  const v = version;
+  if (!el || !v?.commit) return;
+  const vars = { commit: v.commit, subject: v.subject ?? '' };
+  // h23 and not hour12: false, which some browsers write as 24:05 just after midnight.
+  el.textContent = v.startedAt
+    ? t('Version {commit} · {subject} · started {time}', { ...vars, time: new Date(v.startedAt).toLocaleString(locale(), { hourCycle: 'h23' }) })
+    : t('Version {commit} · {subject}', vars);
+}
+onLang(paintVersion);
 void fetch('/api/version')
   .then((r) => (r.ok ? r.json() : null))
-  .then((v: { commit?: string; subject?: string; startedAt?: string } | null) => {
-    const el = document.getElementById('versionLine');
-    if (!el || !v?.commit) return;
-    const t = v.startedAt ? new Date(v.startedAt).toLocaleString('ko-KR', { hour12: false }) : '';
-    el.textContent = `버전 ${v.commit} · ${v.subject ?? ''}${t ? ` · ${t}에 시작` : ''}`;
+  .then((v: Version | null) => {
+    version = v;
+    paintVersion();
   })
   .catch(() => {});

@@ -3,6 +3,7 @@
 // Small software 3D renderer for the third-person test bed: perspective projection of boxes with
 // near-plane clipping and back-face culling, painted far to near. No dependencies, runs on a 2D canvas.
 
+import { t } from '../i18n/index.ts';
 import { BUILDINGS, WORLD_SIZE, type Rgb, type TpsGame } from './tps.ts';
 
 const RAD = Math.PI / 180;
@@ -266,7 +267,7 @@ function drawHud(ctx: CanvasRenderingContext2D, game: TpsGame, w: number, h: num
   ctx.shadowBlur = 3;
   ctx.fillText(`${game.yaw.toFixed(0)}° ${game.heading8}`, cx, 14);
   ctx.textAlign = 'right';
-  ctx.fillText(`명중 ${game.hits} / 발사 ${game.shots}`, w - 8, 14);
+  ctx.fillText(t('Hits {hits} / shots {shots}', { hits: game.hits, shots: game.shots }), w - 8, 14);
   ctx.textAlign = 'left';
   ctx.fillText(`${game.movementName}  ${game.speedKmh.toFixed(0)} km/h`, 8, h - 10);
   if (!game.inVehicle && game.sprintCharge > 0.02) {

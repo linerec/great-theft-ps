@@ -4,6 +4,7 @@
 // Implementations: Ps5Link (this project's TypeScript port of Remote Play, for a real PlayStation) and CoreLink
 // (the native gtp-core process built on libchiaki, for the same). Tests use a test double (test/support/fake-link.ts).
 
+import type { Lang } from '../i18n/index.ts';
 import type { VirtualPadState } from '../engine/types.ts';
 import type { QualityRequest } from './quality.ts';
 import type { VideoHeader } from './protocol.ts';
@@ -42,6 +43,12 @@ export interface LinkStartOptions {
   mac?: string;
   /** Do not let go when another of this project's clients asks for the console (see handover.ts). */
   locked?: boolean;
+  /**
+   * The language of the person this connection is for (see src/i18n): what the link says while connecting, and why it
+   * failed, is written in it. The bridge serves many people at once, so the language travels with the connection.
+   * English when absent; links that say nothing to people leave it alone.
+   */
+  lang?: Lang;
 }
 
 export interface ConsoleLink {

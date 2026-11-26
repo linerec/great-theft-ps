@@ -61,7 +61,7 @@ Facts seen on a PS5 in rest mode (2026-11-20, macOS, home network). Identifiers 
   `~/.gtp/consoles.json` (or `$GTP_HOME`), written with owner-only permissions where the system supports it, and is never
   sent to the browser. Treat that file like a password for your console.
 - **The PSN account id.** The console wants the numeric id of your PSN account during registration. It can be typed in
-  (a decimal number, or its 8 bytes in base64), or fetched by the page ("PSN 계정 ID를 모르면 여기서 가져오기").
+  (a decimal number, or its 8 bytes in base64), or fetched by the page ("If you do not know your PSN account ID, get it here").
   Fetching is the flow chiaki-ng uses: the user logs in on Sony's own page, a one-time code in the redirect address is
   exchanged at Sony's token endpoint, and the id is read from the token info. **That exchange is authenticated with the
   client id and secret of Sony's own Remote Play application** (published by chiaki-ng), which makes it a grey area: an
@@ -75,4 +75,4 @@ Facts seen on a PS5 in rest mode (2026-11-20, macOS, home network). Identifiers 
 ## Browser-only later
 
 The same TypeScript can later run inside an Isolated Web App (Direct Sockets) or an Electron/Tauri shell, which would
-remove the bridge for desktop clients. Notes in the project docs (`05-브라우저-단독-가능성.md`).
+remove the bridge for desktop clients. Notes in the project docs (the browser-only feasibility note).

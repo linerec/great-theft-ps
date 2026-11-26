@@ -7,6 +7,7 @@
 // What a person sees afterwards: their name, the time left today (counted down here between the bridge's messages),
 // log out, and for the owner a window to invite people and set their minutes per day.
 
+import { N_, onLang, t, type Vars } from '../src/i18n/index.ts';
 import { formatClock, initialOf, timeLeft, warningsCrossed, warningText } from './player-logic.ts';
 import { dismissOnOutside, toast } from './ui.ts';
 
@@ -24,8 +25,8 @@ interface PublicUser {
 /** "1:05:09" or "5:09". */
 export const formatRemaining = formatClock;
 
-/** What a person is told about minutes: "제한 없음" or "하루 90분". */
-export const describeLimit = (minutes: number | null): string => (minutes === null ? '제한 없음' : `하루 ${minutes}분`);
+/** What a person is told about minutes: "No limit" or "90 min per day", in the language in use. */
+export const describeLimit = (minutes: number | null): string => (minutes === null ? t('No limit') : t('{minutes} min per day', { minutes }));
 
 async function call(method: string, url: string, body?: unknown): Promise<{ status: number; data: any }> {
   const res = await fetch(url, { method, headers: body !== undefined ? { 'Content-Type': 'application/json' } : {}, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
@@ -46,12 +47,32 @@ let me: PublicUser | null = null;
 const loginDialog = $<HTMLDialogElement>('loginDialog');
 let loginMode: 'login' | 'invite' = 'login';
 let inviteCode = '';
+/** Has the window been asked for (startLogin, startInvite)? Until then its words are the page's own. */
+let loginShown = false;
+/** The note under the title, as a way to say it: it is said again when the language changes. */
+let loginNote: () => string = () => '';
+/** What the window said last about a mistake (a sentence for t(), and its values), for the same reason. */
+let loginSaid: { en: string; vars: Vars | undefined; kind: 'err' | 'ok' } | null = null;
 
-function say(text: string, kind: 'err' | 'ok' = 'err'): void {
+function paintLogin(): void {
+  if (!loginShown) return;
+  $('loginTitle').textContent = loginMode === 'invite' ? t('Choose a password') : t('Log in');
+  $<HTMLButtonElement>('loginGo').textContent = loginMode === 'invite' ? t('Save password and start') : t('Log in');
+  $('loginNote').textContent = loginNote();
+  paintSaid();
+}
+
+function paintSaid(): void {
   const el = $<HTMLElement>('loginMsg');
-  el.textContent = text;
-  el.hidden = !text;
-  el.dataset.kind = kind;
+  el.textContent = loginSaid ? t(loginSaid.en, loginSaid.vars) : '';
+  el.hidden = !loginSaid;
+  el.dataset.kind = loginSaid?.kind ?? 'err';
+}
+
+/** `en` is a sentence marked with N_ (or nothing, to clear the message). */
+function say(en = '', vars?: Vars, kind: 'err' | 'ok' = 'err'): void {
+  loginSaid = en ? { en, vars, kind } : null;
+  paintSaid();
 }
 
 function showLogin(): void {
@@ -64,24 +85,26 @@ async function startInvite(code: string): Promise<void> {
   inviteCode = code;
   const info = await call('POST', '/api/invite-info', { code });
   loginMode = 'invite';
-  $('loginTitle').textContent = '비밀번호 정하기';
   $('loginNameRow').hidden = true;
   $('loginPass2Row').hidden = false;
   $<HTMLInputElement>('loginPass').autocomplete = 'new-password';
-  $<HTMLButtonElement>('loginGo').textContent = '비밀번호 저장하고 시작';
   if (info.status === 200) {
-    $('loginNote').textContent = `${info.data.name} 님, 이 기기에서 쓸 비밀번호를 정하세요 (8자 이상).`;
+    const name = String(info.data.name);
+    loginNote = () => t('{name}, choose a password for this device (at least 8 characters).', { name });
   } else {
-    $('loginNote').textContent = '이 초대 링크는 더 이상 쓸 수 없습니다. 링크는 한 번만, 48시간 안에 쓸 수 있습니다. 새 링크를 받으세요.';
+    loginNote = () => t('This invitation link can no longer be used. A link works once, within 48 hours. Ask for a new one.');
     $<HTMLButtonElement>('loginGo').disabled = true;
   }
+  loginShown = true;
+  paintLogin();
   showLogin();
 }
 
 function startLogin(needsSetup: boolean): void {
   loginMode = 'login';
-  $('loginTitle').textContent = '로그인';
-  $('loginNote').textContent = needsSetup ? '아직 아무도 등록되지 않았습니다. 서버를 처음 켤 때 출력된 초대 링크로 들어와 주인 비밀번호를 정하세요.' : '';
+  loginNote = () => (needsSetup ? t('Nobody is registered yet. Open the invitation link printed when the server was first started and set the owner password.') : '');
+  loginShown = true;
+  paintLogin();
   showLogin();
   $<HTMLInputElement>('loginName').focus();
 }
@@ -94,18 +117,18 @@ $<HTMLFormElement>('loginForm').addEventListener('submit', async (e) => {
   button.disabled = true;
   try {
     if (loginMode === 'invite') {
-      if (password !== $<HTMLInputElement>('loginPass2').value) return say('두 번 입력한 비밀번호가 다릅니다.');
+      if (password !== $<HTMLInputElement>('loginPass2').value) return say(N_('The two passwords do not match.'));
       const r = await call('POST', '/api/accept-invite', { code: inviteCode, password });
-      if (r.status !== 200) return say(r.data?.error === 'bad-password' ? '비밀번호는 8자 이상이어야 합니다.' : '이 초대 링크는 더 이상 쓸 수 없습니다.');
+      if (r.status !== 200) return say(r.data?.error === 'bad-password' ? N_('The password must be at least 8 characters.') : N_('This invitation link can no longer be used.'));
       history.replaceState(null, '', location.pathname + location.search);
     } else {
       const r = await call('POST', '/api/login', { name: $<HTMLInputElement>('loginName').value.trim(), password });
-      if (r.status === 429) return say(`시도가 너무 많습니다. ${r.data?.retryAfterSeconds ?? 30}초 뒤에 다시 하세요.`);
-      if (r.status !== 200) return say('이름이나 비밀번호가 맞지 않습니다.');
+      if (r.status === 429) return say(N_('Too many attempts. Try again in {seconds} seconds.'), { seconds: r.data?.retryAfterSeconds ?? 30 });
+      if (r.status !== 200) return say(N_('The name or password is wrong.'));
     }
     location.reload();
   } catch {
-    say('서버에 연결하지 못했습니다.');
+    say(N_('Could not connect to the server.'));
   } finally {
     $<HTMLInputElement>('loginPass').value = '';
     $<HTMLInputElement>('loginPass2').value = '';
@@ -123,8 +146,8 @@ let streaming = false;
 let lastLeft: number | null = null;
 
 function paintTime(): void {
-  const el = $<HTMLElement>('acctTime');
   if (!me) return;
+  const el = $<HTMLElement>('acctTime');
   const quota = $<HTMLElement>('acctQuota');
   if (remaining === null) {
     el.textContent = describeLimit(me.dailyMinutes);
@@ -134,7 +157,7 @@ function paintTime(): void {
     return;
   }
   const left = timeLeft({ remaining, heardAt: remainingAt, now: Date.now(), streaming }) ?? 0;
-  el.textContent = `남은 시간 ${formatRemaining(left)}`;
+  el.textContent = t('Time left {time}', { time: formatRemaining(left) });
   el.className = left <= 60 ? 'chip off' : left <= 300 ? 'chip wait' : 'chip good';
   // The menu shows it as a bar of the day's minutes.
   quota.hidden = false;
@@ -181,12 +204,16 @@ acctBtn.addEventListener('click', () => {
   stopDismiss = open ? dismissOnOutside(acctMenu, acctBtn, () => openMenu(false)) : null;
 });
 
+function paintRole(): void {
+  if (me) $('acctRole').textContent = me.role === 'owner' ? t('Owner · no time limit') : describeLimit(me.dailyMinutes);
+}
+
 function showMe(user: PublicUser, remainingSeconds: number | null): void {
   me = user;
   $('acct').hidden = false;
   $('acctName').textContent = user.name;
   $('acctMenuName').textContent = user.name;
-  $('acctRole').textContent = user.role === 'owner' ? '주인 · 시간 제한 없음' : describeLimit(user.dailyMinutes);
+  paintRole();
   $('acctAvatar').textContent = $('acctAvatar2').textContent = initialOf(user.name);
   $<HTMLButtonElement>('acctUsers').hidden = user.role !== 'owner';
   setRemaining(remainingSeconds);
@@ -224,19 +251,23 @@ function button(label: string, onClick: () => void, cls = 'btn small'): HTMLButt
   return b;
 }
 
+/** The invitation link on show, to be shown again when the language changes. */
+let invited: { name: string; code: string } | null = null;
+
 function showInviteLink(name: string, code: string): void {
+  invited = { name, code };
   const url = `${location.origin}/#invite=${code}`;
   const box = $<HTMLElement>('usersInvite');
   box.hidden = false;
   box.replaceChildren();
   const p = document.createElement('p');
-  p.textContent = `${name} 님에게 이 링크를 보내세요. 한 번만, 48시간 안에 쓸 수 있고, 열면 비밀번호를 직접 정합니다.`;
+  p.textContent = t('Send this link to {name}. It works once, within 48 hours, and opening it lets them choose their own password.', { name });
   const input = document.createElement('input');
   input.type = 'text';
   input.readOnly = true;
   input.value = url;
   input.addEventListener('focus', () => input.select());
-  const copy = button('복사', () => void navigator.clipboard?.writeText(url).then(() => (copy.textContent = '복사했습니다')));
+  const copy = button(t('Copy'), () => void navigator.clipboard?.writeText(url).then(() => (copy.textContent = t('Copied'))));
   box.append(p, input, copy);
 }
 
@@ -244,13 +275,13 @@ async function refreshUsers(): Promise<void> {
   const r = await call('GET', '/api/users');
   const body = $<HTMLTableSectionElement>('usersBody');
   body.replaceChildren();
-  if (r.status !== 200) return void (body.append(cell('목록을 불러오지 못했습니다.')));
+  if (r.status !== 200) return void (body.append(cell(t('The list could not be loaded.'))));
   for (const u of r.data.users as PublicUser[]) {
     const tr = document.createElement('tr');
-    tr.append(cell(u.role === 'owner' ? `${u.name} (주인)` : u.name));
+    tr.append(cell(u.role === 'owner' ? t('{name} (owner)', { name: u.name }) : u.name));
     const minutes = document.createElement('td');
     if (u.role === 'owner') {
-      minutes.textContent = '제한 없음';
+      minutes.textContent = t('No limit');
     } else {
       const input = document.createElement('input');
       input.type = 'number';
@@ -258,34 +289,34 @@ async function refreshUsers(): Promise<void> {
       input.max = '1440';
       input.step = '5';
       input.value = u.dailyMinutes === null ? '' : String(u.dailyMinutes);
-      input.placeholder = '제한 없음';
-      input.setAttribute('aria-label', `${u.name} 하루 사용 시간(분)`);
-      const save = button('저장', async () => {
+      input.placeholder = t('No limit');
+      input.setAttribute('aria-label', t('Daily time for {name} (minutes)', { name: u.name }));
+      const save = button(t('Save'), async () => {
         const v = input.value.trim();
         const res = await call('POST', '/api/users/minutes', { name: u.name, minutes: v === '' ? null : Number(v) });
-        save.textContent = res.status === 200 ? '저장했습니다' : '실패';
+        save.textContent = res.status === 200 ? t('Saved') : t('Failed');
         setTimeout(() => void refreshUsers(), 900);
       });
-      minutes.append(input, document.createTextNode(' 분 '), save);
+      minutes.append(input, document.createTextNode(` ${t('min')} `), save);
     }
     tr.append(minutes);
-    tr.append(cell(u.usedSecondsToday > 0 ? `${Math.round(u.usedSecondsToday / 60)}분` : '-'));
-    tr.append(cell(u.disabled ? '정지됨' : u.active ? '사용 중' : '초대 대기', u.disabled ? 'bad' : ''));
+    tr.append(cell(u.usedSecondsToday > 0 ? t('{minutes} min', { minutes: Math.round(u.usedSecondsToday / 60) }) : '-'));
+    tr.append(cell(u.disabled ? t('Suspended') : u.active ? t('Active') : t('Invite pending'), u.disabled ? 'bad' : ''));
     const actions = document.createElement('td');
     if (u.role !== 'owner') {
       actions.append(
-        button('초대 링크', async () => {
+        button(t('Invite link'), async () => {
           const res = await call('POST', '/api/users/invite', { name: u.name });
           if (res.status === 200) showInviteLink(u.name, res.data.code);
         }),
         document.createTextNode(' '),
-        button(u.disabled ? '다시 허용' : '정지', async () => {
+        button(u.disabled ? t('Allow again') : t('Suspend'), async () => {
           await call('POST', '/api/users/disable', { name: u.name, disabled: !u.disabled });
           void refreshUsers();
         }),
         document.createTextNode(' '),
-        button('삭제', async () => {
-          if (!confirm(`${u.name} 님을 삭제할까요?`)) return;
+        button(t('Delete'), async () => {
+          if (!confirm(t('Delete {name}?', { name: u.name }))) return;
           await call('POST', '/api/users/remove', { name: u.name });
           void refreshUsers();
         }, 'btn small ghost'),
@@ -299,22 +330,31 @@ async function refreshUsers(): Promise<void> {
 $<HTMLButtonElement>('acctUsers').addEventListener('click', () => {
   openMenu(false);
   $<HTMLElement>('usersInvite').hidden = true;
+  invited = null;
   usersDialog.showModal();
   void refreshUsers();
 });
+/** What the owner's window said last about a mistake (a sentence for t()), to say it again when the language changes. */
+let usersSaid: string | null = null;
+function paintUsersMsg(): void {
+  const msg = $<HTMLElement>('usersMsg');
+  if (usersSaid) msg.textContent = t(usersSaid);
+  msg.hidden = !usersSaid;
+}
+
 $<HTMLButtonElement>('usersClose').addEventListener('click', () => usersDialog.close());
 $<HTMLFormElement>('usersAdd').addEventListener('submit', async (e) => {
   e.preventDefault();
   const name = $<HTMLInputElement>('usersNewName').value.trim();
   const v = $<HTMLInputElement>('usersNewMinutes').value.trim();
   const r = await call('POST', '/api/users/invite', { name, minutes: v === '' ? null : Number(v) });
-  const msg = $<HTMLElement>('usersMsg');
   if (r.status !== 200) {
-    msg.textContent = r.data?.error === 'bad-name' ? '이름은 글자·숫자·-·_ 로 24자까지입니다.' : '초대하지 못했습니다.';
-    msg.hidden = false;
+    usersSaid = r.data?.error === 'bad-name' ? N_('A name can use letters, digits, - and _, up to 24 characters.') : N_('Could not create the invitation.');
+    paintUsersMsg();
     return;
   }
-  msg.hidden = true;
+  usersSaid = null;
+  paintUsersMsg();
   $<HTMLInputElement>('usersNewName').value = '';
   showInviteLink(name, r.data.code);
   void refreshUsers();
@@ -331,6 +371,18 @@ window.fetch = async (...args: Parameters<typeof fetch>) => {
   }
   return res;
 };
+
+// What was written once and kept (the person's role, the time left, the login window's note, the open list) is written again.
+onLang(() => {
+  paintLogin();
+  paintRole();
+  paintTime();
+  if (usersDialog.open) {
+    void refreshUsers();
+    if (invited) showInviteLink(invited.name, invited.code);
+    paintUsersMsg();
+  }
+});
 
 void (async () => {
   const invite = new URLSearchParams(location.hash.slice(1)).get('invite');

@@ -91,7 +91,7 @@ The sources agree on this for a stick that is driven by a mouse: **look sensitiv
 aim acceleration at the highest setting** (by the quoted definition it makes the speed reach its maximum sooner, so the
 stick answers more like a fixed table; to be checked by eye in the game's menu), and Free Aim if the reticle slow-down near
 targets is in the way. After changing any of
-them the measuring in the panel ("게임에 맞게 자동 보정") should be run again.
+them the measuring in the panel ("Auto-calibrate to the game") should be run again.
 
 Open: the measuring tool has never been run on a real game, and it measures a steady push; GTA V's ramp-up is not in it. A
 step response (how the speed grows over the first half second of a held stick) would show how much the acceleration setting

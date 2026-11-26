@@ -6,7 +6,8 @@
 import { getBridgeToken, setConsoleMac, whyNoApi } from './tester.ts';
 import { describeClosed } from './player-logic.ts';
 import { save, saved } from './ui.ts';
-import { detectRoute, PATHS, pathById, STEPS, VERDICTS, type PathId, type RoutePath, type StepId } from './routes.ts';
+import { N_, onLang, t } from '../src/i18n/index.ts';
+import { detectRoute, PATHS, pathById, STEPS, VERDICTS, type PathId, type RoutePath, type StepId, type Zone } from './routes.ts';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -83,8 +84,8 @@ async function load(): Promise<void> {
   autoConnect();
 }
 
-// "Open the page and it connects" (settings → 일반): once per page load, only when asked for, only from the PS5 page, and only
-// when the one button says "연결" or "깨우고 연결" (so never over a stream, never without a registered console).
+// "Open the page and it connects" (settings, General): once per page load, only when asked for, only from the PS5 page, and only
+// when the one button says "Connect" or "Wake and connect" (so never over a stream, never without a registered console).
 let autoTried = false;
 function autoConnect(): void {
   if (autoTried) return;
@@ -95,7 +96,7 @@ function autoConnect(): void {
   if (S.link.state !== 'idle') return;
   const c = cta();
   if (c.disabled || !c.kind || c.kind !== 'primary') return;
-  if (c.label === '연결' || c.label === '깨우고 연결') void c.run();
+  if (c.label === t('Connect') || c.label === t('Wake and connect')) void c.run();
 }
 
 // ------------------------------------------------------------------ the one button
@@ -104,14 +105,14 @@ type Cta = { label: string; note: string; disabled?: boolean; kind?: 'primary' |
 
 function cta(): Cta {
   const c = selectedConsole();
-  if (!S.apiOk) return { label: '브리지에 연결할 수 없음', note: whyNoApi(S.lastApi), disabled: true, run: () => {} };
-  if (!c) return { label: '콘솔 등록하기', note: '처음 한 번만 합니다. 콘솔의 기기 연결 화면과 8자리 코드가 필요합니다.', run: () => $<HTMLDialogElement>('addDialog').showModal() };
+  if (!S.apiOk) return { label: t('Cannot reach the bridge'), note: whyNoApi(S.lastApi), disabled: true, run: () => {} };
+  if (!c) return { label: t('Register a console'), note: t('You only do this once. You need the "Link Device" screen on the console and its 8-digit code.'), run: () => $<HTMLDialogElement>('addDialog').showModal() };
   const p = S.presence[c.mac] ?? 'checking';
   if (S.link.state === 'ready' || S.link.state === 'connecting') {
-    return { label: '연결 끊기', note: S.link.state === 'connecting' ? '연결하는 중…' : '연결됨', kind: 'quiet', run: () => $<HTMLButtonElement>('bridgeDisconnect').click() };
+    return { label: t('Disconnect'), note: S.link.state === 'connecting' ? t('Connecting…') : t('Connected'), kind: 'quiet', run: () => $<HTMLButtonElement>('bridgeDisconnect').click() };
   }
-  if (p === 'checking') return { label: '콘솔을 찾는 중…', note: '', disabled: true, run: () => {} };
-  if (p === 'absent') return { label: '다시 찾기', note: '그 주소에서 PS5가 응답하지 않습니다. 켜져 있는지, 같은 네트워크인지 확인하세요.', kind: 'quiet', run: () => probe(c) };
+  if (p === 'checking') return { label: t('Looking for the console…'), note: '', disabled: true, run: () => {} };
+  if (p === 'absent') return { label: t('Search again'), note: t('The PS5 does not answer at that address. Check that it is on and on the same network.'), kind: 'quiet', run: () => probe(c) };
   const connect = (): void => {
     setConsoleMac(c.mac);
     $<HTMLButtonElement>('bridgeConnect').click();
@@ -120,28 +121,32 @@ function cta(): Cta {
   // home too it is one press: it wakes it, waits until it answers, and connects.
   if (p === 'standby') {
     return {
-      label: '깨우고 연결', kind: 'primary',
-      note: 'PS5가 대기 모드입니다. 누르면 깨운 뒤 연결합니다. 켜지는 데 잠시 걸립니다. PS5 설정의 "네트워크에서 PS5 켜기"가 켜져 있어야 합니다.',
+      label: t('Wake and connect'), kind: 'primary',
+      note: t('The PS5 is in rest mode. Pressing this wakes it and then connects. It takes a moment to turn on. "Enable Turning On PS5 from Network" must be on in the PS5 settings.'),
       run: connect,
     };
   }
   // No separate "check" step: connecting is the check, and a session request that is not followed up keeps the console
   // "in use" for half a minute (measured on a real PS5).
   return {
-    label: '연결', kind: 'primary',
-    note: 'PS5 화면을 띄웁니다. 화면을 클릭하면 키보드와 마우스가 PS5로 전달됩니다 (Esc로 해제). 음성은 아직 없습니다.',
+    label: t('Connect'), kind: 'primary',
+    note: t('Shows the PS5 screen. Click the screen and the keyboard and mouse go to the PS5 (Esc lets go). There is no sound yet.'),
     run: connect,
   };
 }
 
 // ------------------------------------------------------------------ rendering
 
+/** `text` is a sentence for t(). */
 const PRESENCE: Record<Presence, { text: string; kind: string }> = {
-  checking: { text: '확인 중', kind: 'wait' },
-  ready: { text: '켜짐', kind: 'on' },
-  standby: { text: '대기 모드', kind: 'idle' },
-  absent: { text: '응답 없음', kind: 'off' },
+  checking: { text: N_('Checking'), kind: 'wait' },
+  ready: { text: N_('On'), kind: 'on' },
+  standby: { text: N_('Rest mode'), kind: 'idle' },
+  absent: { text: N_('No answer'), kind: 'off' },
 };
+
+/** The zones of a route, for t(). */
+const ZONE_NAMES: Record<Zone, string> = { home: N_('At home'), away: N_('Outside'), cloud: N_('Internet') };
 
 function renderConsoles(): void {
   const box = $<HTMLElement>('ps5Consoles');
@@ -149,8 +154,8 @@ function renderConsoles(): void {
   if (S.consoles.length === 0) {
     const empty = el('div', 'empty');
     empty.append(
-      el('strong', '', S.apiOk ? '등록된 PS5가 없습니다' : '브리지에 연결되지 않았습니다'),
-      el('span', '', S.apiOk ? '아래 버튼으로 한 번만 등록하면 됩니다.' : '이 주소에서는 콘솔 목록을 가져올 수 없습니다.'),
+      el('strong', '', S.apiOk ? t('No PS5 registered') : t('Not connected to the bridge')),
+      el('span', '', S.apiOk ? t('Register it once with the button below.') : t('The console list cannot be loaded from this address.')),
     );
     box.append(empty);
     return;
@@ -161,9 +166,9 @@ function renderConsoles(): void {
     b.type = 'button';
     b.setAttribute('aria-pressed', String(c.mac === (selectedConsole()?.mac ?? '')));
     const top = el('span', 'console-top');
-    top.append(el('span', 'console-name', c.nickname || 'PS5'), el('span', `chip ${p.kind}`, p.text));
+    top.append(el('span', 'console-name', c.nickname || 'PS5'), el('span', `chip ${p.kind}`, t(p.text)));
     const meta = el('span', 'console-meta');
-    meta.append(el('span', '', `${c.target.toUpperCase().replace('-', ' ')} · ${c.host}`), el('span', `chip ${c.verifiedAt ? 'good' : 'idle'}`, c.verifiedAt ? '✔ 등록 확인됨' : '등록만 됨'));
+    meta.append(el('span', '', `${c.target.toUpperCase().replace('-', ' ')} · ${c.host}`), el('span', `chip ${c.verifiedAt ? 'good' : 'idle'}`, c.verifiedAt ? t('✔ Registration confirmed') : t('Registered only')));
     b.append(top, meta);
     b.addEventListener('click', () => {
       S.selected = c.mac;
@@ -179,11 +184,11 @@ function renderSteps(): void {
   const c = selectedConsole();
   const p = c ? S.presence[c.mac] : undefined;
   const steps: Array<[string, StepState]> = [
-    ['브리지', S.apiOk ? 'done' : 'now'],
-    ['콘솔 발견', !c ? 'todo' : p === 'ready' || p === 'standby' ? 'done' : p === 'absent' ? 'now' : 'todo'],
-    ['등록', c ? 'done' : S.apiOk ? 'now' : 'todo'],
-    ['연결', S.link.state === 'ready' ? 'done' : c && (p === 'ready' || p === 'standby') ? 'now' : 'todo'],
-    ['화면·입력', S.link.state === 'ready' ? 'done' : 'todo'],
+    [t('Bridge'), S.apiOk ? 'done' : 'now'],
+    [t('Console discovery'), !c ? 'todo' : p === 'ready' || p === 'standby' ? 'done' : p === 'absent' ? 'now' : 'todo'],
+    [t('Register'), c ? 'done' : S.apiOk ? 'now' : 'todo'],
+    [t('Connect'), S.link.state === 'ready' ? 'done' : c && (p === 'ready' || p === 'standby') ? 'now' : 'todo'],
+    [t('Picture and input'), S.link.state === 'ready' ? 'done' : 'todo'],
   ];
   const ol = $<HTMLElement>('ps5Steps');
   ol.textContent = '';
@@ -198,14 +203,14 @@ function renderSteps(): void {
 function renderCta(): void {
   const c = cta();
   const b = $<HTMLButtonElement>('ps5Cta');
-  b.textContent = S.busy ? '확인하는 중…' : c.label;
+  b.textContent = S.busy ? t('Checking…') : c.label;
   b.disabled = !!c.disabled || S.busy;
   b.className = `btn ${c.kind ?? 'primary'}`;
   b.onclick = () => void c.run();
   // The same button, big, in the middle of the picture: before the stream there is one thing to do and it is there.
   const big = $<HTMLButtonElement>('ps5Cta2');
   const connecting = S.link.state === 'connecting';
-  big.textContent = S.busy ? '확인하는 중…' : connecting ? '취소' : S.link.state === 'closed' && c.label === '연결' ? '다시 연결' : c.label;
+  big.textContent = S.busy ? t('Checking…') : connecting ? t('Cancel') : S.link.state === 'closed' && c.label === t('Connect') ? t('Reconnect') : c.label;
   big.disabled = !!c.disabled || S.busy;
   big.className = `btn ${c.kind ?? 'primary'} big`;
   big.onclick = () => void c.run();
@@ -229,12 +234,13 @@ export function drawRoute(box: HTMLElement, path: RoutePath, step: StepId, verti
   path.nodes.forEach((n, i) => {
     const d = el('div', `node${n.ps5 ? ' ps5' : ''}`);
     d.dataset.zone = n.zone;
-    d.append(el('span', 'zone', n.zone === 'home' ? '집' : n.zone === 'away' ? '밖' : '인터넷'), el('span', 'ttl', n.title), el('span', 'sub', n.sub));
+    d.append(el('span', 'zone', t(ZONE_NAMES[n.zone])), el('span', 'ttl', t(n.title)), el('span', 'sub', t(n.sub)));
     box.append(d);
     if (i < path.nodes.length - 1) {
       const l = el('div', 'link');
       l.dataset.v = st.v;
-      l.append(el('span', 'lab', st.labels[i] ?? ''), el('span', 'wire'), el('span', 'mark', VERDICTS[st.v].symbol));
+      const label = st.labels[i];
+      l.append(el('span', 'lab', label ? t(label) : ''), el('span', 'wire'), el('span', 'mark', VERDICTS[st.v].symbol));
       box.append(l);
     }
   });
@@ -247,10 +253,10 @@ function currentGuess(): { id: PathId; reason: string } {
 function renderRouteCard(): void {
   const g = currentGuess();
   const path = pathById(g.id);
-  $<HTMLElement>('routeName').textContent = path.name;
-  $<HTMLElement>('routeReason').textContent = `${g.reason} (추정입니다)`;
+  $<HTMLElement>('routeName').textContent = t(path.name);
+  $<HTMLElement>('routeReason').textContent = t('{reason} (this is a guess)', { reason: g.reason });
   drawRoute($<HTMLElement>('routeDiagram'), path, 'session', true); // the card is narrow: top to bottom
-  $<HTMLElement>('routeStatus').textContent = path.status;
+  $<HTMLElement>('routeStatus').textContent = t(path.status);
 }
 
 /** What the middle of the picture says before the stream, while it starts, and after it ends. */
@@ -262,14 +268,14 @@ function renderStage(): void {
   const state = S.link.state === 'connecting' ? 'connecting' : S.link.state === 'closed' ? 'closed' : 'idle';
   overlay.dataset.state = state;
   const presence = c ? PRESENCE[S.presence[c.mac] ?? 'checking'] : null;
-  $<HTMLElement>('heroTitle').textContent = !S.apiOk ? '서버에 연결되지 않았습니다' : !c ? 'PS5를 등록하세요' : state === 'connecting' ? `${c.nickname || 'PS5'}에 연결하는 중` : state === 'closed' ? '연결이 끝났습니다' : c.nickname || 'PS5';
+  $<HTMLElement>('heroTitle').textContent = !S.apiOk ? t('Not connected to the server') : !c ? t('Register your PS5') : state === 'connecting' ? t('Connecting to {name}', { name: c.nickname || 'PS5' }) : state === 'closed' ? t('The connection has ended') : c.nickname || 'PS5';
   $<HTMLElement>('heroSub').textContent =
-    state === 'connecting' ? (S.link.detail.startsWith('connecting: ') ? S.link.detail.slice(12) : '잠시만 기다려 주세요…')
+    state === 'connecting' ? (S.link.detail.startsWith('connecting: ') ? S.link.detail.slice(12) : t('Please wait…'))
     : state === 'closed' ? describeClosed(S.link.detail)
-    : c && presence ? `${presence.text} · ${c.target.toUpperCase().replace('-', ' ')}`
+    : c && presence ? `${t(presence.text)} · ${c.target.toUpperCase().replace('-', ' ')}`
     : '';
-  $<HTMLElement>('heroNote').textContent = state === 'idle' ? cta().note : state === 'connecting' ? '대기 모드면 깨우는 데 10~20초 걸립니다.' : '';
-  $<HTMLElement>('ps5Badge').textContent = S.link.name === 'core' ? 'gtp-core' : '실제 PS5';
+  $<HTMLElement>('heroNote').textContent = state === 'idle' ? cta().note : state === 'connecting' ? t('If it is in rest mode, waking it takes 10 to 20 seconds.') : '';
+  $<HTMLElement>('ps5Badge').textContent = S.link.name === 'core' ? 'gtp-core' : t('Real PS5');
 }
 
 function render(): void {
@@ -289,12 +295,12 @@ export function renderExplorer(): void {
   root.textContent = '';
   const layout = el('div', 'explorer');
   const picker = el('nav', 'picker');
-  picker.setAttribute('aria-label', '접속 경로');
+  picker.setAttribute('aria-label', t('Connection routes'));
   for (const p of PATHS) {
     const b = el('button');
     b.type = 'button';
     b.setAttribute('aria-pressed', String(p.id === EX.path));
-    b.append(el('span', 'tag', p.tag), el('span', 'name', p.name), el('small', '', p.sub));
+    b.append(el('span', 'tag', t(p.tag)), el('span', 'name', t(p.name)), el('small', '', t(p.sub)));
     b.addEventListener('click', () => {
       EX.path = p.id;
       renderExplorer();
@@ -304,7 +310,7 @@ export function renderExplorer(): void {
   const main = el('div', 'explorer-main');
   const tabs = el('div', 'tabs');
   for (const s of STEPS) {
-    const b = el('button', '', s.title);
+    const b = el('button', '', t(s.title));
     b.type = 'button';
     b.setAttribute('aria-pressed', String(s.id === EX.step));
     b.addEventListener('click', () => {
@@ -318,39 +324,39 @@ export function renderExplorer(): void {
   const diagram = el('div');
   drawRoute(diagram, path, EX.step);
   const verdict = el('div', 'verdict');
-  const pill = el('span', 'pill', `${VERDICTS[st.v].symbol} ${VERDICTS[st.v].title}`);
+  const pill = el('span', 'pill', `${VERDICTS[st.v].symbol} ${t(VERDICTS[st.v].title)}`);
   pill.dataset.v = st.v;
-  verdict.append(pill, el('span', 'proto', st.proto));
+  verdict.append(pill, el('span', 'proto', t(st.proto)));
   const facts = el('div', 'facts');
-  for (const [h, t] of [['필요한 것', path.needs], ['주의', path.watch], ['이 프로젝트 상태', path.status]] as const) {
+  for (const [heading, text] of [[t('What it needs'), path.needs], [t('Watch out'), path.watch], [t('Status in this project'), path.status]] as const) {
     const d = el('div');
-    d.append(el('h3', '', h), el('p', '', t));
+    d.append(el('h3', '', heading), el('p', '', t(text)));
     facts.append(d);
   }
-  main.append(tabs, diagram, verdict, el('p', 'note', st.note), facts, matrix());
+  main.append(tabs, diagram, verdict, el('p', 'note', t(st.note)), facts, matrix());
   layout.append(picker, main);
   root.append(layout);
 }
 
 function matrix(): HTMLElement {
   const wrap = el('div', 'matrixwrap');
-  const t = el('table');
+  const table = el('table');
   const head = el('tr');
   head.append(el('th'));
-  for (const s of STEPS) head.append(el('th', '', s.title));
-  t.append(head);
+  for (const s of STEPS) head.append(el('th', '', t(s.title)));
+  table.append(head);
   for (const p of PATHS) {
     const tr = el('tr');
-    const rh = el('th', 'rowh', p.name);
+    const rh = el('th', 'rowh', t(p.name));
     rh.scope = 'row';
     tr.append(rh);
     for (const s of STEPS) {
       const v = p.steps[s.id].v;
       const td = el('td');
-      const b = el('button', '', `${VERDICTS[v].symbol} ${VERDICTS[v].short}`);
+      const b = el('button', '', `${VERDICTS[v].symbol} ${t(VERDICTS[v].short)}`);
       b.type = 'button';
       b.dataset.v = v;
-      b.title = `${p.name} · ${s.title}: ${VERDICTS[v].title}`;
+      b.title = `${t(p.name)} · ${t(s.title)}: ${t(VERDICTS[v].title)}`;
       if (p.id === EX.path && s.id === EX.step) b.setAttribute('aria-current', 'true');
       b.addEventListener('click', () => {
         EX.path = p.id;
@@ -360,11 +366,11 @@ function matrix(): HTMLElement {
       td.append(b);
       tr.append(td);
     }
-    t.append(tr);
+    table.append(tr);
   }
-  wrap.append(t);
+  wrap.append(table);
   const legend = el('div', 'legend');
-  for (const v of Object.values(VERDICTS)) legend.append(el('span', '', `${v.symbol} ${v.title}`));
+  for (const v of Object.values(VERDICTS)) legend.append(el('span', '', `${v.symbol} ${t(v.title)}`));
   wrap.append(legend);
   return wrap;
 }
@@ -399,6 +405,12 @@ document.addEventListener('gtp:open-add', () => $<HTMLDialogElement>('addDialog'
 document.addEventListener('gtp:open-routes', () => {
   renderExplorer();
   $<HTMLDialogElement>('routeDialog').showModal();
+});
+
+// The words on this page are drawn from the state each time, so drawing again is all it takes (and the map of routes, if it is open).
+onLang(() => {
+  render();
+  if ($<HTMLDialogElement>('routeDialog').open) renderExplorer();
 });
 
 render();

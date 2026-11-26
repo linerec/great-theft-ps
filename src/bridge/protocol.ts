@@ -148,7 +148,8 @@ export function decodePong(buf: Uint8Array): { clientTime: number; bridgeTime: n
 // ------------------------------------------------------------------ control messages (JSON text frames)
 
 export type ClientControl =
-  | { type: 'hello'; token?: string; console?: string; client: string; quality?: unknown; lock?: boolean }
+  /** `lang` is the language the person reads (see src/i18n): what the bridge says to them is in it. Untrusted: anything that is not a known language means English. */
+  | { type: 'hello'; token?: string; console?: string; client: string; quality?: unknown; lock?: boolean; lang?: unknown }
   /** Lock or unlock this connection: a locked one does not let go when another of this project's clients asks for the console. */
   | { type: 'lock'; locked: boolean }
   | { type: 'quality'; preset?: string; width?: number; height?: number; fps?: number; bitrateKbps?: number; codec?: string }

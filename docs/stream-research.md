@@ -55,8 +55,8 @@ GET /api/handover                whether this client hands the console over to t
 
 | Where | Setting | What it does |
 |---|---|---|
-| page, "표시" (or `?playout=`) | `smooth` / `balanced` / `immediate` / a number | paced playout with up to 100 ms or 50 ms of delay, showing on arrival, or a fixed delay in ms |
-| page, "화질" (or `?quality=`) | `saver`, `balanced`, `low-latency`, `quality` | 640x360@30 to 1920x1080@60; fixed when the stream starts |
+| page, "Display mode" (or `?playout=`) | `smooth` / `balanced` / `immediate` / a number | paced playout with up to 100 ms or 50 ms of delay, showing on arrival, or a fixed delay in ms |
+| page, "Quality" (or `?quality=`) | `saver`, `balanced`, `low-latency`, `quality` | 640x360@30 to 1920x1080@60; fixed when the stream starts |
 | `/api/stream/tuning` | `enableIdrOnFecFailure` | ask for a key frame when error correction fails (the reference's option; off by default) |
 | | `packetLossMax` | the most loss reported to the console per interval (default 0.05, the reference's value) |
 | | `congestionIntervalMs`, `heartbeatIntervalMs` | how often loss is reported (200) and the keep-alive is sent (1000) |

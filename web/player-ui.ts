@@ -6,6 +6,7 @@
 // tested; this file is the part that needs a browser. The input itself stays in tester.ts.
 
 import { QUALITY_PRESETS, type QualityPreset } from '../src/bridge/quality.ts';
+import { onLang, t } from '../src/i18n/index.ts';
 import {
   captureName, DEFAULT_LOOK, formatClock, HudVisibility, lookFilter, MAX_CLIP_SECONDS, pickClipFormat, QUALITY_BARS, QUALITY_TEXT, rateConnection, readLook, Series, type PictureLook,
 } from './player-logic.ts';
@@ -70,7 +71,7 @@ async function enterFull(): Promise<void> {
   paintFull();
   if (keyboardLocked && live && !toldAboutEsc) {
     toldAboutEsc = true;
-    toast('전체 화면 중입니다. Esc는 마우스를 풀고, 길게 누르면 전체 화면이 꺼집니다.', 'info', 5000);
+    toast(t('Full screen. Esc releases the mouse; hold it to leave full screen.'), 'info', 5000);
   }
 }
 
@@ -100,7 +101,7 @@ const toggleFull = (): Promise<void> => (isFull() ? exitFull() : enterFull());
 function paintFull(): void {
   const on = isFull();
   $<HTMLButtonElement>('hudFull').setAttribute('aria-pressed', String(on));
-  $<HTMLButtonElement>('hudFull').title = on ? '전체 화면 끄기 (F)' : '전체 화면 (F)';
+  $<HTMLButtonElement>('hudFull').title = on ? t('Exit full screen (F)') : t('Full screen (F)');
   $('hudFullIcon').setAttribute('href', on ? '#i-shrink' : '#i-expand');
   $('heroFullIcon').setAttribute('href', on ? '#i-shrink' : '#i-expand');
   $<HTMLButtonElement>('heroFull').setAttribute('aria-pressed', String(on));
@@ -131,10 +132,14 @@ document.addEventListener('gtp:toggle-fullscreen', () => void toggleFull());
 // ------------------------------------------------------------------ a wider picture
 
 const theaterBtn = $<HTMLButtonElement>('hudTheater');
+function paintTheater(): void {
+  const on = document.body.classList.contains('theater');
+  theaterBtn.setAttribute('aria-pressed', String(on));
+  theaterBtn.title = on ? t('Turn off wide view (T)') : t('Wide view (T)');
+}
 function setTheater(on: boolean): void {
   document.body.classList.toggle('theater', on);
-  theaterBtn.setAttribute('aria-pressed', String(on));
-  theaterBtn.title = on ? '넓게 보기 끄기 (T)' : '넓게 보기 (T)';
+  paintTheater();
   save('gtp.theater', on ? '1' : '0');
 }
 setTheater(saved('gtp.theater') === '1');
@@ -191,14 +196,14 @@ for (const p of FEEL_PRESETS) {
   const b = document.createElement('button');
   b.type = 'button';
   b.dataset.preset = p.id;
-  b.textContent = p.name;
+  b.textContent = t(p.name);
   b.addEventListener('click', () => mouseFeel.set(p.set));
   feelPresets.append(b);
 }
 const feelSliders = [
   { input: $<HTMLInputElement>('qSens'), out: $<HTMLOutputElement>('q_sens'), key: 'degPerCount', text: (v: number) => v.toFixed(3) },
   { input: $<HTMLInputElement>('qSmooth'), out: $<HTMLOutputElement>('q_smooth'), key: 'smoothingMs', text: (v: number) => v.toFixed(0) },
-  { input: $<HTMLInputElement>('qFade'), out: $<HTMLOutputElement>('q_fade'), key: 'smoothingFadeRate', text: (v: number) => (v === 0 ? '안 함' : v.toFixed(0)) },
+  { input: $<HTMLInputElement>('qFade'), out: $<HTMLOutputElement>('q_fade'), key: 'smoothingFadeRate', text: (v: number) => (v === 0 ? t('Off') : v.toFixed(0)) },
   { input: $<HTMLInputElement>('qCarry'), out: $<HTMLOutputElement>('q_carry'), key: 'carryMs', text: (v: number) => v.toFixed(0) },
 ] as const;
 for (const sl of feelSliders) sl.input.addEventListener('input', () => mouseFeel.set({ [sl.key]: Number(sl.input.value) }));
@@ -211,8 +216,13 @@ function paintFeel(): void {
     sl.out.textContent = sl.text(f[sl.key]);
   }
   const now = presetOf(f);
-  for (const b of feelPresets.querySelectorAll<HTMLButtonElement>('button')) b.setAttribute('aria-pressed', String(b.dataset.preset === now));
-  feelHint.textContent = FEEL_PRESETS.find((p) => p.id === now)?.hint ?? '직접 맞춘 값입니다.';
+  for (const b of feelPresets.querySelectorAll<HTMLButtonElement>('button')) {
+    b.setAttribute('aria-pressed', String(b.dataset.preset === now));
+    const preset = FEEL_PRESETS.find((p) => p.id === b.dataset.preset);
+    if (preset) b.textContent = t(preset.name); // drawn again here as well, so that a change of language is seen
+  }
+  const hint = FEEL_PRESETS.find((p) => p.id === now)?.hint;
+  feelHint.textContent = hint ? t(hint) : t('Values set by hand.');
 }
 document.addEventListener('gtp:profile', paintFeel);
 paintFeel();
@@ -236,7 +246,7 @@ paintFeel();
   document.addEventListener('gtp:stats', (e) => {
     if (panelEl('feelPanel').hidden) return;
     const d = (e as CustomEvent<{ delayMs: number; latencyMs: number }>).detail;
-    $('q_delay').textContent = `표시 +${d.delayMs.toFixed(0)} ms · 입력→화면 ${d.latencyMs > 0 ? `${d.latencyMs.toFixed(0)} ms` : '-'}`;
+    $('q_delay').textContent = t('Display +{delay} ms · input to screen {latency}', { delay: d.delayMs.toFixed(0), latency: d.latencyMs > 0 ? `${d.latencyMs.toFixed(0)} ms` : '-' });
   });
 }
 
@@ -260,8 +270,14 @@ paintFeel();
   for (const m of mirror) observer.observe($(m.from), { attributes: true });
   const status = $<HTMLElement>('consoleCalibrateStatus');
   const hint = $<HTMLElement>('feelCalStatus');
-  const first = hint.textContent ?? '';
-  new MutationObserver(() => void (hint.textContent = status.textContent || first)).observe(status, { childList: true, characterData: true, subtree: true });
+  let first = hint.textContent ?? '';
+  const show = (): void => void (hint.textContent = status.textContent || first);
+  new MutationObserver(show).observe(status, { childList: true, characterData: true, subtree: true });
+  // The page puts its own words for the new language into the hint before this runs; they are what it says when the measuring says nothing.
+  onLang(() => {
+    first = hint.textContent ?? '';
+    show();
+  });
   for (const [mine, theirs] of [['feelCal', 'consoleCalibrate'], ['feelCalStop', 'consoleCalibrateStop'], ['feelCalApply', 'consoleCalibrateApply']] as const) {
     $<HTMLButtonElement>(mine).addEventListener('click', () => $<HTMLButtonElement>(theirs).click());
   }
@@ -273,20 +289,20 @@ function feelKey(code: string): boolean {
   if (code === 'PageUp' || code === 'PageDown') {
     const next = stepSensitivity(mouseFeel.read().degPerCount, code === 'PageUp' ? 1 : -1);
     mouseFeel.set({ degPerCount: next });
-    toast(`마우스 감도 ${next.toFixed(3)}`, 'info', 1100);
+    toast(t('Mouse sensitivity {value}', { value: next.toFixed(3) }), 'info', 1100);
     return true;
   }
   if (code === 'Home') {
     // The study puts its own candidates in force; cycling the presets under it would make the score about something else.
     if (study.active) {
-      toast('실험 중에는 느낌을 바꾸지 않습니다. 끝내려면 L 패널에서 끝내기', 'info', 1800);
+      toast(t('The feel is not changed during the study. To end it, use Finish in the L panel.'), 'info', 1800);
       return true;
     }
     const now = presetOf(mouseFeel.read());
     const at = FEEL_PRESETS.findIndex((p) => p.id === now);
     const next = FEEL_PRESETS[(at + 1) % FEEL_PRESETS.length]!;
     mouseFeel.set(next.set);
-    toast(`마우스 느낌: ${next.name}`, 'info', 1400);
+    toast(t('Mouse feel: {name}', { name: t(next.name) }), 'info', 1400);
     return true;
   }
   return false;
@@ -335,8 +351,8 @@ document.addEventListener('gtp:stats', (e) => {
   const q = rateConnection({ fps: s.fps, wantFps: QUALITY_PRESETS[preset]?.fps ?? 0, rttMs: s.rttMs, hitchesLast10s: hitchSeries.sumLast(10) });
   hudQuality.dataset.q = q;
   hudQuality.dataset.bars = String(QUALITY_BARS[q]);
-  hudQuality.title = `연결 상태: ${QUALITY_TEXT[q]} (눌러서 자세히)`;
-  $('hudQText').textContent = s.fps > 0 ? `${s.fps} fps${s.rttMs > 0 ? ` · ${Math.round(s.rttMs)} ms` : ''}` : '신호 없음';
+  hudQuality.title = t('Connection: {quality} (press for details)', { quality: t(QUALITY_TEXT[q]) });
+  $('hudQText').textContent = s.fps > 0 ? `${s.fps} fps${s.rttMs > 0 ? ` · ${Math.round(s.rttMs)} ms` : ''}` : t('No signal');
   if (playingSince) $('cPlayed').textContent = formatClock((performance.now() - playingSince) / 1000);
   if (!panelEl('statsPanel').hidden) {
     $('sparkRttNow').textContent = s.rttMs > 0 ? `${Math.round(s.rttMs)} ms` : '';
@@ -362,13 +378,13 @@ function download(blob: Blob, name: string): void {
 async function screenshot(): Promise<void> {
   if (!live) return;
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
-  if (!blob) return void toast('스크린샷을 만들지 못했습니다', 'err');
+  if (!blob) return void toast(t('Could not make the screenshot'), 'err');
   download(blob, captureName(new Date(), 'png'));
   const flash = $<HTMLElement>('shotFlash');
   flash.classList.remove('go');
   void flash.offsetWidth; // restart the animation
   flash.classList.add('go');
-  toast('스크린샷을 저장했습니다 (다운로드 폴더)', 'ok');
+  toast(t('Screenshot saved (Downloads folder)'), 'ok');
 }
 $<HTMLButtonElement>('hudShot').addEventListener('click', () => void screenshot());
 
@@ -376,9 +392,9 @@ let clip: { recorder: MediaRecorder; chunks: Blob[]; startedAt: number; ext: str
 
 function startClip(): void {
   if (!live || clip) return;
-  if (typeof MediaRecorder === 'undefined' || typeof canvas.captureStream !== 'function') return void toast('이 브라우저는 녹화를 지원하지 않습니다', 'warn');
-  const format = pickClipFormat((t) => MediaRecorder.isTypeSupported(t));
-  if (!format) return void toast('이 브라우저는 녹화할 수 있는 형식이 없습니다', 'warn');
+  if (typeof MediaRecorder === 'undefined' || typeof canvas.captureStream !== 'function') return void toast(t('This browser cannot record'), 'warn');
+  const format = pickClipFormat((type) => MediaRecorder.isTypeSupported(type));
+  if (!format) return void toast(t('This browser has no format it can record in'), 'warn');
   const stream = canvas.captureStream(60);
   const audio = stage.captureAudio();
   for (const track of audio?.getAudioTracks() ?? []) stream.addTrack(track);
@@ -386,15 +402,15 @@ function startClip(): void {
   try {
     recorder = new MediaRecorder(stream, { mimeType: format.type, videoBitsPerSecond: 8_000_000 });
   } catch {
-    return void toast('녹화를 시작하지 못했습니다', 'err');
+    return void toast(t('Could not start recording'), 'err');
   }
   const chunks: Blob[] = [];
   recorder.ondataavailable = (e) => e.data.size > 0 && chunks.push(e.data);
   recorder.onstop = () => {
     const blob = new Blob(chunks, { type: format.type.split(';')[0] });
-    if (blob.size === 0) return void toast('녹화된 내용이 없습니다', 'warn');
+    if (blob.size === 0) return void toast(t('Nothing was recorded'), 'warn');
     download(blob, captureName(new Date(), format.ext));
-    toast(`녹화를 저장했습니다 (${(blob.size / 1_000_000).toFixed(1)} MB, 다운로드 폴더)`, 'ok');
+    toast(t('Recording saved ({size} MB, Downloads folder)', { size: (blob.size / 1_000_000).toFixed(1) }), 'ok');
   };
   recorder.start(1000);
   const startedAt = performance.now();
@@ -402,7 +418,7 @@ function startClip(): void {
     const s = (performance.now() - startedAt) / 1000;
     $('hudRecTime').textContent = formatClock(s);
     if (s >= MAX_CLIP_SECONDS) {
-      toast(`녹화는 ${MAX_CLIP_SECONDS / 60}분까지입니다. 여기까지 저장합니다.`, 'info');
+      toast(t('Recordings are limited to {minutes} min. Saving what there is.', { minutes: MAX_CLIP_SECONDS / 60 }), 'info');
       stopClip();
     }
   }, 250);
@@ -410,7 +426,7 @@ function startClip(): void {
   $('hudRecTime').textContent = '0:00';
   $<HTMLElement>('hudRec').hidden = false;
   paintClip();
-  toast(audio ? '녹화를 시작했습니다 (R로 끝냄)' : '녹화를 시작했습니다. 소리는 담기지 않습니다. (R로 끝냄)', 'info');
+  toast(audio ? t('Recording started (R to stop)') : t('Recording started. Sound is not included. (R to stop)'), 'info');
 }
 
 function stopClip(): void {
@@ -430,7 +446,7 @@ function paintClip(): void {
   const b = $<HTMLButtonElement>('hudRecBtn');
   b.setAttribute('aria-pressed', String(!!clip));
   b.classList.toggle('recording', !!clip);
-  b.title = clip ? '녹화 끝내고 저장 (R)' : '녹화 (R)';
+  b.title = clip ? t('Stop and save recording (R)') : t('Record (R)');
   $('hudRecIcon').setAttribute('href', clip ? '#i-stop' : '#i-record');
 }
 $<HTMLButtonElement>('hudRecBtn').addEventListener('click', toggleClip);
@@ -441,7 +457,7 @@ const muteBtn = $<HTMLButtonElement>('hudMute');
 function paintSound(): void {
   const on = sound.checked;
   muteBtn.setAttribute('aria-pressed', String(!on));
-  muteBtn.title = on ? '소리 끄기 (M)' : '소리 켜기 (M)';
+  muteBtn.title = on ? t('Mute (M)') : t('Unmute (M)');
   $('hudMuteIcon').setAttribute('href', on ? '#i-volume' : '#i-mute');
 }
 const toggleSound = (): void => {
@@ -628,3 +644,15 @@ window.addEventListener('keydown', (e) => {
 
 $<HTMLButtonElement>('shortcutsOpen').addEventListener('click', () => $<HTMLDialogElement>('shortcutsDialog').showModal());
 $<HTMLButtonElement>('shortcutsClose').addEventListener('click', () => $<HTMLDialogElement>('shortcutsDialog').close());
+
+// ------------------------------------------------------------------ a change of language
+
+// The titles that follow the state of a button and the words of the mouse feel panel are put on the screen when something
+// changes, not every moment, so they are drawn again here (the page's own words were already put into the new language).
+onLang(() => {
+  paintFull();
+  paintTheater();
+  paintClip();
+  paintSound();
+  paintFeel();
+});

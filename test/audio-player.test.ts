@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { setLang } from '../src/i18n/index.ts';
 import { AudioPlayer, type AudioContextLike, type AudioDataLike, type AudioDecoderLike, type AudioInfo, type AudioPlayerDeps } from '../web/audio-player.ts';
 
 const INFO: AudioInfo = { channels: 2, bits: 16, rate: 48000, frameSize: 480 };
@@ -156,7 +157,44 @@ describe('unlocking the sound in a tap', () => {
     const p = new AudioPlayer(w.deps);
     assert.equal(p.unlock(), false);
     assert.equal(p.stats.state, 'unsupported');
-    assert.match(p.stats.reason, /소리를 낼 수 없습니다.*no audio here/);
+    assert.match(p.stats.reason, /cannot play sound.*no audio here/);
+  });
+});
+
+describe('the reason there is no sound, in the language of the page', () => {
+  it('is said in Korean when the page is Korean, with the values put in', async () => {
+    setLang('ko');
+    try {
+      const noContext = new AudioPlayer(world({ contextFails: true }).deps);
+      noContext.unlock();
+      assert.match(noContext.stats.reason, /소리를 낼 수 없습니다.*no audio here/);
+      const { p } = await started({}, { ...INFO, channels: 6 });
+      assert.match(p.stats.reason, /6채널.*2채널까지만/);
+    } finally {
+      setLang('en');
+    }
+  });
+
+  it('is said again when the language changes, and stays with the player after the connection ends', async () => {
+    const { p } = await started({}, { ...INFO, channels: 6 });
+    assert.match(p.stats.reason, /^The PS5 sends 6-channel sound/);
+    setLang('ko');
+    try {
+      p.refreshLanguage();
+      assert.match(p.stats.reason, /^PS5가 보내는 소리는 6채널/);
+      p.close();
+      assert.match(p.stats.reason, /^PS5가 보내는 소리는 6채널/);
+    } finally {
+      setLang('en');
+    }
+    p.refreshLanguage();
+    assert.match(p.stats.reason, /^The PS5 sends 6-channel sound/);
+  });
+
+  it('has nothing to say again when there is no problem', async () => {
+    const { p } = await started();
+    p.refreshLanguage();
+    assert.equal(p.stats.reason, '');
   });
 });
 
@@ -172,7 +210,7 @@ describe('starting the decoder', () => {
   it('says why when there are more channels than a browser can decode', async () => {
     const { w, p } = await started({}, { ...INFO, channels: 6 });
     assert.equal(p.stats.state, 'unsupported');
-    assert.match(p.stats.reason, /6채널.*2채널까지만/);
+    assert.match(p.stats.reason, /6-channel.*up to 2 channels/);
     assert.equal(w.decoders.length, 0);
     p.push(false, frame());
     assert.equal(w.ctx.pieces.length, 0);
@@ -186,11 +224,11 @@ describe('starting the decoder', () => {
 
   it('reports a decoder that cannot be made, and asks for the tap first when there is no context', async () => {
     const { p } = await started({ decoderFails: true });
-    assert.match(p.stats.reason, /디코더를 만들지 못했습니다.*decoder refused/);
+    assert.match(p.stats.reason, /Could not create the sound decoder.*decoder refused/);
     const w = world();
     const early = new AudioPlayer(w.deps);
     await early.start(INFO);
-    assert.match(early.stats.reason, /아직 풀리지 않았습니다/);
+    assert.match(early.stats.reason, /not unlocked yet/);
   });
 
   it('lets the newest start() win when an older one is still waiting for the browser', async () => {

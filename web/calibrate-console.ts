@@ -12,6 +12,7 @@
 import { calibrateLook, CalibrationError, type CalibrationProgress, type CalibrationResult, type CalibrationWarning, type LookIo } from '../src/engine/lookcalibrate.ts';
 import type { Gray, TimedFrame } from '../src/engine/lookmeasure.ts';
 import type { Profile } from '../src/engine/profile.ts';
+import { N_, onLang, t } from '../src/i18n/index.ts';
 
 /** The size the measurement works at. */
 export const FRAME_W = 256;
@@ -118,39 +119,49 @@ export function applyConsoleCalibration(profile: Profile, r: CalibrationResult):
 
 // ------------------------------------------------------------------------------------------------ words
 
+// The tables hold sentences to be shown through t() when they are drawn (the language can change while the page is open).
 const WARNINGS: Record<CalibrationWarning['code'], string> = {
-  'scale-assumed': '카메라가 한 바퀴 도는 것을 확인하지 못해 화면 시야각을 가정해 각도를 계산했습니다 (표의 모양은 맞지만 절대 각도는 약간 어긋날 수 있습니다).',
-  'latency-assumed': '스틱이 화면에 나타나기까지의 지연을 확인하지 못했습니다.',
-  'low-support': '일부 단계는 화면이 불분명해 측정하지 못했습니다.',
-  'direction-mixed': '스틱을 밀어도 카메라가 도는 방향이 일정하지 않았습니다. 움직이는 물체가 많은 장면일 수 있습니다.',
-  'pitch-missing': '위아래 비율을 측정하지 못해 기존 값을 그대로 둡니다.',
+  'scale-assumed': N_('Could not confirm that the camera turns a full circle, so the angles were worked out from an assumed field of view (the shape of the table is right, but the absolute angles may be slightly off).'),
+  'latency-assumed': N_('Could not determine the delay before the stick shows on screen.'),
+  'low-support': N_('Some steps could not be measured because the picture was unclear.'),
+  'direction-mixed': N_('The camera did not turn in a consistent direction when the stick was pushed. The scene may have many moving objects.'),
+  'pitch-missing': N_('Could not measure the vertical ratio, so the existing value is left as it is.'),
 };
 
 const ERRORS: Record<string, string> = {
-  'no-video': '영상이 들어오지 않습니다. 연결 상태를 확인하세요.',
-  'no-texture': '화면에 따라갈 만한 무늬가 부족합니다 (메뉴, 로딩 화면, 단색 배경). 풍경이 보이는 게임 장면에서 다시 하세요.',
-  'no-motion': '스틱을 움직여도 화면이 돌아가지 않았습니다. 메뉴나 컷신이 아니라 카메라가 자유롭게 도는 플레이 장면인지 확인하세요.',
-  aborted: '중지했습니다.',
-  failed: '측정에 실패했습니다.',
+  'no-video': N_('No video is coming in. Check the connection.'),
+  'no-texture': N_('There is not enough pattern on screen to follow (menu, loading screen, plain background). Try again in a game scene with scenery in view.'),
+  'no-motion': N_('The picture did not turn when the stick moved. Make sure you are in a play scene where the camera turns freely, not a menu or a cutscene.'),
+  aborted: N_('Stopped.'),
+  failed: N_('The measurement failed.'),
 };
 
 const PHASES: Record<CalibrationProgress['phase'], string> = {
-  prepare: '화면 확인',
-  turn: '한 바퀴 돌려 각도 재는 중',
-  yaw: '가로 반응 측정',
-  pitch: '세로 반응 측정',
-  build: '표 만드는 중',
+  prepare: N_('Checking the picture'),
+  turn: N_('Turning a full circle to measure the angle'),
+  yaw: N_('Measuring horizontal response'),
+  pitch: N_('Measuring vertical response'),
+  build: N_('Building the table'),
 };
 
 export function progressText(p: CalibrationProgress): string {
-  return `${PHASES[p.phase]}${p.stick !== undefined ? ` (스틱 ${p.stick.toFixed(2)})` : ''} · ${p.step}/${p.steps}`;
+  const phase = t(PHASES[p.phase]);
+  return p.stick !== undefined
+    ? t('{phase} (stick {stick}) · {step}/{steps}', { phase, stick: p.stick.toFixed(2), step: p.step, steps: p.steps })
+    : t('{phase} · {step}/{steps}', { phase, step: p.step, steps: p.steps });
 }
 
 export function resultText(r: CalibrationResult): string {
   const lines = [
-    `스틱이 움직이기 시작하는 값(데드존) ${r.innerDeadzone.toFixed(2)} · 최대 편향에서 ${Math.round(r.fullStickRate)}°/s · 세로/가로 ${r.verticalRateRatio === null ? '측정 못 함' : r.verticalRateRatio.toFixed(2)}`,
-    `화면에 나타나기까지 지연 ${r.latencyMs} ms · 각도 기준: ${r.scaleSource === 'turn' ? '카메라 한 바퀴 실측' : '시야각 가정'}`,
-    ...r.warnings.map((w) => `주의: ${WARNINGS[w.code]}`),
+    t('Value where the stick starts to register (dead zone) {deadzone} · {rate}°/s at full push · vertical/horizontal {ratio}', {
+      deadzone: r.innerDeadzone.toFixed(2),
+      rate: Math.round(r.fullStickRate),
+      ratio: r.verticalRateRatio === null ? t('not measured') : r.verticalRateRatio.toFixed(2),
+    }),
+    r.scaleSource === 'turn'
+      ? t('Delay before it shows on screen {latency} ms · angle basis: measured from a full camera turn', { latency: r.latencyMs })
+      : t('Delay before it shows on screen {latency} ms · angle basis: assumed field of view', { latency: r.latencyMs }),
+    ...r.warnings.map((w) => t('Note: {warning}', { warning: t(WARNINGS[w.code]) })),
   ];
   return lines.join('\n');
 }
@@ -165,7 +176,7 @@ export function plotSvg(r: CalibrationResult): string {
     .filter((l) => l.ok)
     .map((l) => `<circle cx="${(10 + l.stick * (W - 20)).toFixed(1)}" cy="${(H - 12 - (l.degPerSec / top) * (H - 24)).toFixed(1)}" r="2" fill="currentColor" opacity=".55"/>`)
     .join('');
-  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="스틱 값에 따른 회전 속도"><rect x="10" y="12" width="${W - 20}" height="${H - 24}" fill="none" stroke="currentColor" opacity=".25"/><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="1.6"/>${dots}<text x="10" y="${H - 1}" font-size="9" fill="currentColor" opacity=".7">스틱 0</text><text x="${W - 30}" y="${H - 1}" font-size="9" fill="currentColor" opacity=".7">1.0</text><text x="12" y="10" font-size="9" fill="currentColor" opacity=".7">${Math.round(top)}°/s</text></svg>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${t('Turn speed by stick value')}"><rect x="10" y="12" width="${W - 20}" height="${H - 24}" fill="none" stroke="currentColor" opacity=".25"/><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="1.6"/>${dots}<text x="10" y="${H - 1}" font-size="9" fill="currentColor" opacity=".7">${t('Stick 0')}</text><text x="${W - 30}" y="${H - 1}" font-size="9" fill="currentColor" opacity=".7">1.0</text><text x="12" y="10" font-size="9" fill="currentColor" opacity=".7">${Math.round(top)}°/s</text></svg>`;
 }
 
 // ------------------------------------------------------------------------------------------------ the panel
@@ -214,11 +225,23 @@ export function mountConsoleCalibration(d: PanelDeps): { running(): boolean } {
     },
   });
 
-  const show = (text: string): void => void (status.textContent = text);
+  // What the status says is kept as a way of saying it, so that it can be said again when the language changes.
+  let said: () => string = () => '';
+  const show = (text: () => string): void => {
+    said = text;
+    status.textContent = text();
+  };
+  onLang(() => {
+    status.textContent = said();
+    if (last) {
+      resultBox.textContent = resultText(last);
+      plot.innerHTML = plotSvg(last);
+    }
+  });
 
   start.addEventListener('click', async () => {
     if (running) return;
-    if (!d.ready()) return show('먼저 PS5에 연결하고 게임 화면이 보이는 상태에서 시작하세요.');
+    if (!d.ready()) return show(() => t('First connect to your PS5 and start with the game on screen.'));
     running = true;
     stopped = false;
     last = null;
@@ -229,13 +252,13 @@ export function mountConsoleCalibration(d: PanelDeps): { running(): boolean } {
     plot.innerHTML = '';
     try {
       const r = await calibrateLook(io, {
-        onProgress: (p) => show(progressText(p)),
+        onProgress: (p) => show(() => progressText(p)),
         aborted: () => stopped || document.hidden || !d.ready(),
       });
       last = r;
       console.info('[gtp-calibration]', JSON.stringify(r));
       (window as unknown as { __lastCalibration?: CalibrationResult }).__lastCalibration = r;
-      show('측정이 끝났습니다. 아래 결과를 확인하고 "프로필에 적용"을 누르세요.');
+      show(() => t('Measurement finished. Check the result below and press "Apply to profile".'));
       resultBox.textContent = resultText(r);
       plot.innerHTML = plotSvg(r);
       apply.hidden = false;
@@ -243,7 +266,8 @@ export function mountConsoleCalibration(d: PanelDeps): { running(): boolean } {
       const code = e instanceof CalibrationError ? e.code : 'failed';
       console.warn('[gtp-calibration] failed', e);
       const base = ERRORS[code] ?? ERRORS.failed!;
-      show(code === 'failed' ? `${base} (${(e as Error).message})` : base);
+      const detail = (e as Error).message;
+      show(() => (code === 'failed' ? t('The measurement failed. ({message})', { message: detail }) : t(base)));
     } finally {
       // Whatever happened, the stick is let go first, then the pad goes back to the keyboard and mouse.
       d.setStickOverride({ x: 0, y: 0 });
@@ -264,7 +288,7 @@ export function mountConsoleCalibration(d: PanelDeps): { running(): boolean } {
     applyConsoleCalibration(d.profile(), last);
     d.changed();
     apply.hidden = true;
-    show('프로필에 적용했습니다. 마우스 감도(카운트당 °)는 그대로이니 느낌에 맞게 조절하세요.');
+    show(() => t('Applied to the profile. Mouse sensitivity (° per count) is unchanged, so adjust it to taste.'));
   });
 
   return { running: () => running };

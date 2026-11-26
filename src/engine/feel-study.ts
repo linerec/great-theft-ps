@@ -16,6 +16,7 @@
 
 import { modelTable, rateAt } from './calibration.ts';
 import { MappingEngine } from './engine.ts';
+import { N_, t, translate, type Lang, type Vars } from '../i18n/index.ts';
 import { defaultProfile } from './profile.ts';
 
 // ------------------------------------------------------------------ the values being tried
@@ -54,22 +55,22 @@ const r2 = (v: number): number => Math.round(v * 100) / 100;
 
 export const KNOBS: readonly KnobSpec[] = [
   {
-    key: 'smoothingMs', label: '부드러움', unit: 'ms', lo: 0, hi: 30,
+    key: 'smoothingMs', label: N_('Smoothing'), unit: 'ms', lo: 0, hi: 30,
     fromUnit: (u) => (u < 0.1 ? 0 : Math.round(30 * u)),
     toUnit: (v) => (v === 0 ? 0.05 : v / 30),
   },
   {
-    key: 'smoothingFadeRate', label: '해제 속도', unit: '°/s', lo: 0, hi: 160,
+    key: 'smoothingFadeRate', label: N_('Release speed'), unit: '°/s', lo: 0, hi: 160,
     fromUnit: (u) => (u < 0.15 ? 0 : Math.round((20 + (140 * (u - 0.15)) / 0.85) / 5) * 5),
     toUnit: (v) => (v === 0 ? 0.075 : 0.15 + (0.85 * (Math.min(160, Math.max(20, v)) - 20)) / 140),
   },
   {
-    key: 'carryMs', label: '이어 돌기', unit: 'ms', lo: 0, hi: 600,
+    key: 'carryMs', label: N_('Carry-over'), unit: 'ms', lo: 0, hi: 600,
     fromUnit: (u) => (u < 0.08 ? 0 : Math.round((600 * u) / 20) * 20),
     toUnit: (v) => (v === 0 ? 0.04 : v / 600),
   },
   {
-    key: 'curve', label: '곡선', unit: '', lo: 0.8, hi: 1.5,
+    key: 'curve', label: N_('Curve'), unit: '', lo: 0.8, hi: 1.5,
     fromUnit: (u) => r2(Math.round((0.8 + 0.7 * u) / 0.05) * 0.05),
     toUnit: (v) => (v - 0.8) / 0.7,
   },
@@ -80,9 +81,14 @@ const fadeValue = (v: number): number => (v === 0 ? 240 : v);
 
 export const knobsEqual = (a: Knobs, b: Knobs): boolean => a.smoothingMs === b.smoothingMs && a.smoothingFadeRate === b.smoothingFadeRate && a.carryMs === b.carryMs && a.curve === b.curve;
 
+/** What turns a sentence into words for a person: the page's language by default, or a language chosen (the report is made in a worker, which has no page). */
+export type Translate = (en: string, vars?: Vars) => string;
+const translator = (lang: Lang): Translate => (en, vars) => translate(lang, en, vars);
+
 /** Words for a setting, in the order of the panel. */
-export function describeKnobs(k: Knobs): string {
-  return `부드러움 ${k.smoothingMs} ms · 해제 ${k.smoothingFadeRate === 0 ? '안 함' : `${k.smoothingFadeRate} °/s`} · 이어 돌기 ${k.carryMs} ms · 곡선 ${k.curve}`;
+export function describeKnobs(k: Knobs, tr: Translate = t): string {
+  const release = k.smoothingFadeRate === 0 ? tr('none') : tr('{rate} °/s', { rate: k.smoothingFadeRate });
+  return tr('Smoothing {smoothing} ms · release {release} · carry-over {carry} ms · curve {curve}', { smoothing: k.smoothingMs, release, carry: k.carryMs, curve: k.curve });
 }
 
 // ------------------------------------------------------------------ the candidates
@@ -199,8 +205,11 @@ export interface Round {
   candidates: readonly Candidate[];
 }
 
-export const ROUND_1: Round = { id: 'r1', name: '1라운드', candidates: designRound('r1', 20261125, 48) };
+export const ROUND_1: Round = { id: 'r1', name: N_('Round 1'), candidates: designRound('r1', 20261125, 48) };
 export const ROUNDS: readonly Round[] = [ROUND_1];
+
+/** A try with less time than this with the mouse in the game's hands says too little to be kept: nothing was felt. */
+export const MIN_TRIAL_SECONDS = 8;
 
 /** Every this many ratings a setting already rated is offered again: the same setting scored twice shows how much the scores themselves move. */
 export const RETEST_EVERY = 8;
@@ -233,21 +242,21 @@ export function nextCandidate(round: Round, rated: ReadonlyArray<{ preset: strin
 // ------------------------------------------------------------------ the ratings
 
 export const SITUATIONS = [
-  { key: 'slow', label: '천천히 조준', hint: '아주 천천히 미세하게 맞출 때' },
-  { key: 'flick', label: '빠른 휘두름', hint: '뒤돌기·크게 휙 돌릴 때 (돌린 만큼 도는가)' },
-  { key: 'track', label: '따라가기', hint: '움직이는 대상을 일정한 속도로 따라갈 때' },
-  { key: 'stop', label: '멈춤', hint: '손을 멈추면 시점도 딱 멈추는가 (밀림·튐)' },
-  { key: 'start', label: '시작', hint: '움직이기 시작하면 바로 반응하는가' },
-  { key: 'smooth', label: '매끄러움', hint: '끊기거나 떨리지 않는가' },
+  { key: 'slow', label: N_('Slow aim'), hint: N_('Fine, very slow aiming') },
+  { key: 'flick', label: N_('Fast flick'), hint: N_('Turning around, or a big quick swipe (does it turn as far as you moved?)') },
+  { key: 'track', label: N_('Tracking'), hint: N_('Following a target that moves at a steady speed') },
+  { key: 'stop', label: N_('Stopping'), hint: N_('When your hand stops, does the view stop dead (no sliding, no jumping)?') },
+  { key: 'start', label: N_('Starting'), hint: N_('When you start to move, does it answer at once?') },
+  { key: 'smooth', label: N_('Smooth motion'), hint: N_('No stutter or shaking?') },
 ] as const;
 export type SituationKey = (typeof SITUATIONS)[number]['key'];
 
 export const SCENES = [
-  { key: 'foot', label: '걷기' },
-  { key: 'aim', label: '총 조준' },
-  { key: 'snipe', label: '저격' },
-  { key: 'drive', label: '운전' },
-  { key: 'other', label: '기타' },
+  { key: 'foot', label: N_('On foot') },
+  { key: 'aim', label: N_('Gun aiming') },
+  { key: 'snipe', label: N_('Sniping') },
+  { key: 'drive', label: N_('Driving') },
+  { key: 'other', label: N_('Other') },
 ] as const;
 export type SceneKey = (typeof SCENES)[number]['key'];
 
@@ -444,8 +453,8 @@ export interface BehaviorMetrics {
   gainFast: number;
 }
 export const METRIC_LABELS: Record<keyof BehaviorMetrics, string> = {
-  lagSlow: '시작 지연 (45°/s)', lagFast: '시작 지연 (120°/s)', slideSlow: '멈춘 뒤 밀림 (45°/s)', slideFast: '멈춘 뒤 밀림 (120°/s)',
-  jitterSlow: '울퉁불퉁함 (3°/s)', jitterMid: '울퉁불퉁함 (15°/s)', swipe: '90° 휘두름이 도는 비율', gainSlow: '배율 (15°/s)', gainMid: '배율 (45°/s)', gainFast: '배율 (250°/s)',
+  lagSlow: N_('Start lag (45°/s)'), lagFast: N_('Start lag (120°/s)'), slideSlow: N_('Slide after stopping (45°/s)'), slideFast: N_('Slide after stopping (120°/s)'),
+  jitterSlow: N_('Unevenness (3°/s)'), jitterMid: N_('Unevenness (15°/s)'), swipe: N_('Share of a 90° swipe that turns'), gainSlow: N_('Gain (15°/s)'), gainMid: N_('Gain (45°/s)'), gainFast: N_('Gain (250°/s)'),
 };
 
 const TICK = 0.004;
@@ -613,15 +622,15 @@ interface Feature {
   of(m: BehaviorMetrics): number;
 }
 const FEATURES: readonly Feature[] = [
-  { key: 'lagSlow', label: '시작 지연 45°/s (ms)', of: (m) => m.lagSlow },
-  { key: 'lagFast', label: '시작 지연 120°/s (ms)', of: (m) => m.lagFast },
-  { key: 'slideSlow', label: '멈춘 뒤 밀림 45°/s (ms)', of: (m) => m.slideSlow },
-  { key: 'slideFast', label: '멈춘 뒤 밀림 120°/s (ms)', of: (m) => m.slideFast },
-  { key: 'jitterSlow', label: '울퉁불퉁 3°/s (%)', of: (m) => m.jitterSlow * 100 },
-  { key: 'jitterMid', label: '울퉁불퉁 15°/s (%)', of: (m) => m.jitterMid * 100 },
-  { key: 'swipeShort', label: '휘두름이 덜 도는 정도 (%)', of: (m) => Math.max(0, 1 - m.swipe) * 100 },
-  { key: 'gainSlow', label: '배율 15°/s (1에서 벗어남 %)', of: (m) => (m.gainSlow - 1) * 100 },
-  { key: 'gainMid', label: '배율 45°/s (1에서 벗어남 %)', of: (m) => (m.gainMid - 1) * 100 },
+  { key: 'lagSlow', label: N_('Start lag 45°/s (ms)'), of: (m) => m.lagSlow },
+  { key: 'lagFast', label: N_('Start lag 120°/s (ms)'), of: (m) => m.lagFast },
+  { key: 'slideSlow', label: N_('Slide after stopping 45°/s (ms)'), of: (m) => m.slideSlow },
+  { key: 'slideFast', label: N_('Slide after stopping 120°/s (ms)'), of: (m) => m.slideFast },
+  { key: 'jitterSlow', label: N_('Unevenness 3°/s (%)'), of: (m) => m.jitterSlow * 100 },
+  { key: 'jitterMid', label: N_('Unevenness 15°/s (%)'), of: (m) => m.jitterMid * 100 },
+  { key: 'swipeShort', label: N_('How far a swipe falls short (%)'), of: (m) => Math.max(0, 1 - m.swipe) * 100 },
+  { key: 'gainSlow', label: N_('Gain 15°/s (off from 1, %)'), of: (m) => (m.gainSlow - 1) * 100 },
+  { key: 'gainMid', label: N_('Gain 45°/s (off from 1, %)'), of: (m) => (m.gainMid - 1) * 100 },
 ];
 const behaviorFeatures = (m: BehaviorMetrics, sens: number, order: number): number[] => [...FEATURES.map((f) => f.of(m)), sens, order];
 
@@ -697,7 +706,8 @@ export interface Report {
     /** Settings worth trying next: the best guess, then those the data are least sure about among the ones that could be good. */
     next: Knobs[];
   };
-  notes: string[];
+  /** Things the reader should know, as sentences with their values: put into words by formatReport, in the reader's language. */
+  notes: Array<{ en: string; vars?: Vars }>;
 }
 
 export interface AnalyzeOptions {
@@ -718,15 +728,15 @@ export interface AnalyzeOptions {
  * the fit cannot predict a rating it has not seen (looR2 near or under 0) the report says so.
  */
 export function analyzeRatings(all: readonly FeelRating[], options: AnalyzeOptions = {}): Report {
-  const minSeconds = options.minSeconds ?? 8;
+  const minSeconds = options.minSeconds ?? MIN_TRIAL_SECONDS;
   const B = options.resamples ?? 60;
-  const notes: string[] = [];
+  const notes: Array<{ en: string; vars?: Vars }> = [];
   const ordered = [...all].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   const used = ordered.filter((r) => r.trial.seconds >= minSeconds);
   const report: Report = {
     used: used.length, skipped: { tooShort: ordered.length - used.length }, candidates: [], noise: null, drift: null, effects: [], behavior: [], situations: [], scenes: [], surface: null, notes,
   };
-  if (report.skipped.tooShort > 0) notes.push(`${report.skipped.tooShort}개는 마우스를 ${minSeconds}초 넘게 쓰지 않아 뺐습니다.`);
+  if (report.skipped.tooShort > 0) notes.push({ en: N_('{n} tries had less than {seconds} s of mouse time and were left out.'), vars: { n: report.skipped.tooShort, seconds: minSeconds } });
   if (used.length === 0) return report;
 
   // The candidates, best first.
@@ -758,11 +768,11 @@ export function analyzeRatings(all: readonly FeelRating[], options: AnalyzeOptio
     pairs++;
   }
   if (dfSum > 0) report.noise = { pairs, sd: Math.sqrt(ssSum / dfSum) };
-  else notes.push('같은 후보를 두 번 평가한 것이 없어, 점수 자체의 흔들림은 모릅니다.');
+  else notes.push({ en: N_('No setting was rated twice, so how much the scores themselves wobble is not known.') });
 
   const rows: Row[] = used.map((r, i) => ({ set: knobsOf(r.feel), game: { innerDeadzone: r.game.innerDeadzone, maxTurnRateAtFullStick: r.game.maxTurnRateAtFullStick, responseCurve: r.game.responseCurve }, feel: r.feel, sens: Math.log(r.feel.degPerCount), order: i, y: r.score }));
   if (used.length < 10) {
-    notes.push('평가가 10개보다 적어 효과·최적값 분석은 아직 하지 않습니다.');
+    notes.push({ en: N_('Fewer than 10 ratings: no effects or best setting yet.') });
     return report;
   }
   const random = rng(options.seed ?? 1);
@@ -830,11 +840,11 @@ export function analyzeRatings(all: readonly FeelRating[], options: AnalyzeOptio
   // Scenes.
   const scenes = new Map<string, number[]>();
   for (const r of used) (scenes.get(r.scene ?? 'unknown') ?? scenes.set(r.scene ?? 'unknown', []).get(r.scene ?? 'unknown')!).push(r.score);
-  for (const [key, scores] of scenes) report.scenes.push({ key: key as SceneKey | 'unknown', label: SCENES.find((s) => s.key === key)?.label ?? '구분 안 함', n: scores.length, mean: mean(scores) });
+  for (const [key, scores] of scenes) report.scenes.push({ key: key as SceneKey | 'unknown', label: SCENES.find((s) => s.key === key)?.label ?? N_('Not specified'), n: scores.length, mean: mean(scores) });
   report.scenes.sort((a, b) => b.n - a.n);
 
   if (used.length < 20) {
-    notes.push('평가가 20개보다 적어 최적값을 찾는 모델은 아직 만들지 않습니다.');
+    notes.push({ en: N_('Fewer than 20 ratings: no model of the best setting yet.') });
     return report;
   }
 
@@ -904,55 +914,59 @@ export function analyzeRatings(all: readonly FeelRating[], options: AnalyzeOptio
     next.push(c.set);
   }
   report.surface = { model, looR2: { behavior: behaviorModel.looR2, knobs: knobsModel.looR2 }, best, predicted: bestValue, bestBehavior: poolMetrics(best), weights, spread, next };
-  if (fitted.looR2 < 0.1) notes.push(`모델이 아직 보지 못한 평가를 거의 못 맞힙니다(R² ${fitted.looR2.toFixed(2)}). 아래 최적값은 믿지 말고, 더 평가해 보세요.`);
+  if (fitted.looR2 < 0.1) notes.push({ en: N_('The model hardly predicts ratings it has not seen (R² {r2}). Do not trust the best setting below; rate more.'), vars: { r2: fitted.looR2.toFixed(2) } });
   return report;
 }
 
 const knobsOf = (f: Feel): Knobs => ({ smoothingMs: f.smoothingMs, smoothingFadeRate: f.smoothingFadeRate, carryMs: f.carryMs, curve: f.curve });
 
-/** The report as text for a person. */
-export function formatReport(r: Report): string {
+/** The report as text for a person, in a language. */
+export function formatReport(r: Report, lang: Lang = 'en'): string {
+  const tr = translator(lang);
   const lines: string[] = [];
   const f1 = (v: number): string => v.toFixed(1);
   const sgn = (v: number, d = 1): string => `${v >= 0 ? '+' : ''}${v.toFixed(d)}`;
-  lines.push(`평가 ${r.used}개 분석${r.skipped.tooShort ? ` (짧은 ${r.skipped.tooShort}개 제외)` : ''}`);
-  if (r.noise) lines.push(`같은 후보를 다시 평가했을 때 점수 흔들림: ±${f1(r.noise.sd)}점 (${r.noise.pairs}쌍). 이보다 작은 차이는 우연일 수 있습니다.`);
-  if (r.drift !== null && Math.abs(r.drift) >= 0.3) lines.push(`평가 순서에 따른 점수 이동: 10개마다 ${sgn(r.drift)}점 (점수 기준이 변하고 있습니다)`);
-  lines.push('', '후보 순위');
+  lines.push(r.skipped.tooShort ? tr('Analysis of {used} ratings ({short} short ones left out)', { used: r.used, short: r.skipped.tooShort }) : tr('Analysis of {used} ratings', { used: r.used }));
+  if (r.noise) lines.push(tr('How much the score moved when the same setting was rated again: ±{sd} points ({pairs} pairs). Smaller differences may be chance.', { sd: f1(r.noise.sd), pairs: r.noise.pairs }));
+  if (r.drift !== null && Math.abs(r.drift) >= 0.3) lines.push(tr('Drift of the scores with the order of rating: {drift} points per 10 ratings (your scoring standard is moving)', { drift: sgn(r.drift) }));
+  lines.push('', tr('Ranking of the settings'));
   for (const c of r.candidates.slice(0, 12)) {
-    const flags = Object.entries(c.flagged).map(([k, v]) => `${SITUATIONS.find((s) => s.key === k)?.label}${v! > 0 ? '+' : '−'}`).join(' ');
-    lines.push(`  ${c.id.padEnd(6)} ${f1(c.mean)}점 (${c.n}회)  ${describeKnobs(c.set)}${flags ? `  [${flags}]` : ''}`);
+    const flags = Object.entries(c.flagged).map(([k, v]) => `${tr(SITUATIONS.find((s) => s.key === k)?.label ?? k)}${v! > 0 ? '+' : '−'}`).join(' ');
+    lines.push(`  ${c.id.padEnd(6)} ${tr('{mean} pts ({n} tries)', { mean: f1(c.mean), n: c.n })}  ${describeKnobs(c.set, tr)}${flags ? `  [${flags}]` : ''}`);
   }
-  if (r.candidates.length > 12) lines.push(`  … 나머지 ${r.candidates.length - 12}개, 가장 낮은 것 ${r.candidates[r.candidates.length - 1]!.id} ${f1(r.candidates[r.candidates.length - 1]!.mean)}점`);
+  if (r.candidates.length > 12) lines.push('  ' + tr('… the other {n}, the lowest {id} at {mean} pts', { n: r.candidates.length - 12, id: r.candidates[r.candidates.length - 1]!.id, mean: f1(r.candidates[r.candidates.length - 1]!.mean) }));
   if (r.effects.length) {
-    lines.push('', '값을 범위 끝에서 끝까지 올렸을 때 점수 변화 (90% 구간)');
-    for (const e of r.effects) lines.push(`  ${e.label}: ${sgn(e.effect)}  (${sgn(e.lo)} ~ ${sgn(e.hi)})${e.lo > 0 || e.hi < 0 ? '  ← 구간이 0을 지나지 않음' : ''}`);
+    lines.push('', tr('Change of the score when a value goes from one end of its range to the other (90% interval)'));
+    for (const e of r.effects) lines.push(`  ${tr(e.label)}: ${sgn(e.effect)}  (${sgn(e.lo)} ~ ${sgn(e.hi)})${e.lo > 0 || e.hi < 0 ? '  ' + tr('← the interval does not cross 0') : ''}`);
   }
   if (r.behavior.length) {
-    lines.push('', '필터가 실제로 하는 일과 점수의 상관 (−1~1)');
-    for (const b of r.behavior.slice(0, 6)) lines.push(`  ${b.label}: ${sgn(b.r, 2)}  (${b.lo.toFixed(2)} ~ ${b.hi.toFixed(2)})`);
+    lines.push('', tr('Correlation of what the filter actually does with the score (−1 to 1)'));
+    for (const b of r.behavior.slice(0, 6)) lines.push(`  ${tr(b.label)}: ${sgn(b.r, 2)}  (${b.lo.toFixed(2)} ~ ${b.hi.toFixed(2)})`);
   }
   const judged = r.situations.filter((s) => s.good + s.bad > 0);
   if (judged.length) {
-    lines.push('', '상황별 표시 (좋음/아쉬움 횟수, 값을 올릴 때 좋음−아쉬움의 변화)');
+    lines.push('', tr('Marks by situation (times marked good / off, and how good minus off changes as a value goes up)'));
     for (const s of judged) {
-      const fx = s.effects ? s.effects.filter((e) => Math.abs(e.effect) >= 0.2).map((e) => `${e.label} ${sgn(e.effect)}`).join(', ') : '표시가 8개 미만이라 아직 모름';
-      lines.push(`  ${s.label}: 좋음 ${s.good} / 아쉬움 ${s.bad}  → ${fx || '뚜렷한 방향 없음'}`);
+      const fx = s.effects ? s.effects.filter((e) => Math.abs(e.effect) >= 0.2).map((e) => `${tr(e.label)} ${sgn(e.effect)}`).join(', ') : tr('fewer than 8 marks, not known yet');
+      lines.push('  ' + tr('{label}: good {good} / off {bad}  → {effects}', { label: tr(s.label), good: s.good, bad: s.bad, effects: fx || tr('no clear direction') }));
     }
   }
-  if (r.scenes.length > 1) lines.push('', `장면별 평균: ${r.scenes.map((s) => `${s.label} ${f1(s.mean)}점(${s.n})`).join(' · ')}`);
+  if (r.scenes.length > 1) lines.push('', tr('Average by scene: {list}', { list: r.scenes.map((s) => tr('{label} {mean} pts ({n})', { label: tr(s.label), mean: f1(s.mean), n: s.n })).join(' · ') }));
   if (r.surface) {
     const s = r.surface;
-    lines.push('', `두 모델이 안 본 평가를 맞히는 정도(R²): 필터 동작 기준 ${s.looR2.behavior.toFixed(2)}, 노브 기준 ${s.looR2.knobs.toFixed(2)} → ${s.model === 'behavior' ? '필터 동작' : '노브'} 기준을 씁니다`);
-    lines.push('필터 동작 한 가지가 표준편차만큼 커질 때 점수 변화 (90% 구간)');
-    for (const w of s.weights) lines.push(`  ${w.label}: ${sgn(w.weight, 2)}  (${sgn(w.lo, 2)} ~ ${sgn(w.hi, 2)})`);
-    lines.push('', `모델이 가리키는 최적 (예측 ${f1(s.predicted)}점)`);
-    lines.push(`  ${describeKnobs(s.best)}`);
-    lines.push(`  그 동작: 시작 지연 ${s.bestBehavior.lagFast} ms · 멈춘 뒤 밀림 ${s.bestBehavior.slideFast} ms · 천천히 움직일 때 울퉁불퉁 ${(s.bestBehavior.jitterSlow * 100).toFixed(0)}% · 90° 휘두름 ${(s.bestBehavior.swipe * 100).toFixed(0)}%`);
-    lines.push(`  다시 뽑아 본 최적값의 중간 절반: ${KNOBS.map((k) => `${k.label} ${s.spread[k.key][0]}~${s.spread[k.key][1]}`).join(' · ')}`);
-    lines.push('', '다음 라운드 후보');
-    s.next.forEach((k, i) => lines.push(`  ${i + 1}. ${describeKnobs(k)}`));
+    const scores = { behavior: s.looR2.behavior.toFixed(2), knobs: s.looR2.knobs.toFixed(2) };
+    lines.push('', s.model === 'behavior'
+      ? tr('How well the two models predict ratings they have not seen (R²): by filter behaviour {behavior}, by knobs {knobs} → the filter behaviour is used', scores)
+      : tr('How well the two models predict ratings they have not seen (R²): by filter behaviour {behavior}, by knobs {knobs} → the knobs are used', scores));
+    lines.push(tr('Change of the score when one filter behaviour grows by one standard deviation (90% interval)'));
+    for (const w of s.weights) lines.push(`  ${tr(w.label)}: ${sgn(w.weight, 2)}  (${sgn(w.lo, 2)} ~ ${sgn(w.hi, 2)})`);
+    lines.push('', tr('The best setting the model points at (predicted {score} points)', { score: f1(s.predicted) }));
+    lines.push(`  ${describeKnobs(s.best, tr)}`);
+    lines.push('  ' + tr('Its behaviour: start lag {lag} ms · slide after stopping {slide} ms · unevenness when moving slowly {jitter}% · 90° swipe {swipe}%', { lag: s.bestBehavior.lagFast, slide: s.bestBehavior.slideFast, jitter: (s.bestBehavior.jitterSlow * 100).toFixed(0), swipe: (s.bestBehavior.swipe * 100).toFixed(0) }));
+    lines.push('  ' + tr('Middle half of the best setting over resampled fits: {list}', { list: KNOBS.map((k) => `${tr(k.label)} ${s.spread[k.key][0]}~${s.spread[k.key][1]}`).join(' · ') }));
+    lines.push('', tr('Settings for the next round'));
+    s.next.forEach((k, i) => lines.push(`  ${i + 1}. ${describeKnobs(k, tr)}`));
   }
-  for (const n of r.notes) lines.push('', `※ ${n}`);
+  for (const n of r.notes) lines.push('', `※ ${tr(n.en, n.vars)}`);
   return lines.join('\n');
 }

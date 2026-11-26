@@ -3,6 +3,8 @@
 // Small things every part of the page uses: short messages that fade by themselves (toasts), settings kept in this
 // browser, the light/dark choice, and a way to close a pop-up by clicking away from it.
 
+import { N_ } from '../src/i18n/index.ts';
+
 // ------------------------------------------------------------------ settings kept in this browser
 
 /** A saved text, or the fallback when there is none or the browser will not say (private windows, blocked storage). */
@@ -65,7 +67,8 @@ export function toast(text: string, kind: ToastKind = 'info', ms = kind === 'war
 
 export type Theme = 'auto' | 'light' | 'dark';
 const THEMES: Theme[] = ['auto', 'light', 'dark'];
-export const THEME_TEXT: Record<Theme, string> = { auto: '기기 설정 따라가기', light: '밝게', dark: '어둡게' };
+/** What each choice is called; the words are shown through t() where they are drawn, so that they follow the language. */
+export const THEME_TEXT: Record<Theme, string> = { auto: N_('Follow device setting'), light: N_('Light'), dark: N_('Dark') };
 
 export const currentTheme = (): Theme => {
   const v = saved('gtp.theme');

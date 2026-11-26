@@ -4,6 +4,8 @@
 // when the controls over the picture hide, how good the connection is, what a screenshot is called, which clip format
 // the browser can make, how the picture is adjusted, and when the time left is worth a warning.
 
+import { N_, t } from '../src/i18n/index.ts';
+
 // ------------------------------------------------------------------ the controls over the picture
 
 /**
@@ -70,7 +72,8 @@ export function rateConnection(s: LinkSample): LinkQuality {
   return 'great';
 }
 
-export const QUALITY_TEXT: Record<LinkQuality, string> = { great: '매우 좋음', good: '좋음', fair: '보통', poor: '나쁨', none: '신호 없음' };
+/** The words for each rating, kept as sentences to be shown through t() (the language can change while they are kept). */
+export const QUALITY_TEXT: Record<LinkQuality, string> = { great: N_('Excellent'), good: N_('Good'), fair: N_('Fair'), poor: N_('Poor'), none: N_('No signal') };
 /** Bars lit (of four) for each rating. */
 export const QUALITY_BARS: Record<LinkQuality, number> = { great: 4, good: 3, fair: 2, poor: 1, none: 0 };
 
@@ -190,15 +193,15 @@ export function timeLeft(s: { remaining: number | null; heardAt: number; now: nu
 
 /** The line a warning says. */
 export function warningText(seconds: number): string {
-  if (seconds <= 60) return '1분 남았습니다. 곧 연결이 끝납니다.';
-  return `오늘 남은 시간이 ${Math.round(seconds / 60)}분입니다.`;
+  if (seconds <= 60) return t('1 min left. The connection will end soon.');
+  return t('{minutes} min left today.', { minutes: Math.round(seconds / 60) });
 }
 
 /** What a closed connection's reason is called for the person (the page's own words are English codes). */
 export function describeClosed(detail: string): string {
-  if (detail === '' || detail === 'disconnected') return '연결을 끊었습니다.';
-  if (detail === 'connection failed') return '서버에 연결하지 못했습니다. 잠시 뒤 다시 시도하세요.';
-  if (detail === 'another client is connected') return '다른 기기가 이 PS5를 쓰고 있습니다.';
+  if (detail === '' || detail === 'disconnected') return t('Disconnected.');
+  if (detail === 'connection failed') return t('Could not reach the server. Try again in a moment.');
+  if (detail === 'another client is connected') return t('Another device is using this PS5.');
   return detail;
 }
 

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { BUTTON, emptyPadState } from '../src/engine/types.ts';
+import { setLang } from '../src/i18n/index.ts';
 import { GamepadInput, mergeGamepad, padName, samplePad, stick, type GamepadLike } from '../web/gamepad.ts';
 
 /** A DualSense as a browser shows it: 18 buttons (17 is the touchpad), 4 axes, all at rest. */
@@ -73,7 +74,17 @@ describe('a controller as the console\'s pad', () => {
     assert.equal(padName('DualSense Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)'), 'DualSense');
     assert.equal(padName('Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 09cc)'), 'DualShock 4');
     assert.equal(padName('Xbox 360 Controller (XInput STANDARD GAMEPAD)'), 'Xbox 360 Controller');
-    assert.equal(padName('(only noise)'), '컨트롤러');
+    assert.equal(padName('(only noise)'), 'Controller');
+  });
+
+  it('names a controller with no name in the language of the page at the moment it is asked', () => {
+    setLang('ko');
+    try {
+      assert.equal(padName('(only noise)'), '컨트롤러');
+    } finally {
+      setLang('en');
+    }
+    assert.equal(padName('(only noise)'), 'Controller');
   });
 });
 

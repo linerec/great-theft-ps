@@ -10,91 +10,120 @@
 // listed as it is written and left alone; the profile text below the editor remains the full truth.
 
 import { bindingKey, parseActions, splitBindingKey, validateProfile, type Activator, type Profile } from '../src/engine/profile.ts';
+import { N_, onLang, t } from '../src/i18n/index.ts';
 
 type Style = 'plain' | 'tap' | 'hold' | 'latch' | 'turbo';
 
 interface Control {
   id: string;
-  label: string;
+  /** What is printed on the pad (✕, R2, OPTIONS): the same in every language. */
+  mark?: string;
+  /** Else, a sentence for t(). A control that has both (L3) is called by its sentence on the pad and by its mark in the summary. */
+  name?: string;
+  /** A shorter name for the summary beside the picture, when `name` is long. */
+  short?: string;
+  /** A sentence for t(). */
   group: string;
   /** Sticks can only be pushed plainly. */
   plainOnly?: boolean;
 }
 
+const GROUP_MOVE = N_('Move');
+const GROUP_LOOK = N_('Look with keys (the mouse usually does this)');
+
 const CONTROLS: Control[] = [
-  { id: 'left:up', label: '왼쪽 스틱 ↑', group: '이동', plainOnly: true },
-  { id: 'left:down', label: '왼쪽 스틱 ↓', group: '이동', plainOnly: true },
-  { id: 'left:left', label: '왼쪽 스틱 ←', group: '이동', plainOnly: true },
-  { id: 'left:right', label: '왼쪽 스틱 →', group: '이동', plainOnly: true },
-  { id: 'cross', label: '✕', group: '버튼' },
-  { id: 'moon', label: '○', group: '버튼' },
-  { id: 'box', label: '□', group: '버튼' },
-  { id: 'pyramid', label: '△', group: '버튼' },
-  { id: 'r2', label: 'R2', group: '어깨 · 트리거' },
-  { id: 'l2', label: 'L2', group: '어깨 · 트리거' },
-  { id: 'r1', label: 'R1', group: '어깨 · 트리거' },
-  { id: 'l1', label: 'L1', group: '어깨 · 트리거' },
-  { id: 'l3', label: 'L3 (왼쪽 스틱 누르기)', group: '스틱 누르기' },
-  { id: 'r3', label: 'R3 (오른쪽 스틱 누르기)', group: '스틱 누르기' },
-  { id: 'dpad_up', label: '십자키 ↑', group: '십자키' },
-  { id: 'dpad_right', label: '십자키 →', group: '십자키' },
-  { id: 'dpad_down', label: '십자키 ↓', group: '십자키' },
-  { id: 'dpad_left', label: '십자키 ←', group: '십자키' },
-  { id: 'touchpad', label: '터치패드 버튼', group: '시스템' },
-  { id: 'options', label: 'OPTIONS', group: '시스템' },
-  { id: 'share', label: 'CREATE', group: '시스템' },
-  { id: 'ps', label: 'PS', group: '시스템' },
-  { id: 'right:up', label: '오른쪽 스틱 ↑', group: '시점을 키로 (보통은 마우스가 담당)', plainOnly: true },
-  { id: 'right:down', label: '오른쪽 스틱 ↓', group: '시점을 키로 (보통은 마우스가 담당)', plainOnly: true },
-  { id: 'right:left', label: '오른쪽 스틱 ←', group: '시점을 키로 (보통은 마우스가 담당)', plainOnly: true },
-  { id: 'right:right', label: '오른쪽 스틱 →', group: '시점을 키로 (보통은 마우스가 담당)', plainOnly: true },
+  { id: 'left:up', name: N_('Left stick ↑'), group: GROUP_MOVE, plainOnly: true },
+  { id: 'left:down', name: N_('Left stick ↓'), group: GROUP_MOVE, plainOnly: true },
+  { id: 'left:left', name: N_('Left stick ←'), group: GROUP_MOVE, plainOnly: true },
+  { id: 'left:right', name: N_('Left stick →'), group: GROUP_MOVE, plainOnly: true },
+  { id: 'cross', mark: '✕', group: N_('Buttons') },
+  { id: 'moon', mark: '○', group: N_('Buttons') },
+  { id: 'box', mark: '□', group: N_('Buttons') },
+  { id: 'pyramid', mark: '△', group: N_('Buttons') },
+  { id: 'r2', mark: 'R2', group: N_('Shoulders · triggers') },
+  { id: 'l2', mark: 'L2', group: N_('Shoulders · triggers') },
+  { id: 'r1', mark: 'R1', group: N_('Shoulders · triggers') },
+  { id: 'l1', mark: 'L1', group: N_('Shoulders · triggers') },
+  { id: 'l3', mark: 'L3', name: N_('L3 (press the left stick)'), group: N_('Stick presses') },
+  { id: 'r3', mark: 'R3', name: N_('R3 (press the right stick)'), group: N_('Stick presses') },
+  { id: 'dpad_up', name: N_('D-pad ↑'), group: N_('D-pad') },
+  { id: 'dpad_right', name: N_('D-pad →'), group: N_('D-pad') },
+  { id: 'dpad_down', name: N_('D-pad ↓'), group: N_('D-pad') },
+  { id: 'dpad_left', name: N_('D-pad ←'), group: N_('D-pad') },
+  { id: 'touchpad', name: N_('Touchpad button'), short: N_('Touchpad'), group: N_('System') },
+  { id: 'options', mark: 'OPTIONS', group: N_('System') },
+  { id: 'share', mark: 'CREATE', group: N_('System') },
+  { id: 'ps', mark: 'PS', group: N_('System') },
+  { id: 'right:up', name: N_('Right stick ↑'), group: GROUP_LOOK, plainOnly: true },
+  { id: 'right:down', name: N_('Right stick ↓'), group: GROUP_LOOK, plainOnly: true },
+  { id: 'right:left', name: N_('Right stick ←'), group: GROUP_LOOK, plainOnly: true },
+  { id: 'right:right', name: N_('Right stick →'), group: GROUP_LOOK, plainOnly: true },
 ];
 
+/** What a control is called on the pad's side of a row. */
+const padName = (c: Control): string => (c.name ? t(c.name) : c.mark!);
+/** The shorter name for the layout summary. */
+const shortName = (c: Control): string => c.mark ?? t(c.short ?? c.name!);
+
+// Sentences for t(): the tables hold them, the editor shows them in the language of the page each time it draws.
 const STYLE_TEXT: Record<Style, string> = {
-  plain: '누르는 동안',
-  tap: '짧게 한 번 (탭)',
-  hold: '길게 유지 (홀드)',
-  latch: '누를 때마다 켜고 끄기',
-  turbo: '누르는 동안 연타',
+  plain: N_('While pressed'),
+  tap: N_('Short tap'),
+  hold: N_('Long hold'),
+  latch: N_('Toggle on and off with each press'),
+  turbo: N_('Rapid presses while held'),
 };
 const STYLE_HELP: Record<Style, string> = {
-  plain: '키를 누르고 있는 동안 버튼도 눌려 있습니다. 패드와 같고 지연이 없습니다. 게임이 짧게/길게를 스스로 구분합니다.',
-  tap: '키를 얼마나 오래 누르든 버튼은 짧게 한 번만 눌립니다. 같은 버튼의 "짧게"를 한 키에 따로 둘 때 씁니다.',
-  hold: '키를 톡 눌러도 버튼은 정해진 시간만큼 눌려 있습니다. 같은 버튼의 "길게"를 한 키에 따로 둘 때 씁니다.',
-  latch: '한 번 누르면 버튼이 눌린 채로 있고, 다시 누르면 놓습니다. (누르고 있어야 하는 조준을 토글로 바꿀 때 등)',
-  turbo: '키를 누르고 있는 동안 버튼을 빠르게 반복해서 누릅니다. (연타가 필요한 달리기 등)',
+  plain: N_('The button stays pressed as long as you hold the key. Same as the pad, with no delay. The game tells a short press from a long one by itself.'),
+  tap: N_('However long you hold the key, the button is pressed once, briefly. Use it to give the "short press" of the same button its own key.'),
+  hold: N_('Even a quick tap on the key keeps the button pressed for a set time. Use it to give the "long press" of the same button its own key.'),
+  latch: N_('One press keeps the button down, the next one lets it go. (For example, to turn an aim you have to hold into a toggle.)'),
+  turbo: N_('The button is pressed over and over, fast, while you hold the key. (For example, sprinting that needs button mashing.)'),
+};
+/** A short word after the key in the layout summary, for the styles that are not a plain press. */
+const STYLE_MARK: Partial<Record<Style, string>> = {
+  tap: N_('tap'),
+  hold: N_('hold'),
+  latch: N_('toggle'),
+  turbo: N_('rapid'),
 };
 const ACTIVATOR_TEXT: Record<Activator, string> = {
-  regular: '그냥 누르면',
-  long: '길게 누르면',
-  double: '두 번 누르면',
-  start: '누르는 순간',
-  release: '뗄 때',
+  regular: N_('on a plain press'),
+  long: N_('on a long press'),
+  double: N_('on a double press'),
+  start: N_('on key down'),
+  release: N_('on release'),
 };
 
-const KEY_NAMES: Record<string, string> = {
-  Mouse0: '좌클릭', Mouse1: '휠 클릭', Mouse2: '우클릭', Mouse3: '마우스 뒤로', Mouse4: '마우스 앞으로', WheelUp: '휠 위로', WheelDown: '휠 아래로',
+/** Names of keys that are words, for t(). */
+const KEY_WORDS: Record<string, string> = {
+  Mouse0: N_('Left click'), Mouse1: N_('Wheel click'), Mouse2: N_('Right click'), Mouse3: N_('Mouse back'), Mouse4: N_('Mouse forward'),
+  WheelUp: N_('Wheel up'), WheelDown: N_('Wheel down'),
+  ShiftLeft: N_('Left Shift'), ShiftRight: N_('Right Shift'), AltLeft: N_('Left Alt'), AltRight: N_('Right Alt'), ControlLeft: N_('Left Ctrl'), ControlRight: N_('Right Ctrl'),
+};
+/** Names of keys as they are printed on the keyboard: the same in every language. */
+const KEY_PRINTED: Record<string, string> = {
   Space: 'Space', Enter: 'Enter', Backspace: 'Backspace', Tab: 'Tab', CapsLock: 'Caps Lock', Backquote: '`', Minus: '-', Equal: '=',
-  ShiftLeft: '왼쪽 Shift', ShiftRight: '오른쪽 Shift', AltLeft: '왼쪽 Alt', AltRight: '오른쪽 Alt', ControlLeft: '왼쪽 Ctrl', ControlRight: '오른쪽 Ctrl',
   ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', Backslash: '\\',
   Home: 'Home', End: 'End', PageUp: 'Page Up', PageDown: 'Page Down', Insert: 'Insert', Delete: 'Delete',
 };
 
 /** A name a person would use for an input code. */
 export function keyName(code: string): string {
-  if (KEY_NAMES[code]) return KEY_NAMES[code]!;
+  if (KEY_WORDS[code]) return t(KEY_WORDS[code]!);
+  if (KEY_PRINTED[code]) return KEY_PRINTED[code]!;
   if (/^Key[A-Z]$/.test(code)) return code.slice(3);
   if (/^Digit\d$/.test(code)) return code.slice(5);
-  if (/^Numpad/.test(code)) return `숫자패드 ${code.slice(6)}`;
+  if (/^Numpad/.test(code)) return t('Numpad {key}', { key: code.slice(6) });
   return code;
 }
 
 /** Keys a browser acts on by itself: binding them would work badly or dangerously. */
 function reserved(code: string): string | null {
-  if (code === 'Escape') return 'Esc는 브라우저가 마우스 잠금을 푸는 데 씁니다.';
-  if (/^Control(Left|Right)$/.test(code)) return 'Ctrl은 권하지 않습니다: 누른 채 W를 누르면 브라우저가 탭을 닫습니다 (Ctrl+W).';
-  if (/^Meta(Left|Right)$/.test(code)) return 'Windows/Command 키는 운영체제가 가져갑니다.';
-  if (code === 'F5' || code === 'F11' || code === 'F12') return `${code}는 브라우저가 씁니다 (새로고침, 전체 화면, 개발자 도구).`;
+  if (code === 'Escape') return t('The browser uses Esc to release the mouse lock.');
+  if (/^Control(Left|Right)$/.test(code)) return t('Ctrl is not recommended: pressing W while holding it makes the browser close the tab (Ctrl+W).');
+  if (/^Meta(Left|Right)$/.test(code)) return t('The operating system takes the Windows/Command key.');
+  if (code === 'F5' || code === 'F11' || code === 'F12') return t('{key} is used by the browser (refresh, full screen, developer tools).', { key: code });
   return null;
 }
 
@@ -133,7 +162,7 @@ function writeBinding(control: string, style: Style, param: number | null): stri
   return `${style}:${control}${param ? `:${param}` : ''}`;
 }
 
-/** The layout in a few lines, for showing next to the picture: "이동 W A S D · ✕ Space, Enter · ...". */
+/** The layout in a few lines, for showing next to the picture: "Move W A S D · ✕ Space, Enter · ...". In the language in use now: the caller draws it again when that changes. */
 export function describeLayout(profile: Profile): Array<{ label: string; keys: string }> {
   const by = new Map<string, string[]>();
   for (const layer of profile.layers) {
@@ -141,22 +170,23 @@ export function describeLayout(profile: Profile): Array<{ label: string; keys: s
       const k = splitBindingKey(key);
       const b = readBinding(text);
       if (!k || !b) continue;
-      const mark = b.style === 'tap' ? ' (짧게)' : b.style === 'hold' ? ' (길게)' : b.style === 'latch' ? ' (토글)' : b.style === 'turbo' ? ' (연타)' : '';
-      const when = k.activator === 'regular' ? '' : ` ${ACTIVATOR_TEXT[k.activator]}`;
+      const markWord = STYLE_MARK[b.style];
+      const mark = markWord ? ` (${t(markWord)})` : '';
+      const when = k.activator === 'regular' ? '' : ` ${t(ACTIVATOR_TEXT[k.activator])}`;
       by.set(b.control, [...(by.get(b.control) ?? []), `${keyName(k.code)}${when}${mark}`]);
     }
   }
   const out: Array<{ label: string; keys: string }> = [];
   const stick = ['left:up', 'left:left', 'left:down', 'left:right'].map((c) => by.get(c)?.[0] ?? '?');
-  out.push({ label: '이동', keys: stick.join(' ') });
-  out.push({ label: '시점', keys: profile.mouse.target === 'off' ? '(마우스 끔)' : profile.mouse.target === 'gyro' ? '마우스 (자이로)' : '마우스' });
+  out.push({ label: t('Move'), keys: stick.join(' ') });
+  out.push({ label: t('Look'), keys: profile.mouse.target === 'off' ? t('(mouse off)') : profile.mouse.target === 'gyro' ? t('Mouse (gyro)') : t('Mouse') });
   for (const c of CONTROLS) {
     if (c.id.includes(':')) continue;
     const keys = by.get(c.id);
-    if (keys?.length) out.push({ label: c.label.replace(/ \(.*\)$/, '').replace(' 버튼', ''), keys: keys.join(', ') });
+    if (keys?.length) out.push({ label: shortName(c), keys: keys.join(', ') });
   }
   for (const layer of profile.layers) {
-    if (layer.holdKey && layer.leftStickScale < 1) out.push({ label: '걷기', keys: `${keyName(layer.holdKey)} 누른 채 이동` });
+    if (layer.holdKey && layer.leftStickScale < 1) out.push({ label: t('Walk'), keys: t('Hold {key} and move', { key: keyName(layer.holdKey) }) });
   }
   return out;
 }
@@ -190,7 +220,7 @@ export function mountKeymap(root: HTMLElement, host: KeymapHost): { refresh(): v
   /** Wait for the next key, mouse button or wheel notch. Esc cancels. */
   const capture = (button: HTMLButtonElement, then: (code: string) => void): void => {
     const before = button.textContent;
-    button.textContent = '키나 마우스 버튼을 누르세요 (Esc: 취소)';
+    button.textContent = t('Press a key or mouse button (Esc: cancel)');
     button.classList.add('listening');
     const shield = el('div', 'keymap-shield');
     document.body.append(shield);
@@ -237,20 +267,20 @@ export function mountKeymap(root: HTMLElement, host: KeymapHost): { refresh(): v
   const bindingLine = (r: Row, control: Control): HTMLElement => {
     const line = el('div', 'keymap-binding');
     line.append(el('kbd', 'keycap', keyName(r.code)));
-    if (r.layer !== 'default') line.append(el('span', 'chip', `${r.layer} 레이어`));
+    if (r.layer !== 'default') line.append(el('span', 'chip', t('{layer} layer', { layer: r.layer })));
 
     if (!control.plainOnly) {
       const how = el('select');
-      how.setAttribute('aria-label', '버튼을 어떻게 누를지');
+      how.setAttribute('aria-label', t('How the button is pressed'));
       for (const s of ['plain', 'tap', 'hold', 'latch', 'turbo'] as Style[]) {
         if (s === 'turbo' && (control.id === 'l2' || control.id === 'r2')) continue;
-        const o = el('option', '', STYLE_TEXT[s]);
+        const o = el('option', '', t(STYLE_TEXT[s]));
         o.value = s;
-        o.title = STYLE_HELP[s];
+        o.title = t(STYLE_HELP[s]);
         how.append(o);
       }
       how.value = r.style;
-      how.title = STYLE_HELP[r.style];
+      how.title = t(STYLE_HELP[r.style]);
       how.addEventListener('change', () =>
         change((p) => {
           p.layers.find((l) => l.name === r.layer)!.bindings[r.key] = writeBinding(r.control, how.value as Style, null);
@@ -261,11 +291,11 @@ export function mountKeymap(root: HTMLElement, host: KeymapHost): { refresh(): v
 
     // On which kind of key press. Nearly always the plain one, so it stays quiet until it is something else.
     const when = el('select', r.activator === 'regular' ? 'quiet' : '');
-    when.setAttribute('aria-label', '키를 어떻게 눌렀을 때');
-    when.title = '이 키를 어떻게 눌렀을 때인지. 길게/두 번 누르기를 쓰면 같은 키의 "그냥 누르면"은 키를 뗄 때 나갑니다.';
+    when.setAttribute('aria-label', t('On which kind of key press'));
+    when.title = t('Which kind of press of this key counts. If long or double press is used, the "on a plain press" of the same key is sent when the key is released.');
     for (const a of ['regular', 'long', 'double', 'start', 'release'] as Activator[]) {
       if (r.code.startsWith('Wheel') && a !== 'regular') continue;
-      const o = el('option', '', ACTIVATOR_TEXT[a]);
+      const o = el('option', '', t(ACTIVATOR_TEXT[a]));
       o.value = a;
       when.append(o);
     }
@@ -280,9 +310,9 @@ export function mountKeymap(root: HTMLElement, host: KeymapHost): { refresh(): v
     );
     line.append(when);
     const remove = el('button', 'btn ghost small', '×');
-    remove.title = '이 키를 뺍니다';
+    remove.title = t('Remove this key');
     remove.type = 'button';
-    remove.setAttribute('aria-label', `${keyName(r.code)} 삭제`);
+    remove.setAttribute('aria-label', t('Remove {key}', { key: keyName(r.code) }));
     remove.addEventListener('click', () => change((p) => void delete p.layers.find((l) => l.name === r.layer)!.bindings[r.key]));
     line.append(remove);
     return line;
@@ -298,28 +328,30 @@ export function mountKeymap(root: HTMLElement, host: KeymapHost): { refresh(): v
     for (const control of CONTROLS) {
       if (control.group !== group) {
         group = control.group;
-        root.append(el('h4', 'keymap-group', group));
+        root.append(el('h4', 'keymap-group', t(group)));
         table = el('div', 'keymap-table');
         root.append(table);
       }
       const row = el('div', 'keymap-row');
-      row.append(el('div', 'keymap-pad', control.label));
+      row.append(el('div', 'keymap-pad', padName(control)));
       const cell = el('div', 'keymap-keys');
       for (const r of all.filter((x) => x.control === control.id)) cell.append(bindingLine(r, control));
-      const add = el('button', 'btn small keymap-add', '+ 키');
+      const add = el('button', 'btn small keymap-add', t('+ Key'));
       add.type = 'button';
-      add.setAttribute('aria-label', `${control.label}에 키 추가`);
+      add.setAttribute('aria-label', t('Add a key to {control}', { control: padName(control) }));
       add.addEventListener('click', () =>
         capture(add, (code) => {
           const why = reserved(code);
           if (why) return host.say(why, 'error');
           const taken = all.find((x) => x.layer === 'default' && x.code === code && x.activator === 'regular');
-          const takenBy = taken ? CONTROLS.find((c) => c.id === taken.control)?.label : undefined;
+          const takenControl = taken ? CONTROLS.find((c) => c.id === taken.control) : undefined;
           change(
             (next) => {
               next.layers[0]!.bindings[code] = writeBinding(control.id, 'plain', null);
             },
-            takenBy && taken!.control !== control.id ? `${keyName(code)}: ${takenBy}에서 ${control.label}(으)로 옮겼습니다.` : `${keyName(code)} → ${control.label}`,
+            takenControl && taken!.control !== control.id
+              ? t('{key}: moved from {from} to {to}.', { key: keyName(code), from: padName(takenControl), to: padName(control) })
+              : `${keyName(code)} → ${padName(control)}`,
           );
         }),
       );
@@ -331,16 +363,22 @@ export function mountKeymap(root: HTMLElement, host: KeymapHost): { refresh(): v
     // Layers with a hold key: shown, with the key changeable; their other properties stay in the profile text.
     const layers = p.layers.filter((l, i) => i > 0);
     if (layers.length) {
-      root.append(el('h4', 'keymap-group', '누르고 있는 동안 바뀌는 것 (레이어)'));
+      root.append(el('h4', 'keymap-group', t('What changes while a key is held (layers)')));
       const table2 = el('div', 'keymap-table');
       for (const layer of layers) {
         const row = el('div', 'keymap-row');
-        const what = layer.leftStickScale < 1 ? `이동을 ${Math.round(layer.leftStickScale * 100)}%로 (걷기)` : layer.lookScale !== 1 ? `시점 배율 ${layer.lookScale}` : layer.name === 'aim' ? '조준 (시점 배율을 따로 둘 수 있음)' : '키 배치를 바꿈';
-        row.append(el('div', 'keymap-pad', `${layer.name}: ${what}`));
+        const what = layer.leftStickScale < 1
+          ? t('{layer}: move at {percent}% (walk)', { layer: layer.name, percent: Math.round(layer.leftStickScale * 100) })
+          : layer.lookScale !== 1
+            ? t('{layer}: look scale {scale}', { layer: layer.name, scale: layer.lookScale })
+            : layer.name === 'aim'
+              ? t('{layer}: aim (the look scale can be set separately)', { layer: layer.name })
+              : t('{layer}: changes the key layout', { layer: layer.name });
+        row.append(el('div', 'keymap-pad', what));
         const cell = el('div', 'keymap-keys');
         const line = el('div', 'keymap-binding');
-        line.append(el('kbd', 'keycap', layer.holdKey ? keyName(layer.holdKey) : '(키 없음: 다른 키로 켜고 끔)'));
-        const set = el('button', 'btn small', '키 바꾸기');
+        line.append(el('kbd', 'keycap', layer.holdKey ? keyName(layer.holdKey) : t('(no key: switched on and off by another key)')));
+        const set = el('button', 'btn small', t('Change key'));
         set.type = 'button';
         set.addEventListener('click', () =>
           capture(set, (code) => {
@@ -366,16 +404,20 @@ export function mountKeymap(root: HTMLElement, host: KeymapHost): { refresh(): v
     }
 
     if (other.length) {
-      root.append(el('h4', 'keymap-group', '그 밖의 동작 (아래 프로필 글에서 고칩니다)'));
+      root.append(el('h4', 'keymap-group', t('Other actions (edit them in the profile text below)')));
       const list = el('ul', 'keymap-other');
       for (const o of other) {
         const k = splitBindingKey(o.key);
-        list.append(el('li', '', `${k ? keyName(k.code) : o.key}${k && k.activator !== 'regular' ? ` ${ACTIVATOR_TEXT[k.activator]}` : ''}${o.layer !== 'default' ? ` (${o.layer} 레이어)` : ''}: ${o.text}`));
+        const when = k && k.activator !== 'regular' ? ` ${t(ACTIVATOR_TEXT[k.activator])}` : '';
+        const layer = o.layer !== 'default' ? ` (${t('{layer} layer', { layer: o.layer })})` : '';
+        list.append(el('li', '', `${k ? keyName(k.code) : o.key}${when}${layer}: ${o.text}`));
       }
       root.append(list);
     }
   };
 
   refresh();
+  // The words are drawn here and kept: draw them again in the new language.
+  onLang(() => refresh());
   return { refresh };
 }

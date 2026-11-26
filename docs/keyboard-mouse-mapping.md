@@ -111,10 +111,10 @@ Ctrl with W closes the tab, F5 reloads, F11 is full screen).
 Unbound on purpose: the mouse wheel (what it should do differs too much between games) and G, Z, B, H and the rest of
 the keyboard, free for a game's own extras.
 
-Two more come with it: "슈터 예시" shows the two-keys-for-one-button idea (R taps Square, E holds it, C taps Circle, Z
-holds it), and "GTA V 스타일" holds Shift to tap Cross repeatedly and switches to driving controls with F.
+Two more come with it: "Shooter example" shows the two-keys-for-one-button idea (R taps Square, E holds it, C taps Circle, Z
+holds it), and "GTA V style" holds Shift to tap Cross repeatedly and switches to driving controls with F.
 
-The page's editor (설정 → 입력 매핑) changes all of this by pressing keys, and saves one profile per game in the browser.
+The page's editor (Settings → Input mapping) changes all of this by pressing keys, and saves one profile per game in the browser.
 The text form is for sharing.
 
 ## In the game's own settings

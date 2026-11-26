@@ -124,7 +124,7 @@ describe('going through the round', () => {
   });
 });
 
-describe('skip and back', () => {
+describe('skip and undo', () => {
   it('passes a candidate over and brings it back when everything else has been tried', () => {
     const s = make();
     s.start(original);
@@ -141,30 +141,94 @@ describe('skip and back', () => {
     assert.ok(s.ratings.length >= 47, `${s.ratings.length} ratings before it came back`);
   });
 
-  it('goes back to the candidate before, without changing any rating', () => {
+  it('takes back a rating that was kept: it is dropped, and the candidate is there to be rated again', () => {
     const s = make();
     s.start(original);
     s.setScore(5);
     s.save(ctxFor(s));
     assert.equal(s.candidate!.id, 'r1-02');
-    assert.equal(s.back()!.id, 'r1-01');
+    const kept = s.ratings[0]!;
+    s.markSent([kept.id]);
+    const undone = s.undo()!;
+    assert.equal(undone.candidate.id, 'r1-01');
+    assert.equal(undone.removed?.id, kept.id);
+    assert.equal(undone.wasSent, true, 'the page has to take it back from the server too');
+    assert.equal(s.ratings.length, 0);
+    assert.equal(s.retest, false, 'nothing of it is left, so it is a first try again');
+    assert.equal(s.sent.has(kept.id), false);
+    assert.deepEqual(s.pending, { score: null, flags: {}, note: '' });
+    assert.equal(s.undo(), null, 'nothing before the first');
+  });
+
+  it('takes back a pass, and only that: an earlier rating of the same candidate stays', () => {
+    const s = make();
+    s.start(original);
+    s.setScore(5);
+    s.save(ctxFor(s));
+    assert.equal(s.skip()!.id, 'r1-03');
+    const undone = s.undo()!;
+    assert.equal(undone.candidate.id, 'r1-02');
+    assert.equal(undone.removed, null);
     assert.equal(s.ratings.length, 1);
-    assert.equal(s.retest, true, 'it has been rated, so a new rating of it is a second try');
-    assert.equal(s.back(), null, 'nothing before the first');
+    assert.deepEqual(s.state.skipped, []);
+  });
+
+  it('can be taken back step by step', () => {
+    const s = make();
+    s.start(original);
+    for (let i = 0; i < 3; i++) {
+      s.setScore(6);
+      s.save(ctxFor(s));
+    }
+    assert.equal(s.undo()!.candidate.id, 'r1-03');
+    assert.equal(s.undo()!.candidate.id, 'r1-02');
+    assert.equal(s.undo()!.candidate.id, 'r1-01');
+    assert.equal(s.ratings.length, 0);
+  });
+
+  it('reads what an earlier version of the page kept (a list of ids), and can undo through it without dropping a rating', () => {
+    const s = make({ state: { active: true, currentId: 'r1-02', history: ['r1-01'] as unknown as never } });
+    const undone = s.undo()!;
+    assert.equal(undone.candidate.id, 'r1-01');
+    assert.equal(undone.removed, null);
+  });
+});
+
+describe('scoring while playing', () => {
+  it('gives the score and keeps the rating in one go, and moves on', () => {
+    const s = make();
+    s.start(original);
+    const r = s.rate(9, ctxFor(s));
+    assert.ok(r.ok);
+    assert.equal(r.ok && r.rating.score, 9);
+    assert.equal(s.candidate!.id, 'r1-02');
+  });
+
+  it('keeps nothing when the mouse had too little time, and says how long to go on', () => {
+    const s = make();
+    s.start(original);
+    s.setFlag('stop', -1);
+    const r = s.rate(3, ctxFor(s, { trial: { seconds: 5.2, speedShare: new Array(7).fill(0) } }));
+    assert.deepEqual(r, { ok: false, error: 'too-short', secondsLeft: 3 });
+    assert.equal(s.ratings.length, 0);
+    assert.equal(s.candidate!.id, 'r1-01');
+    assert.deepEqual(s.pending.flags, { stop: -1 }, 'what was marked is not lost');
+    assert.equal(s.pending.score, 3, 'nor is the score: the key can be pressed again');
+    assert.ok(s.save(ctxFor(s)).ok, 'once there has been time, saving needs no second press');
+  });
+
+  it('does not rate when nothing is running', () => {
+    const idle = make();
+    assert.deepEqual(idle.rate(5, { feel: { degPerCount: 0.05, ...CENTER }, playout: null, delayMs: null, latencyMs: null, game: { ...DEFAULT_GAME, measured: false }, trial: { seconds: 30, speedShare: new Array(7).fill(0) } }), { ok: false, error: 'not-running' });
   });
 });
 
 describe('the form', () => {
-  it('moves the score from 5 and stays between 1 and 10', () => {
+  it('keeps the score a whole number between 1 and 10', () => {
     const s = make();
-    assert.equal(s.bumpScore(1), 6);
-    assert.equal(s.bumpScore(-3), 3);
-    for (let i = 0; i < 20; i++) s.bumpScore(-1);
-    assert.equal(s.pending.score, 1);
-    for (let i = 0; i < 20; i++) s.bumpScore(1);
-    assert.equal(s.pending.score, 10);
     assert.equal(s.setScore(7.6), 8);
     assert.equal(s.setScore(99), 10);
+    assert.equal(s.setScore(-4), 1);
   });
 
   it('marks a situation bad and takes the mark back with the same key', () => {

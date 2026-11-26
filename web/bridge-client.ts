@@ -4,6 +4,7 @@
 // keepalive), ping/RTT, and input-to-picture latency where the source echoes the input sequence.
 
 import { decodeAudio, decodePong, decodeVideo, encodePad, encodePing, MSG, type VideoHeader } from '../src/bridge/protocol.ts';
+import { getLang, t } from '../src/i18n/index.ts';
 import type { VirtualPadState } from '../src/engine/types.ts';
 
 export type BridgeState = 'idle' | 'connecting' | 'ready' | 'closed';
@@ -46,15 +47,18 @@ export class BridgeClient {
   connect(url: string, token = '', consoleMac = '', quality?: { preset: string }, lock = false): void {
     this.disconnect();
     this.#set('connecting', url);
+    // The bridge answers each person in the language they read: it is told at the time of connecting (a later change of language
+    // applies to the next connection).
+    const lang = getLang();
     const ws = new WebSocket(url);
     ws.binaryType = 'arraybuffer';
     this.#ws = ws;
-    ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', ...(token ? { token } : {}), ...(consoleMac ? { console: consoleMac } : {}), ...(quality ? { quality } : {}), ...(lock ? { lock: true } : {}), client: 'gtp-web' }));
+    ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', ...(token ? { token } : {}), ...(consoleMac ? { console: consoleMac } : {}), ...(quality ? { quality } : {}), ...(lock ? { lock: true } : {}), lang, client: 'gtp-web' }));
     ws.onmessage = (e) => this.#message(e.data as string | ArrayBuffer);
     ws.onclose = (e) => {
       if (this.#ws === ws) {
         this.#stopTimer();
-        this.#set('closed', e.code === 4401 ? '로그인이 필요합니다. 페이지를 새로 고치면 로그인 창이 열립니다. (토큰이 필요한 브리지라면 브리지가 출력한 주소로 여세요)' : e.code === 4403 ? (this.detail.startsWith('error: ') ? this.detail.slice(7) : '오늘 사용할 수 있는 시간이 끝났습니다') : e.code === 4409 ? 'another client is connected' : this.detail.startsWith('error: ') ? this.detail.slice(7) : `closed (${e.code})`);
+        this.#set('closed', e.code === 4401 ? t('You need to log in. Reloading the page opens the login window. (If the bridge needs a token, open the address the bridge printed)') : e.code === 4403 ? (this.detail.startsWith('error: ') ? this.detail.slice(7) : t('Your time for today has ended')) : e.code === 4409 ? 'another client is connected' : this.detail.startsWith('error: ') ? this.detail.slice(7) : `closed (${e.code})`);
       }
     };
     ws.onerror = () => this.#set('closed', 'connection failed');

@@ -15,6 +15,7 @@ import { TpsGame, defaultTpsSettings } from '../src/testbed/tps.ts';
 import { renderTps } from '../src/testbed/tpsrender.ts';
 import { CODEC } from '../src/bridge/protocol.ts';
 import { QUALITY_PRESETS, megabytesPerHour, type QualityPreset } from '../src/bridge/quality.ts';
+import { clearMissing, getLang, LANG_NAMES, missingKeys, N_, onLang, t, translate } from '../src/i18n/index.ts';
 import { BridgeClient } from './bridge-client.ts';
 import { describeLayout, mountKeymap } from './keymap.ts';
 import { mountTouch, prefersTouch } from './touch.ts';
@@ -36,7 +37,7 @@ const ctx = padCanvas.getContext('2d') as CanvasRenderingContext2D;
 const params = new URLSearchParams(location.search);
 
 const modeParam = params.get('mode');
-// The console is the main thing; the test games live in the "연습장" view and are chosen with ?mode=fps or ?mode=tps.
+// The console is the main thing; the test games live in the practice view ("Practice" in the page) and are chosen with ?mode=fps or ?mode=tps.
 let mode: Mode = modeParam === 'tps' || modeParam === 'fps' ? modeParam : 'console';
 export type { Mode };
 const fps = new FpsGame(defaultGameSettings());
@@ -56,7 +57,8 @@ const BASE_VIEW = { width: view.width, height: view.height };
 let profile: Profile = presetProfile(mode);
 const engine = new MappingEngine(profile);
 let state: VirtualPadState = engine.tick(TICK);
-let lockNote = '해제됨';
+/** What the readout says about the mouse lock: a sentence (N_), shown through t() each time the readout is drawn. */
+let lockNote: string = N_('Released');
 /**
  * While the console game is being measured (calibrate-console.ts) the pad is not the keyboard's and mouse's: this is the
  * right stick the measurement holds. Null the rest of the time.
@@ -207,11 +209,18 @@ $<HTMLInputElement>('tAimAssist').addEventListener('change', (e) => {
   tps.settings.aimAssist = (e.target as HTMLInputElement).checked;
 });
 
-function message(text: string, kind: '' | 'error' | 'ok'): void {
+/** What the profile line says now, as a way of saying it when that is known (so that it can be said again in a new language). */
+let saidProfile: (() => string) | null = null;
+/** `text` is the line, or a function that says it in the language of the moment (the line is then said again when the language changes). */
+function message(text: string | (() => string), kind: '' | 'error' | 'ok'): void {
   const el = $<HTMLElement>('profileMsg');
-  el.textContent = text;
+  saidProfile = typeof text === 'function' ? text : null;
+  el.textContent = typeof text === 'function' ? text() : text;
   el.className = `msg ${kind}`;
 }
+onLang(() => {
+  if (saidProfile) $<HTMLElement>('profileMsg').textContent = saidProfile();
+});
 
 /** Which thing the shared stage and the input engine serve: a test game, or the console. The shell (app.ts) decides what is shown. */
 export function setMode(next: Mode, loadPreset: boolean): void {
@@ -238,10 +247,12 @@ export function setMode(next: Mode, loadPreset: boolean): void {
   resetMeasure();
   syncControls();
   if (loadPreset && mode !== 'console') {
+    const loaded = mode;
     message(
-      mode === 'tps'
-        ? 'GTA V 스타일 프로필을 불러왔습니다 (Shift = X 자동 연타, F = 탑승 + 차량 조작 전환).'
-        : '1인칭 FPS 기본 프로필을 불러왔습니다.',
+      () =>
+        loaded === 'tps'
+          ? t('Loaded the GTA V style profile (Shift = auto-mash X, F = get in + switch to vehicle controls).')
+          : t('Loaded the first-person FPS default profile.'),
       'ok',
     );
   }
@@ -287,8 +298,9 @@ export const setConsoleMac = (mac: string): void => {
 
 const qualityNote = (): void => {
   const q = QUALITY_PRESETS[$<HTMLSelectElement>('qualityPreset').value as QualityPreset];
-  $<HTMLElement>('qualityNote').textContent = `${q.width}×${q.height} ${q.fps}fps ${q.bitrateKbps}kbps ≈ ${megabytesPerHour(q.bitrateKbps).toFixed(0)}MB/시간`;
+  $<HTMLElement>('qualityNote').textContent = t('{width}×{height} {fps}fps {kbps}kbps ≈ {mb}MB/hour', { width: q.width, height: q.height, fps: q.fps, kbps: q.bitrateKbps, mb: megabytesPerHour(q.bitrateKbps).toFixed(0) });
 };
+onLang(() => qualityNote());
 $<HTMLSelectElement>('qualityPreset').addEventListener('change', () => {
   qualityNote();
   if (client.state !== 'ready') return;
@@ -320,25 +332,39 @@ async function api(method: string, path: string, body?: unknown): Promise<ApiRep
 }
 
 const regMsg = $<HTMLElement>('regMsg');
-const say = (text: string, kind: 'ok' | 'err' | '' = ''): void => {
-  regMsg.textContent = text;
+/**
+ * The line under the registration form. What it says is kept as a way of saying it (not as text), so that it can be said
+ * again in the new language when the language changes.
+ */
+let saying: { text: () => string; kind: 'ok' | 'err' | '' } | null = null;
+const say = (text: () => string, kind: 'ok' | 'err' | '' = ''): void => {
+  saying = { text, kind };
+  regMsg.textContent = text();
   regMsg.dataset.kind = kind;
 };
+onLang(() => {
+  if (saying) regMsg.textContent = saying.text();
+});
+/** What the bridge's reasons are called for the person (sentences, shown through t()). */
 const REG_HINT: Record<string, string> = {
-  'account-id-needed': '처음 한 번은 PSN 계정 ID가 필요합니다.',
-  rejected: '콘솔이 거부했습니다. 코드가 틀렸거나 바뀌었는지, 계정 ID가 맞는지 확인하세요. 기기 연결 화면의 코드를 다시 확인하고 새로 입력해 보세요.',
-  refused: '콘솔이 연결을 거절했습니다. 콘솔의 기기 연결 화면을 연 채로 다시 시도하세요.',
-  timeout: '콘솔이 응답하지 않습니다. 켜져 있는지, 기기 연결 화면이 열려 있는지, 같은 네트워크인지 확인하세요.',
-  'not-found': '그 주소에서 콘솔이 응답하지 않습니다.',
+  'account-id-needed': N_('A PSN account ID is needed the first time.'),
+  rejected: N_('The console refused. Check that the code is correct and has not changed, and that the account ID is right. Look at the code on the console\'s device-linking screen again and enter it anew.'),
+  refused: N_('The console refused the connection. Try again with the console\'s device-linking screen open.'),
+  timeout: N_('The console is not responding. Check that it is on, that the device-linking screen is open, and that it is on the same network.'),
+  'not-found': N_('The console is not responding at that address.'),
 };
+/** A reason, and the bridge's own words after it when it gave some. */
+const withDetail = (reason: string, message: unknown): string => (message ? t('{reason} ({message})', { reason, message: String(message) }) : reason);
 
 /** Why a call to the bridge's /api/ did not work, in words that say what to do. `null` means no answer at all. */
 export function whyNoApi(r: { status: number; data: Record<string, any> } | null): string {
-  if (!r) return `이 주소(${location.host})의 서버에 연결하지 못했습니다. 브리지가 켜져 있는지 확인하세요.`;
-  if (r.status === 404) return `이 주소(${location.host})는 브리지가 아니라 파일만 내보내는 다른 서버로 보입니다. 터미널에서 npm run dev 를 실행하고, 그 화면에 찍힌 주소로 여세요.`;
-  if (r.status === 401) return '브리지가 토큰을 요구합니다. 브리지가 출력한 주소(#token=…)로 여세요.';
-  if (r.status === 403 || r.status === 421) return '브리지가 이 주소로 온 접속을 거부했습니다. 브리지가 출력한 주소(보통 http://127.0.0.1:포트/)로 여세요.';
-  return `브리지가 오류를 돌려줬습니다 (HTTP ${r.status}${r.data.message ? `: ${r.data.message}` : ''}).`;
+  if (!r) return t('Could not reach the server at this address ({host}). Check that the bridge is running.', { host: location.host });
+  if (r.status === 404) return t('This address ({host}) looks like another server that only serves files, not the bridge. Run npm run dev in a terminal and open the address it prints.', { host: location.host });
+  if (r.status === 401) return t('The bridge asks for a token. Open the address the bridge printed (#token=…).');
+  if (r.status === 403 || r.status === 421) return t('The bridge refused a connection that came to this address. Open the address the bridge printed (usually http://127.0.0.1:port/).');
+  return r.data.message
+    ? t('The bridge returned an error (HTTP {status}: {message}).', { status: r.status, message: String(r.data.message) })
+    : t('The bridge returned an error (HTTP {status}).', { status: r.status });
 }
 
 async function refreshRegistered(): Promise<void> {
@@ -354,45 +380,71 @@ async function refreshRegistered(): Promise<void> {
   const consoles = (r.data.consoles ?? []) as Array<{ mac: string; nickname: string; target: string; host: string }>;
   for (const c of consoles) {
     const li = document.createElement('li');
-    li.textContent = `${c.nickname || '(이름 없음)'} · ${c.target} · ${c.host} · ${c.mac}  `;
+    li.textContent = `${c.nickname || t('(no name)')} · ${c.target} · ${c.host} · ${c.mac}  `;
     const del = document.createElement('button');
     del.type = 'button';
-    del.textContent = '삭제';
+    del.textContent = t('Delete');
     del.addEventListener('click', () => void api('DELETE', `/api/consoles/${encodeURIComponent(c.mac)}`).then(refreshRegistered));
     li.append(del);
     list.append(li);
   }
   if (consoles.length === 0) {
     const li = document.createElement('li');
-    li.textContent = '아직 없습니다.';
+    li.textContent = t('None yet.');
     list.append(li);
   }
-  $<HTMLElement>('regAccountNote').textContent = r.data.accountIdSaved ? '(저장된 값을 사용합니다. 바꾸려면 새로 입력)' : '(숫자 또는 Base64. 처음 한 번만 필요)';
+  $<HTMLElement>('regAccountNote').textContent = r.data.accountIdSaved ? t('(Using the saved value. Enter a new one to change it)') : t('(Digits or Base64. Needed only the first time)');
   document.dispatchEvent(new CustomEvent('gtp:consoles'));
 }
+// The list is drawn from what the bridge says, so it is asked again to be drawn in the new language.
+onLang(() => void refreshRegistered());
 
-$<HTMLButtonElement>('regScan').addEventListener('click', async () => {
-  say('찾는 중…');
-  const r = await api('GET', '/api/discover').catch(() => null);
+interface FoundHost {
+  address: string;
+  name: string;
+  type: string;
+  state: string;
+  registered: boolean;
+}
+/** What the last search found (null: none yet, or it failed), so that the list can be drawn again in another language. */
+let foundHosts: FoundHost[] | null = null;
+function paintHosts(): void {
+  if (!foundHosts) return;
   const select = $<HTMLSelectElement>('regHost');
+  const chosen = select.value;
   select.textContent = '';
-  if (!r || !r.ok) return say(`콘솔을 찾지 못했습니다. ${whyNoApi(r)}`, 'err');
-  const hosts = (r.data.hosts ?? []) as Array<{ address: string; name: string; type: string; state: string; registered: boolean }>;
-  for (const h of hosts) {
+  for (const h of foundHosts) {
     const o = document.createElement('option');
     o.value = h.address;
-    o.textContent = `${h.name || h.type} (${h.address}) · ${h.state === 'ready' ? '켜짐' : '대기 중'} · ${h.registered ? '등록됨' : '미등록'}`;
+    o.textContent = t('{name} ({address}) · {state} · {registered}', {
+      name: h.name || h.type,
+      address: h.address,
+      state: h.state === 'ready' ? t('Powered on') : t('Standby'),
+      registered: h.registered ? t('Registered') : t('Not registered'),
+    });
     select.append(o);
   }
-  if (hosts.length === 0) {
+  if (foundHosts.length === 0) {
     const o = document.createElement('option');
     o.value = '';
-    o.textContent = '(찾지 못함)';
+    o.textContent = t('(none found)');
     select.append(o);
-    return say('콘솔이 응답하지 않습니다. 콘솔이 켜져 있고 같은 네트워크인지 확인하고, IP 주소를 직접 입력해도 됩니다.', 'err');
-  }
+  } else if (foundHosts.some((h) => h.address === chosen)) select.value = chosen;
+}
+onLang(paintHosts);
+
+$<HTMLButtonElement>('regScan').addEventListener('click', async () => {
+  say(() => t('Searching…'));
+  const r = await api('GET', '/api/discover').catch(() => null);
+  foundHosts = null;
+  $<HTMLSelectElement>('regHost').textContent = '';
+  if (!r || !r.ok) return say(() => t('Could not find a console. {reason}', { reason: whyNoApi(r) }), 'err');
+  const hosts = (r.data.hosts ?? []) as FoundHost[];
+  foundHosts = hosts;
+  paintHosts();
+  if (hosts.length === 0) return say(() => t('The console is not responding. Check that it is on and on the same network; you can also enter the IP address yourself.'), 'err');
   $<HTMLInputElement>('regAddr').value = hosts[0]!.address;
-  say(hosts.some((h) => h.state !== 'ready') ? '대기 모드인 콘솔이 있습니다. 등록하려면 콘솔을 켜세요.' : `${hosts.length}대 찾았습니다.`, 'ok');
+  say(() => (hosts.some((h) => h.state !== 'ready') ? t('A console is in standby. Turn it on to register it.') : t('Consoles found: {count}.', { count: hosts.length })), 'ok');
 });
 $<HTMLSelectElement>('regHost').addEventListener('change', (e) => {
   const v = (e.target as HTMLSelectElement).value;
@@ -410,30 +462,32 @@ $<HTMLInputElement>('psnAck').addEventListener('change', (e) => {
   $<HTMLButtonElement>('psnGo').disabled = !(e.target as HTMLInputElement).checked;
 });
 const PSN_HINT: Record<string, string> = {
-  'acknowledge-needed': '안내를 확인하고 체크해야 합니다.',
-  'invalid-input': '붙여넣은 값이 맞지 않습니다. 로그인 후 “redirect”라고 뜬 페이지의 주소창 주소 전체를 복사하세요.',
-  'login-rejected': 'Sony가 로그인 코드를 받아들이지 않았습니다. 코드는 한 번만 쓸 수 있고 금방 만료됩니다. 다시 로그인해서 새 주소를 붙여넣으세요.',
-  network: 'Sony에 연결하지 못했습니다. 인터넷 연결을 확인하세요.',
-  'too-many': '시도가 너무 많습니다. 1분 뒤에 다시 하세요.',
+  'acknowledge-needed': N_('Read the notice and tick the box first.'),
+  'invalid-input': N_('The pasted value is not right. After logging in, copy the whole address from the address bar of the page that says “redirect”.'),
+  'login-rejected': N_('Sony did not accept the login code. A code can be used only once and expires quickly. Log in again and paste the new address.'),
+  network: N_('Could not connect to Sony. Check your internet connection.'),
+  'too-many': N_('Too many attempts. Try again in a minute.'),
 };
 $<HTMLButtonElement>('psnGo').addEventListener('click', async () => {
   const urlInput = $<HTMLInputElement>('psnUrl');
   const button = $<HTMLButtonElement>('psnGo');
-  if (!urlInput.value.trim()) return say('로그인 후 나온 페이지의 주소를 붙여넣으세요.', 'err');
+  if (!urlInput.value.trim()) return say(() => t('Paste the address of the page that appears after you log in.'), 'err');
   const pasted = urlInput.value;
   urlInput.value = ''; // the one-time code leaves the page the moment it is sent, not after the answer
   button.disabled = true;
-  say('Sony에서 계정 ID를 가져오는 중…');
+  say(() => t('Getting the account ID from Sony…'));
   try {
     const r = await api('POST', '/api/psn/account-id', { redirectUrl: pasted, acknowledge: $<HTMLInputElement>('psnAck').checked });
     if (r.ok) {
-      say(`계정 ID를 가져와 저장했습니다 (끝 4자리 ${String(r.data.hint ?? '')}). 이제 코드만 입력하고 등록하세요.`, 'ok');
+      const hint = String(r.data.hint ?? '');
+      say(() => t('Account ID fetched and saved (last 4 digits {hint}). Now just enter the code and register.', { hint }), 'ok');
       await refreshRegistered();
     } else {
-      say(`${PSN_HINT[String(r.data.error ?? '')] ?? '가져오지 못했습니다.'}${r.data.message ? ` (${r.data.message})` : ''}`, 'err');
+      const reason = PSN_HINT[String(r.data.error ?? '')] ?? N_('Could not get the account ID.');
+      say(() => withDetail(t(reason), r.data.message), 'err');
     }
   } catch {
-    say('브리지에 연결하지 못했습니다.', 'err');
+    say(() => t('Could not connect to the bridge.'), 'err');
   } finally {
     urlInput.value = ''; // a one-time login code does not belong on the page any longer
     button.disabled = !$<HTMLInputElement>('psnAck').checked;
@@ -445,26 +499,27 @@ $<HTMLButtonElement>('regGo').addEventListener('click', async () => {
   const accountInput = $<HTMLInputElement>('regAccount');
   const address = $<HTMLInputElement>('regAddr').value.trim();
   const pin = pinInput.value.replace(/[\s-]/g, '');
-  if (!address) return say('콘솔 IP 주소를 입력하거나 “콘솔 찾기”를 누르세요.', 'err');
-  if (!/^\d{8}$/.test(pin)) return say('코드는 콘솔에 표시된 8자리 숫자입니다.', 'err');
+  if (!address) return say(() => t('Enter the console\'s IP address or press “Find console”.'), 'err');
+  if (!/^\d{8}$/.test(pin)) return say(() => t('The code is the 8-digit number shown on the console.'), 'err');
   const body: Record<string, string> = { host: address, pin };
   pinInput.value = ''; // a PIN is single use: off the page as soon as it is sent
   if (accountInput.value.trim()) body.accountId = accountInput.value.trim();
   const button = $<HTMLButtonElement>('regGo');
   button.disabled = true;
-  say('등록 중… 콘솔의 기기 연결 화면을 닫지 마세요.');
+  say(() => t('Registering… Do not close the device-linking screen on the console.'));
   try {
     const r = await api('POST', '/api/register', body);
     if (r.ok) {
-      say(`등록했습니다: ${r.data.console?.nickname || address}`, 'ok');
+      const name = String(r.data.console?.nickname || address);
+      say(() => t('Registered: {name}', { name }), 'ok');
       accountInput.value = '';
       await refreshRegistered();
     } else {
-      const code = String(r.data.error ?? '');
-      say(`${REG_HINT[code] ?? '등록하지 못했습니다.'}${r.data.message ? ` (${r.data.message})` : ''}`, 'err');
+      const reason = REG_HINT[String(r.data.error ?? '')] ?? N_('Could not register.');
+      say(() => withDetail(t(reason), r.data.message), 'err');
     }
   } catch {
-    say('브리지에 연결하지 못했습니다.', 'err');
+    say(() => t('Could not connect to the bridge.'), 'err');
   } finally {
     pinInput.value = ''; // a PIN is single use; do not leave it on the page
     button.disabled = false;
@@ -514,16 +569,21 @@ document.addEventListener(
 /** One line about the sound, in words: off, why there is none, or what is playing. */
 function soundNote(): string {
   const a = audio.stats;
-  if (!soundToggle.checked) return '꺼짐';
+  if (!soundToggle.checked) return t('Sound is off');
   if (a.state === 'unsupported') return a.reason;
-  if (a.state !== 'playing' || !a.info) return client.state === 'ready' ? '소리를 기다리는 중' : '';
-  if (audio.contextState !== 'running' && !document.hidden) return '브라우저가 소리를 막고 있습니다. 화면을 한 번 탭하세요';
-  const channels = a.info.channels === 1 ? '모노' : a.info.channels === 2 ? '스테레오' : `${a.info.channels}채널`;
-  return `${(a.info.rate / 1000).toFixed(0)} kHz ${channels} · 지연 ${a.delayMs} ms · 끊김 ${a.underruns + a.concealed}회`;
+  if (a.state !== 'playing' || !a.info) return client.state === 'ready' ? t('Waiting for sound') : '';
+  if (audio.contextState !== 'running' && !document.hidden) return t('The browser is blocking the sound. Tap the screen once');
+  const channels = a.info.channels === 1 ? t('Mono') : a.info.channels === 2 ? t('Stereo') : t('{count}-channel', { count: a.info.channels });
+  return t('{rate} kHz {channels} · delay {delay} ms · dropouts {count}', { rate: (a.info.rate / 1000).toFixed(0), channels, delay: a.delayMs, count: a.underruns + a.concealed });
 }
 function showSoundNote(): void {
   $<HTMLElement>('soundNote').textContent = soundNote();
 }
+// The reason there is no sound is kept by the player: it says it again in the new language, and then the line is drawn again.
+onLang(() => {
+  audio.refreshLanguage();
+  showSoundNote();
+});
 
 // A connection that is not locked is handed over when another of this person's clients asks for the console.
 const lockToggle = $<HTMLInputElement>('lockToggle');
@@ -630,9 +690,9 @@ setInterval(() => {
   if (mode !== 'console' || client.state !== 'ready') return;
   hitchesSeen += sample.hitches;
   const delay = player.playout.delayMs;
-  touch.setStatus(`수신 ${client.fpsIn} fps · ${client.kbpsIn} kbps · 표시 지연 ${delay.toFixed(0)} ms · 화면 끊김 ${hitchesSeen}회`);
-  $<HTMLElement>('cBuffer').textContent = player.playout.mode === 'immediate' ? `0 ms (늦은 프레임 최대 ${player.playout.worstLateMs.toFixed(0)} ms)` : `${delay.toFixed(0)} ms`;
-  $<HTMLElement>('cHitch').textContent = `${hitchesSeen}회`;
+  touch.setStatus(t('Receiving {fps} fps · {kbps} kbps · display delay {delay} ms · screen hitches {count}', { fps: client.fpsIn, kbps: client.kbpsIn, delay: delay.toFixed(0), count: hitchesSeen }));
+  $<HTMLElement>('cBuffer').textContent = player.playout.mode === 'immediate' ? t('0 ms (late frames up to {ms} ms)', { ms: player.playout.worstLateMs.toFixed(0) }) : `${delay.toFixed(0)} ms`;
+  $<HTMLElement>('cHitch').textContent = t('{count}', { count: hitchesSeen });
   // The same numbers for the signal indicator and the charts over the picture (player-ui.ts).
   document.dispatchEvent(new CustomEvent('gtp:stats', { detail: { fps: client.fpsIn, kbps: client.kbpsIn, rttMs: client.rttMs, latencyMs: client.inputLatencyMs, delayMs: delay, hitches: sample.hitches, hitchesTotal: hitchesSeen } }));
   if (sample.shown === 0 && sample.underruns === 0) return;
@@ -687,21 +747,21 @@ function renderProfilePick(): void {
   profilePick.textContent = '';
   const first = document.createElement('option');
   first.value = '';
-  first.textContent = '고르세요…';
+  first.textContent = t('Choose…');
   profilePick.append(first);
   const presets = document.createElement('optgroup');
-  presets.label = '처음부터 시작';
+  presets.label = t('Start from scratch');
   for (const p of PRESETS) {
     const o = document.createElement('option');
     o.value = `preset:${p.id}`;
-    o.textContent = p.name;
+    o.textContent = t(p.name);
     presets.append(o);
   }
   profilePick.append(presets);
   const names = Object.keys(savedProfiles()).sort((a, b) => a.localeCompare(b));
   if (names.length) {
     const mine = document.createElement('optgroup');
-    mine.label = '저장해 둔 프로필';
+    mine.label = t('Saved profiles');
     for (const name of names) {
       const o = document.createElement('option');
       o.value = `saved:${name}`;
@@ -725,36 +785,38 @@ profilePick.addEventListener('change', () => {
     const preset = PRESETS.find((p) => p.id === v.slice(7));
     if (!preset) return;
     useProfile(preset.make());
-    message(`"${preset.name}" 배치를 불러왔습니다.`, 'ok');
+    message(() => t('Loaded the layout "{name}".', { name: t(preset.name) }), 'ok');
   } else if (v.startsWith('saved:')) {
     const saved = savedProfiles()[v.slice(6)];
     if (!saved) return;
     useProfile(saved);
-    message(`"${v.slice(6)}" 프로필을 불러왔습니다.`, 'ok');
+    const savedName = v.slice(6);
+    message(() => t('Loaded the profile "{name}".', { name: savedName }), 'ok');
   }
 });
 $<HTMLButtonElement>('profileSave').addEventListener('click', () => {
   const name = profileName.value.trim();
-  if (!name) return message('저장할 이름을 적어 주세요 (보통 게임 이름).', 'error');
+  if (!name) return message(() => t('Type a name to save under (usually the game name).'), 'error');
   profile.game.name = name;
   writeStore(STORE_PROFILES, { ...savedProfiles(), [name]: profile });
   applyProfile(profile);
   syncControls();
   renderProfilePick();
-  message(`"${name}"(으)로 저장했습니다. 이 브라우저에 보관됩니다.`, 'ok');
+  message(() => t('Saved as "{name}". It is kept in this browser.', { name }), 'ok');
 });
 $<HTMLButtonElement>('profileDelete').addEventListener('click', () => {
   const name = profileName.value.trim();
   const all = savedProfiles();
-  if (!(name in all)) return message(`"${name}"(이)라는 저장된 프로필이 없습니다.`, 'error');
+  if (!(name in all)) return message(() => t('There is no saved profile called "{name}".', { name }), 'error');
   delete all[name];
   writeStore(STORE_PROFILES, all);
   renderProfilePick();
-  message(`"${name}" 프로필을 지웠습니다. 지금 쓰고 있는 배치는 그대로입니다.`, 'ok');
+  message(() => t('Deleted the profile "{name}". The layout in use is unchanged.', { name }), 'ok');
 });
 renderProfilePick();
+onLang(renderProfilePick);
 
-// The key layout editor (설정 → 입력 매핑) and the layout shown next to the picture.
+// The key layout editor (Settings → Input mapping) and the layout shown next to the picture.
 const keymap = mountKeymap($<HTMLElement>('keymap'), {
   getProfile: () => profile,
   setProfile: (next) => {
@@ -777,6 +839,8 @@ function renderLegend(): void {
     list.append(row);
   }
 }
+// The names of the keys and the buttons are words (describeLayout): a change of language draws them again.
+onLang(renderLegend);
 let refreshQueued = false;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 onProfileChanged = () => {
@@ -826,11 +890,15 @@ mountConsoleCalibration({
   },
 });
 player.onNeedKeyframe = () => client.requestKeyframe();
+const paintLatency = (): void => {
+  $<HTMLElement>('cLatency').textContent = client.inputLatencyMs > 0 ? t('{ms} ms (median)', { ms: client.inputLatencyMs.toFixed(0) }) : '-';
+};
+onLang(paintLatency);
 client.onChange = () => {
   $<HTMLElement>('cStatus').textContent = `${client.state}${client.detail ? ` · ${client.detail}` : ''}`;
   $<HTMLElement>('cRate').textContent = client.state === 'ready' ? `${client.fpsIn} fps / ${client.kbpsIn} kbps` : '-';
   $<HTMLElement>('cRtt').textContent = client.rttMs > 0 ? `${client.rttMs.toFixed(1)} ms` : '-';
-  $<HTMLElement>('cLatency').textContent = client.inputLatencyMs > 0 ? `${client.inputLatencyMs.toFixed(0)} ms (중앙값)` : '-';
+  paintLatency();
   document.dispatchEvent(new CustomEvent('gtp:link', { detail: { state: client.state, detail: client.detail, link: String(client.serverStats.link ?? '') } }));
   applyTouch();
 };
@@ -845,7 +913,7 @@ $<HTMLButtonElement>('applyJson').addEventListener('click', () => {
   }
   applyProfile(result.profile);
   syncControls();
-  message('프로필을 적용했습니다.', 'ok');
+  message(() => t('Profile applied.'), 'ok');
 });
 
 $<HTMLButtonElement>('resetProfile').addEventListener('click', () => {
@@ -853,7 +921,7 @@ $<HTMLButtonElement>('resetProfile').addEventListener('click', () => {
   engine.releaseAll();
   engine.clearLatched();
   syncControls();
-  message('기본 배치로 되돌렸습니다.', 'ok');
+  message(() => t('Back to the default layout.'), 'ok');
 });
 
 $<HTMLButtonElement>('autoCalibrate').addEventListener('click', () => {
@@ -863,10 +931,12 @@ $<HTMLButtonElement>('autoCalibrate').addEventListener('click', () => {
   applyProfile(profile);
   syncControls();
   const edge = m.horizontal.find((p) => p[0] > 0 && p[1] === 0)?.[0];
+  const done = { edge: edge === undefined ? '0' : edge.toFixed(3), rate: m.fullStickRate.toFixed(0), ratio: m.verticalRateRatio.toFixed(2), aim: m.aimLookScale.toFixed(2), points: m.horizontal.length };
   message(
-    `보정 완료: 데드존 끝 ${edge === undefined ? '0' : edge.toFixed(3)}, 최대 ${m.fullStickRate.toFixed(0)}°/s, ` +
-      `세로 비율 ${m.verticalRateRatio.toFixed(2)}, 모양 ${m.deadzoneShape === 'radial' ? '원형' : '축별'}, ` +
-      `조준 배율 ${m.aimLookScale.toFixed(2)}, 표 ${m.horizontal.length}점`,
+    () =>
+      m.deadzoneShape === 'radial'
+        ? t('Calibration done: dead zone edge {edge}, max {rate}°/s, vertical ratio {ratio}, round shape, aim scale {aim}, table of {points} points', done)
+        : t('Calibration done: dead zone edge {edge}, max {rate}°/s, vertical ratio {ratio}, per-axis shape, aim scale {aim}, table of {points} points', done),
     'ok',
   );
   resetMeasure();
@@ -891,13 +961,13 @@ async function lockPointer(): Promise<void> {
     await (view as unknown as { requestPointerLock(o?: object): Promise<void> | void }).requestPointerLock({
       unadjustedMovement: true,
     });
-    lockNote = '잠김 (원시 입력 요청 성공)';
+    lockNote = N_('Locked (raw input granted)');
   } catch {
     try {
       await (view.requestPointerLock() as unknown);
-      lockNote = '잠김 (일반 입력: 원시 입력 미지원 또는 거부)';
+      lockNote = N_('Locked (ordinary input: raw input not supported or refused)');
     } catch {
-      lockNote = '잠금 실패';
+      lockNote = N_('Lock failed');
     }
   }
 }
@@ -910,7 +980,7 @@ document.addEventListener('pointerlockchange', () => {
   rawGate.reset();
   if (!isLocked()) {
     engine.releaseAll();
-    lockNote = '해제됨';
+    lockNote = N_('Released');
     // Esc means "stop sending my keys": without this the canvas would keep the keyboard, and the page's own shortcuts
     // (F for full screen, M for mute ...) would be eaten as game keys.
     if (document.activeElement === view) view.blur();
@@ -1068,10 +1138,10 @@ function drawPad(): void {
   const diag = engine.diagnostics;
   ctx.clearRect(0, 0, padCanvas.width, padCanvas.height);
 
-  bar(40, 28, 200, state.l2, 'L2 (우클릭)');
-  bar(520, 28, 200, state.r2, 'R2 (좌클릭)');
-  stick(150, 190, state.leftX, state.leftY, '왼쪽 스틱 (WASD)', false, false);
-  stick(610, 190, state.rightX, state.rightY, '오른쪽 스틱 (마우스)', diag.capped, true);
+  bar(40, 28, 200, state.l2, t('L2 (right click)'));
+  bar(520, 28, 200, state.r2, t('R2 (left click)'));
+  stick(150, 190, state.leftX, state.leftY, t('Left stick (WASD)'), false, false);
+  stick(610, 190, state.rightX, state.rightY, t('Right stick (mouse)'), diag.capped, true);
 
   ctx.font = '12px system-ui, sans-serif';
   ctx.textAlign = 'center';
@@ -1096,7 +1166,7 @@ function updateReadout(): void {
   const turned = g.yawTotal - yawMark;
   const expected = profile.mouse.degPerCount;
   $<HTMLElement>('mCounts').textContent = `${measureCounts.toFixed(0)} counts`;
-  $<HTMLElement>('mTurned').textContent = mode === 'console' ? '(콘솔에서는 측정 불가)' : `${turned.toFixed(1)}°`;
+  $<HTMLElement>('mTurned').textContent = mode === 'console' ? t('(not measurable on the console)') : `${turned.toFixed(1)}°`;
   if (mode === 'console') {
     $<HTMLElement>('mRatio').textContent = '-';
     $<HTMLElement>('mExpected').textContent = `${expected.toFixed(4)}`;
@@ -1107,27 +1177,27 @@ function updateReadout(): void {
     $<HTMLElement>('mExpected').textContent = `${expected.toFixed(4)} (${error >= 0 ? '+' : ''}${error.toFixed(1)}%)`;
   } else {
     $<HTMLElement>('mRatio').textContent = '-';
-    $<HTMLElement>('mExpected').textContent = `${expected.toFixed(4)} (측정 대기)`;
+    $<HTMLElement>('mExpected').textContent = t('{value} (waiting for measurement)', { value: expected.toFixed(4) });
   }
   $<HTMLElement>('rRate').textContent = `${diag.rateX.toFixed(0)} / ${diag.rateY.toFixed(0)} °/s`;
   $<HTMLElement>('rUse').textContent = `${Math.min(999, (speed / limit) * 100).toFixed(0)}%`;
   $<HTMLElement>('rCap').innerHTML = diag.capped
-    ? '<span class="badge on">예</span>'
-    : '<span class="badge off">아니오</span>';
+    ? `<span class="badge on">${t('Yes')}</span>`
+    : `<span class="badge off">${t('No')}</span>`;
   $<HTMLElement>('rStick').textContent = diag.stickMagnitude.toFixed(3);
   $<HTMLElement>('rLayers').textContent = ['default', ...engine.activeLayers].join(' + ');
   $<HTMLElement>('rGyro').textContent = [state.gyro.x, state.gyro.y, state.gyro.z].map((v) => v.toFixed(2)).join(' / ');
   if (mode === 'console') {
     $<HTMLElement>('rPos').textContent = '-';
-    $<HTMLElement>('rState').textContent = client.state === 'ready' ? `콘솔 (${client.link})` : '연결 안 됨';
+    $<HTMLElement>('rState').textContent = client.state === 'ready' ? t('Console ({link})', { link: client.link }) : t('Not connected');
   } else if (mode === 'tps') {
     $<HTMLElement>('rPos').textContent = `${(tps.inVehicle ? tps.car.x : tps.x).toFixed(1)}, ${(tps.inVehicle ? tps.car.z : tps.z).toFixed(1)}`;
     $<HTMLElement>('rState').textContent = `${tps.movementName} · ${tps.speedKmh.toFixed(0)} km/h`;
   } else {
     $<HTMLElement>('rPos').textContent = `${fps.x.toFixed(1)}, ${fps.y.toFixed(1)}`;
-    $<HTMLElement>('rState').textContent = fps.adsAmount > 0.5 ? '조준' : '-';
+    $<HTMLElement>('rState').textContent = fps.adsAmount > 0.5 ? t('Aiming') : '-';
   }
-  $<HTMLElement>('rLock').textContent = lockNote;
+  $<HTMLElement>('rLock').textContent = t(lockNote);
 }
 
 function renderView(): void {
@@ -1140,7 +1210,7 @@ function renderView(): void {
     viewCtx.fillStyle = '#9aa5b8';
     viewCtx.font = '16px system-ui, sans-serif';
     viewCtx.textAlign = 'center';
-    viewCtx.fillText(client.state === 'ready' ? '영상 대기 중…' : '', view.width / 2, view.height / 2);
+    viewCtx.fillText(client.state === 'ready' ? t('Waiting for video…') : '', view.width / 2, view.height / 2);
   }
   // In console mode the video player draws each frame as it arrives.
 }
@@ -1159,13 +1229,20 @@ let padNow: PadSample | null = null;
 {
   const chip = document.getElementById('padChip');
   const status = document.getElementById('padStatus');
-  gamepads.onChange = (name) => {
-    if (status) status.textContent = name === null ? '연결된 컨트롤러가 없습니다. 컨트롤러(DualSense 등)를 USB나 블루투스로 연결하고 아무 버튼이나 누르세요.' : `${name} 연결됨: 키보드·마우스와 함께 쓸 수 있습니다.`;
-    toast(name === null ? '컨트롤러 연결이 끊어졌습니다' : `${name} 연결됨`, name === null ? 'warn' : 'ok');
+  /** The controller that is shown now (null: none), kept so that the words can be put there again in another language. */
+  let shown: string | null = null;
+  const paint = (): void => {
+    if (status) status.textContent = shown === null ? t('No controller connected. Connect a controller (DualSense etc.) by USB or Bluetooth and press any button.') : t('{name} connected: it can be used together with the keyboard and mouse.', { name: shown });
     if (!chip) return;
-    chip.hidden = name === null;
-    if (name !== null) chip.textContent = `${name} 연결됨`;
+    chip.hidden = shown === null;
+    if (shown !== null) chip.textContent = t('{name} connected', { name: shown });
   };
+  gamepads.onChange = (name) => {
+    shown = name;
+    paint();
+    toast(name === null ? t('The controller was disconnected') : t('{name} connected', { name }), name === null ? 'warn' : 'ok');
+  };
+  onLang(paint);
 }
 
 /** How often the input side has run (the page's own check that it does not wait for the drawing, see runE2e). */
@@ -1250,7 +1327,7 @@ setInterval(pump, 4);
  * does not depend on how often the browser schedules frames.
  */
 function runDemo(kind: string): void {
-  lockNote = '데모 입력 (마우스 잠금 아님)';
+  lockNote = N_('Demo input (mouse not locked)');
   const total = kind === 'car' ? 3.6 : kind === 'tps' ? 3.0 : 2.8;
   const T = (s: number): number => Math.round(s / TICK);
   const ticks = T(total);
@@ -1589,8 +1666,8 @@ async function runE2e(): Promise<void> {
     check('accepting the notice turns the button on', !psnGo.disabled);
     $<HTMLInputElement>('psnUrl').value = 'https://remoteplay.dl.playstation.net/remoteplay/redirect?code=E2ELoginCode-123&cid=x';
     psnGo.click();
-    await until(() => (regMsg.textContent ?? '').includes('저장했습니다'), 12000); // generous: this is about the result, and a busy machine is slow
-    check('the account id is fetched and saved through the page', (regMsg.textContent ?? '').includes('저장했습니다'), regMsg.textContent ?? '');
+    await until(() => (regMsg.textContent ?? '').includes('saved'), 12000); // generous: this is about the result, and a busy machine is slow
+    check('the account id is fetched and saved through the page', (regMsg.textContent ?? '').includes('saved'), regMsg.textContent ?? '');
     check('the one-time login code is cleared from the page afterwards', $<HTMLInputElement>('psnUrl').value === '');
 
     // The registration form: fill it in like a person would and press the button (no account id typed: the saved one is used).
@@ -1605,12 +1682,12 @@ async function runE2e(): Promise<void> {
     // The key layout editor: a row per pad control, a key added by pressing it, the press style changed with the select.
     const padRow = (label: string): HTMLElement | undefined => [...document.querySelectorAll<HTMLElement>('#keymap .keymap-row')].find((r) => r.querySelector('.keymap-pad')?.textContent === label);
     check('the key layout editor lists every pad control', document.querySelectorAll('#keymap .keymap-row').length >= 26, `${document.querySelectorAll('#keymap .keymap-row').length} rows`);
-    check('the layout next to the picture names the keys', /Space/.test($<HTMLElement>('layoutList').textContent ?? '') && /좌클릭/.test($<HTMLElement>('layoutList').textContent ?? ''));
+    check('the layout next to the picture names the keys', /Space/.test($<HTMLElement>('layoutList').textContent ?? '') && /Left click/.test($<HTMLElement>('layoutList').textContent ?? ''));
     padRow('□')?.querySelector<HTMLButtonElement>('.keymap-add')?.click();
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyG', bubbles: true, cancelable: true }));
     await sleep(60);
-    check('pressing a key after "+ 키" binds it to that button', profile.layers[0]!.bindings.KeyG === 'btn:box', String(profile.layers[0]!.bindings.KeyG));
-    const how = [...(padRow('□')?.querySelectorAll<HTMLElement>('.keymap-binding') ?? [])].find((b) => b.querySelector('.keycap')?.textContent === 'G')?.querySelector<HTMLSelectElement>('select[aria-label="버튼을 어떻게 누를지"]');
+    check('pressing a key after "+ Key" binds it to that button', profile.layers[0]!.bindings.KeyG === 'btn:box', String(profile.layers[0]!.bindings.KeyG));
+    const how = [...(padRow('□')?.querySelectorAll<HTMLElement>('.keymap-binding') ?? [])].find((b) => b.querySelector('.keycap')?.textContent === 'G')?.querySelector<HTMLSelectElement>('select[aria-label="How the button is pressed"]');
     if (how) {
       how.value = 'tap';
       how.dispatchEvent(new Event('change'));
@@ -1684,30 +1761,30 @@ async function runE2e(): Promise<void> {
     const sensBefore = profile.mouse.degPerCount;
     const sharp = document.querySelector<HTMLButtonElement>('#feelPresets [data-preset="sharp"]');
     sharp?.click();
-    check('"또렷하게" takes away the smoothing', profile.mouse.smoothingMs === 0 && profile.mouse.smoothingFadeRate === 0 && profile.mouse.carryMs === 300 && sharp?.getAttribute('aria-pressed') === 'true', `${profile.mouse.smoothingMs} ${profile.mouse.carryMs}`);
+    check('"Crisp" takes away the smoothing', profile.mouse.smoothingMs === 0 && profile.mouse.smoothingFadeRate === 0 && profile.mouse.carryMs === 300 && sharp?.getAttribute('aria-pressed') === 'true', `${profile.mouse.smoothingMs} ${profile.mouse.carryMs}`);
     check('and the settings page shows the same numbers', $<HTMLInputElement>('smoothingMs').value === '0' && $<HTMLInputElement>('carryMs').value === '300');
     const qs = $<HTMLInputElement>('qSens');
     qs.value = '0.07';
     qs.dispatchEvent(new Event('input'));
     check('the sensitivity slider changes the profile (and its number)', profile.mouse.degPerCount === 0.07 && $<HTMLOutputElement>('q_sens').textContent === '0.070' && $<HTMLOutputElement>('o_degPerCount').textContent === '0.070', String(profile.mouse.degPerCount));
     document.querySelector<HTMLButtonElement>('#feelPresets [data-preset="balanced"]')?.click();
-    check('"균형" fades the smoothing out with speed, and the settings page shows it', profile.mouse.smoothingMs === 12 && profile.mouse.smoothingFadeRate === 40 && $<HTMLInputElement>('smoothingFadeRate').value === '40' && $<HTMLInputElement>('qFade').value === '40');
+    check('"Balanced" fades the smoothing out with speed, and the settings page shows it', profile.mouse.smoothingMs === 12 && profile.mouse.smoothingFadeRate === 40 && $<HTMLInputElement>('smoothingFadeRate').value === '40' && $<HTMLInputElement>('qFade').value === '40');
     document.querySelector<HTMLButtonElement>('#feelPresets [data-preset="smooth"]')?.click();
     mouseFeel.set({ degPerCount: sensBefore });
     check('the feel can be put back as it was', profile.mouse.smoothingMs === 12 && profile.mouse.smoothingFadeRate === 0 && profile.mouse.carryMs === 300 && profile.mouse.degPerCount === sensBefore);
     const delayBtn = (v: string): HTMLButtonElement => document.querySelector<HTMLButtonElement>(`#feelDelay [data-playout="${v}"]`)!;
     delayBtn('immediate').click();
-    check('"최소 지연" in the panel is the same choice as in the options', $<HTMLSelectElement>('playoutMode').value === 'immediate' && player.playout.mode === 'immediate' && delayBtn('immediate').getAttribute('aria-pressed') === 'true' && delayBtn('smooth').getAttribute('aria-pressed') === 'false');
+    check('"Lowest delay" in the panel is the same choice as in the options', $<HTMLSelectElement>('playoutMode').value === 'immediate' && player.playout.mode === 'immediate' && delayBtn('immediate').getAttribute('aria-pressed') === 'true' && delayBtn('smooth').getAttribute('aria-pressed') === 'false');
     delayBtn('smooth').click();
     check('and back to smooth', $<HTMLSelectElement>('playoutMode').value === 'smooth' && player.playout.mode === 'smooth');
     await sleep(1200);
-    check('the panel shows the delay in numbers', /표시 \+\d+ ms/.test($<HTMLElement>('q_delay').textContent ?? ''), $<HTMLElement>('q_delay').textContent ?? '');
+    check('the panel shows the delay in numbers', /Display \+\d+ ms/.test($<HTMLElement>('q_delay').textContent ?? ''), $<HTMLElement>('q_delay').textContent ?? '');
     // The measuring is started from the settings; its buttons and its words are repeated in the panel.
     const calStatus = $<HTMLElement>('consoleCalibrateStatus');
     const calWas = calStatus.textContent;
-    calStatus.textContent = '시험 문구';
+    calStatus.textContent = 'test words';
     await sleep(30);
-    check('the words of the game measuring are repeated in the panel', $<HTMLElement>('feelCalStatus').textContent === '시험 문구', $<HTMLElement>('feelCalStatus').textContent ?? '');
+    check('the words of the game measuring are repeated in the panel', $<HTMLElement>('feelCalStatus').textContent === 'test words', $<HTMLElement>('feelCalStatus').textContent ?? '');
     calStatus.textContent = calWas;
     const calApply = $<HTMLButtonElement>('consoleCalibrateApply');
     const applyWas = calApply.hidden;
@@ -1718,46 +1795,69 @@ async function runE2e(): Promise<void> {
     click('hudFeel');
     check('the panel closes with its button', $<HTMLElement>('feelPanel').hidden);
 
-    // The study of the feel: candidates one after another, a score for each, kept here and on the server.
+    // The study of the feel: candidates one after another, a score for each, kept here and on the server. Nothing in this page can lock
+    // the mouse, so the time with it in the game's hands is given to the meter by hand.
     const knobsNow = (): string => describeKnobs({ smoothingMs: profile.mouse.smoothingMs, smoothingFadeRate: profile.mouse.smoothingFadeRate, carryMs: profile.mouse.carryMs, curve: profile.mouse.curve });
     const feelBefore = knobsNow();
     const sensStudy = profile.mouse.degPerCount;
+    const playFor = (seconds: number): void => trialMeter.tick(seconds, 0, 0, profile.mouse.degPerCount, true);
+    type Kept = Array<{ id: string; preset: string; score: number; flags: Record<string, number>; scene: string | null; feel: { degPerCount: number } }>;
+    const keptNow = (): Kept => JSON.parse(localStorage.getItem('gtp.study.ratings') ?? '[]') as Kept;
+    const sentNow = (): string[] => JSON.parse(localStorage.getItem('gtp.study.sent') ?? '[]') as string[];
+    const stripEl = document.querySelector<HTMLElement>('.study-strip')!;
+    const release = (...codes: string[]): void => codes.forEach((code) => window.dispatchEvent(new KeyboardEvent('keyup', { code })));
     localStorage.removeItem('gtp.study.ratings');
+    const study = (await import('./study-ui.ts')).study;
     click('hudStudy');
     check('the study panel opens (and the feel panel is closed)', !$<HTMLElement>('studyPanel').hidden && $<HTMLElement>('feelPanel').hidden);
+    check('it explains the way and has one Start button', !!document.getElementById('studyStart') && /Start locks/.test($<HTMLElement>('studyBody').textContent ?? ''));
+    [...document.querySelectorAll<HTMLButtonElement>('#studyBody .study-chip')].find((b) => b.textContent === 'Gun aiming')?.click();
     click('studyStart');
-    check('the first candidate is in force, its number is shown and its values are not', $<HTMLElement>('studyId').textContent === '#01' && knobsNow() === describeKnobs(ROUND_1.candidates[0]!.set) && !($<HTMLElement>('studyValues').parentElement as HTMLDetailsElement).open, `${$<HTMLElement>('studyId').textContent} ${knobsNow()}`);
-    click('studySave');
-    check('a candidate cannot be saved without a score', toasts().includes('점수를 먼저') && ($<HTMLElement>('studyId').textContent === '#01'), toasts());
-    document.querySelector<HTMLButtonElement>('#studyScore [data-score="7"]')?.click();
-    document.querySelector<HTMLButtonElement>('#studySituations [data-sit="stop"] [data-v="-1"]')?.click();
-    document.querySelector<HTMLButtonElement>('#studyScene [data-scene="aim"]')?.click();
-    check('the score and what was bad are shown as chosen', $<HTMLElement>('studyScoreOut').textContent === '7 / 10' && document.querySelector('#studySituations [data-sit="stop"] [data-v="-1"]')?.getAttribute('aria-pressed') === 'true');
-    const study = (await import('./study-ui.ts')).study;
-    study.key('Equal');
-    check('"=" raises the score by one, as it does while the game has the mouse', $<HTMLElement>('studyScoreOut').textContent === '8 / 10', $<HTMLElement>('studyScoreOut').textContent ?? '');
-    study.key('Digit5');
-    check('"5" marks slow aiming as bad', document.querySelector('#studySituations [data-sit="slow"] [data-v="-1"]')?.getAttribute('aria-pressed') === 'true');
-    study.key('BracketRight');
-    check('"]" saves and goes on to the next candidate, whose values are in force', $<HTMLElement>('studyId').textContent === '#02' && knobsNow() === describeKnobs(ROUND_1.candidates[1]!.set), `${$<HTMLElement>('studyId').textContent} ${knobsNow()}`);
-    const kept = JSON.parse(localStorage.getItem('gtp.study.ratings') ?? '[]') as Array<{ preset: string; score: number; flags: Record<string, number>; scene: string; feel: { degPerCount: number } }>;
-    check('the rating is kept in this browser with the score, the marks, the scene and the sensitivity', kept.length === 1 && kept[0]!.preset === 'r1-01' && kept[0]!.score === 8 && kept[0]!.flags.stop === -1 && kept[0]!.flags.slow === -1 && kept[0]!.scene === 'aim' && kept[0]!.feel.degPerCount === sensStudy, JSON.stringify(kept));
-    document.querySelector<HTMLButtonElement>('#studyScore [data-score="4"]')?.click();
-    click('studySave');
-    await until(() => (JSON.parse(localStorage.getItem('gtp.study.sent') ?? '[]') as string[]).length === 2, 5000);
-    check('both ratings have reached the server', (JSON.parse(localStorage.getItem('gtp.study.sent') ?? '[]') as string[]).length === 2, localStorage.getItem('gtp.study.sent') ?? '');
-    check('the list shows them', document.querySelectorAll('#studyList li').length === 2 && $<HTMLElement>('studyListCount').textContent === '(2)');
+    check('Start puts the first candidate in force and the panel away, and the strip over the picture shows its number but not its values', $<HTMLElement>('studyPanel').hidden && !stripEl.hidden && stripEl.textContent?.includes('#01') === true && knobsNow() === describeKnobs(ROUND_1.candidates[0]!.set) && !stripEl.textContent?.includes('Smoothing 6'), `${stripEl.hidden} ${stripEl.textContent} ${knobsNow()}`);
+    study.key('Digit7');
+    check('a score given before there has been time with the mouse is not kept yet', keptNow().length === 0 && /noted/.test(stripEl.textContent ?? ''), stripEl.textContent ?? '');
+    playFor(9);
+    await until(() => keptNow().length === 1, 3000);
+    check('it is saved by itself once there has been, with the scene and the sensitivity, and the next candidate is in force', keptNow().length === 1 && keptNow()[0]!.preset === 'r1-01' && keptNow()[0]!.score === 7 && keptNow()[0]!.scene === 'aim' && keptNow()[0]!.feel.degPerCount === sensStudy && stripEl.textContent?.includes('#02') === true && knobsNow() === describeKnobs(ROUND_1.candidates[1]!.set), JSON.stringify(keptNow()));
+    release('Digit7');
+    study.key('KeyH');
+    check('"H" marks stopping as off, and the strip shows it', document.querySelector('.ss-chip[data-on="true"]')?.textContent?.includes('Stopping') === true);
+    playFor(9);
+    study.key('Digit4');
+    check('with the time there, one key scores and moves on at once, with the mark', keptNow().length === 2 && keptNow()[1]!.preset === 'r1-02' && keptNow()[1]!.score === 4 && keptNow()[1]!.flags.stop === -1 && stripEl.textContent?.includes('#03') === true, JSON.stringify(keptNow()));
+    release('Digit4', 'KeyH');
+    await until(() => sentNow().length === 2, 5000);
+    check('both ratings have reached the server', sentNow().length === 2, JSON.stringify(sentNow()));
     study.key('BracketLeft');
-    check('"[" goes back to the candidate before', $<HTMLElement>('studyId').textContent === '#02' && knobsNow() === describeKnobs(ROUND_1.candidates[1]!.set));
+    check('"[" takes back the last score: it is dropped and that candidate is back, with its values in force', keptNow().length === 1 && stripEl.textContent?.includes('#02') === true && knobsNow() === describeKnobs(ROUND_1.candidates[1]!.set), JSON.stringify(keptNow()));
+    study.key('BracketLeft');
+    check('a key that is held counts once (a second undo would take back the first rating too)', keptNow().length === 1 && stripEl.textContent?.includes('#02') === true);
+    release('BracketLeft');
+    playFor(9);
+    study.key('Digit9');
+    check('rating it again keeps a new rating without the old mark', keptNow().length === 2 && keptNow()[1]!.score === 9 && keptNow()[1]!.flags.stop === undefined && stripEl.textContent?.includes('#03') === true, JSON.stringify(keptNow()));
+    release('Digit9');
+    study.key('BracketRight');
+    check('"]" skips the candidate', stripEl.textContent?.includes('#04') === true && keptNow().length === 2);
+    release('BracketRight');
+    study.key('BracketLeft');
+    check('and "[" takes the skip back', stripEl.textContent?.includes('#03') === true && keptNow().length === 2);
+    release('BracketLeft');
+    await until(() => keptNow().length === 2 && keptNow().every((r) => sentNow().includes(r.id)) && sentNow().length === 2, 5000);
+    check('what was scored and kept is what the server has, the score that was taken back included', keptNow().every((r) => sentNow().includes(r.id)) && sentNow().length === 2, JSON.stringify(sentNow()));
+    click('hudStudy');
+    check('the list shows what was scored', document.querySelectorAll('#studyBody .study-list li').length === 2);
     click('studyReport');
-    await until(() => /분석/.test($<HTMLElement>('studyReportText').textContent ?? '') && !/하는 중/.test($<HTMLElement>('studyReportText').textContent ?? ''), 8000);
-    // Nothing here locks the mouse, so the two tries had no time with it in the game's hands: the analysis leaves them out and says so.
-    check('the analysis comes back from its worker, and leaves out the two tries that had no time with the mouse', /평가 0개 분석 \(짧은 2개 제외\)/.test($<HTMLElement>('studyReportText').textContent ?? ''), $<HTMLElement>('studyReportText').textContent ?? '');
+    await until(() => /Analysis of/.test($<HTMLElement>('studyReportText').textContent ?? ''), 8000);
+    // Both tries had 9 s with the mouse, so both count.
+    check('the analysis comes back from its worker, in the language of the page', /Analysis of 2 ratings/.test($<HTMLElement>('studyReportText').textContent ?? ''), $<HTMLElement>('studyReportText').textContent ?? '');
     click('studyReportClose');
     click('studyEnd');
-    check('ending puts the earlier values back, and leaves the sensitivity', knobsNow() === feelBefore && profile.mouse.degPerCount === sensStudy && $<HTMLElement>('studyRun').hidden, knobsNow());
+    check('finishing puts the earlier values back, leaves the sensitivity, and takes the strip away', knobsNow() === feelBefore && profile.mouse.degPerCount === sensStudy && !document.getElementById('studyResume') && stripEl.hidden, knobsNow());
     click('hudStudy');
     check('the study panel closes with its button', $<HTMLElement>('studyPanel').hidden);
+    // Start asked for the mouse, which gives the picture the keyboard; nothing locked it here (that is what lets go of it), so it is let go by hand.
+    view.blur();
     const pumps0 = inputLoop.pumps;
     await sleep(500);
     check('the input runs on its own timer, faster than the 60 Hz drawing', inputLoop.pumps - pumps0 >= 40, `${inputLoop.pumps - pumps0} in 500 ms`);
@@ -1773,15 +1873,15 @@ async function runE2e(): Promise<void> {
     click('hudOpts');
     check('the options go back to their card when the panel closes', $<HTMLElement>('optSlot').contains($<HTMLElement>('qualityPreset')) && $<HTMLElement>('optPanel').hidden);
     click('hudShot');
-    await until(() => toasts().includes('스크린샷'), 4000);
-    check('a screenshot is made and said so', toasts().includes('스크린샷을 저장했습니다'), toasts());
+    await until(() => toasts().includes('Screenshot'), 4000);
+    check('a screenshot is made and said so', toasts().includes('Screenshot saved'), toasts());
     if (typeof MediaRecorder !== 'undefined' && typeof view.captureStream === 'function') {
       click('hudRecBtn');
       await sleep(1500);
       check('recording shows its mark while it runs', !$<HTMLElement>('hudRec').hidden && $<HTMLButtonElement>('hudRecBtn').getAttribute('aria-pressed') === 'true');
       click('hudRecBtn');
-      await until(() => toasts().includes('녹화를 저장'), 6000);
-      check('a clip is saved when the recording ends', toasts().includes('녹화를 저장했습니다') && $<HTMLElement>('hudRec').hidden, toasts());
+      await until(() => toasts().includes('Recording saved'), 6000);
+      check('a clip is saved when the recording ends', toasts().includes('Recording saved') && $<HTMLElement>('hudRec').hidden, toasts());
     }
     const soundBefore = soundToggle.checked;
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyM', bubbles: true, cancelable: true }));
@@ -1802,6 +1902,36 @@ async function runE2e(): Promise<void> {
     const t2 = document.documentElement.dataset.theme;
     click('themeBtn');
     check('the colour button goes light, dark, then back to the device', t1 === 'light' && t2 === 'dark' && document.documentElement.dataset.theme === undefined, `${t1} ${t2} ${document.documentElement.dataset.theme}`);
+    // The language: English until Korean is chosen. The words in the page, the ones the code draws, and the ones that are drawn once
+    // and kept all follow, and nothing the page said is without its Korean.
+    const navLab = (): string => document.querySelector('.nav [data-view="lab"] span')?.textContent ?? '';
+    clearMissing();
+    check('the page is in English by default', getLang() === 'en' && document.documentElement.lang === 'en' && navLab() === 'Practice range', navLab());
+    click('langBtn');
+    check('the language button turns the page Korean: words, attributes and the language of the page', getLang() === 'ko' && document.documentElement.lang === 'ko' && navLab() === translate('ko', 'Practice range') && localStorage.getItem('gtp.lang') === 'ko' && $<HTMLElement>('hudStudy').title === translate('ko', 'Mouse feel study: try settings and score them (L)'), `${navLab()} ${$<HTMLElement>('hudStudy').title}`);
+    check('the button now offers the other language', $<HTMLElement>('langBtn').textContent === 'English' && document.querySelector('[data-lang-choice="ko"]')?.getAttribute('aria-pressed') === 'true');
+    for (const id of ['hudStats', 'hudKeys', 'hudFeel', 'hudOpts']) {
+      click(id);
+      await sleep(30);
+      click(id);
+    }
+    click('hudStudy');
+    check('the study panel is drawn in Korean', ($<HTMLElement>('studyBody').textContent ?? '').includes(translate('ko', 'Start')) && !/Start locks/.test($<HTMLElement>('studyBody').textContent ?? ''), $<HTMLElement>('studyBody').textContent ?? '');
+    click('studyStart');
+    await sleep(60);
+    const stripKo = document.querySelector<HTMLElement>('.study-strip')!;
+    check('and so is the strip over the picture while it runs', (stripKo.textContent ?? '').includes(translate('ko', 'Slow aim')) && /[\uAC00-\uD7A3]/.test(stripKo.textContent ?? ''), stripKo.textContent ?? '');
+    click('hudStudy');
+    click('studyEnd');
+    click('hudStudy');
+    view.blur();
+    const shortcuts = $<HTMLDialogElement>('shortcutsDialog');
+    shortcuts.showModal();
+    check('the shortcuts are in Korean', (shortcuts.textContent ?? '').includes(translate('ko', 'Shortcuts')), shortcuts.textContent?.slice(0, 80) ?? '');
+    shortcuts.close();
+    check('nothing the page said had no Korean', missingKeys().length === 0, missingKeys().join(' | '));
+    click('langBtn');
+    check('and back: the button turns the page English again', getLang() === 'en' && document.documentElement.lang === 'en' && navLab() === 'Practice range' && $<HTMLElement>('langBtn').textContent === LANG_NAMES.ko && localStorage.getItem('gtp.lang') === 'en', navLab());
     engine.keyDown('KeyW');
     engine.mouseButton(0, true);
     await sleep(200);
@@ -1968,7 +2098,7 @@ async function runLookE2e(): Promise<void> {
     await until(() => win.__lastCalibration !== undefined || (!$<HTMLButtonElement>('consoleCalibrate').disabled && text('consoleCalibrateStatus') !== ''), 150000);
     result = win.__lastCalibration ?? null;
     check('the measurement finished', result !== null, text('consoleCalibrateStatus'));
-    check('the panel shows the result and a picture of the table', text('consoleCalibrateResult').includes('데드존') && $<HTMLElement>('consoleCalibratePlot').innerHTML.includes('<polyline'));
+    check('the panel shows the result and a picture of the table', text('consoleCalibrateResult').includes('dead zone') && $<HTMLElement>('consoleCalibratePlot').innerHTML.includes('<polyline'));
     check('the pad is the keyboard\'s and mouse\'s again afterwards', !$<HTMLButtonElement>('consoleCalibrate').disabled && $<HTMLButtonElement>('consoleCalibrateStop').hidden);
     const before = JSON.stringify(profile.calibration);
     $<HTMLButtonElement>('consoleCalibrateApply').click();

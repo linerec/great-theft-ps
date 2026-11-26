@@ -11,6 +11,7 @@ import {
   analyzeRatings, ANCHORS, behaviorMetrics, CENTER, DEFAULT_GAME, describeKnobs, formatReport, KNOBS, knobsEqual, nextCandidate, parseRating, RETEST_EVERY, rng, ROUND_1, SPEED_BINS, TrialMeter,
   type Candidate, type FeelRating, type Knobs,
 } from '../src/engine/feel-study.ts';
+import { clearMissing, missingKeys, translate } from '../src/i18n/index.ts';
 import { FEEL_PRESETS } from '../web/mouse-feel.ts';
 
 const feelOf = (k: Knobs, degPerCount = 0.05) => ({ degPerCount, ...k });
@@ -25,7 +26,7 @@ describe('the first round of candidates', () => {
   });
 
   it('is the same on every computer, because ratings refer to it (a rating names its candidate)', () => {
-    assert.equal(describeKnobs(round[3]!.set), '부드러움 6 ms · 해제 155 °/s · 이어 돌기 0 ms · 곡선 1.3');
+    assert.equal(describeKnobs(round[3]!.set), 'Smoothing 6 ms · release 155 °/s · carry-over 0 ms · curve 1.3');
     assert.equal(round[4]!.kind, 'single');
   });
 
@@ -300,8 +301,19 @@ describe('analyzeRatings, against a person whose taste is known', () => {
   it('writes a report that names the best candidate, the noise and the best setting', () => {
     const text = formatReport(report);
     assert.ok(text.includes(report.candidates[0]!.id));
-    assert.ok(text.includes('점수 흔들림'));
-    assert.ok(text.includes('모델이 가리키는 최적'));
+    assert.ok(text.includes('How much the score moved'));
+    assert.ok(text.includes('The best setting the model points at'));
+  });
+
+  it('writes the same report in Korean, with the same numbers, for a page that is read in Korean (and English where no Korean was written)', () => {
+    clearMissing();
+    const ko = formatReport(report, 'ko');
+    assert.ok(ko.includes('점수 흔들림'));
+    assert.ok(ko.includes('모델이 가리키는 최적'));
+    assert.ok(ko.includes(report.candidates[0]!.id));
+    assert.ok(ko.includes(describeKnobs(report.surface!.best, (en, vars) => translate('ko', en, vars))));
+    assert.ok(!/\{\w+\}/.test(ko), 'every {value} was filled in');
+    assert.equal(missingKeys().filter((k) => !k.startsWith('A sentence nobody')).length, 0, `no Korean for: ${missingKeys().join(' | ')}`);
   });
 });
 
@@ -311,7 +323,7 @@ describe('analyzeRatings with little to go on', () => {
     assert.equal(r.used, 6);
     assert.equal(r.surface, null);
     assert.equal(r.effects.length, 0);
-    assert.ok(r.notes.some((n) => n.includes('10개')));
+    assert.ok(r.notes.some((n) => n.en.includes('Fewer than 10 ratings')));
   });
 
   it('does not build a model of the best setting from fewer than twenty ratings', () => {
@@ -338,6 +350,6 @@ describe('analyzeRatings with little to go on', () => {
     const r = analyzeRatings(noise, { seed: 3 });
     const fit = Math.max(r.surface!.looR2.behavior, r.surface!.looR2.knobs);
     assert.ok(fit < 0.25, `the fit claims R² ${fit.toFixed(2)} on scores that are random`);
-    assert.ok(r.notes.some((n) => n.includes('믿지 말고')), r.notes.join('|'));
+    assert.ok(r.notes.some((n) => n.en.includes('Do not trust the best setting')), r.notes.map((n) => n.en).join('|'));
   });
 });

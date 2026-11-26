@@ -27,6 +27,7 @@ import { takionTransport } from '../console/takion-transport.ts';
 import type { Located } from '../console/locate.ts';
 import { wakeConsole, type WakeDeps, type WakeOptions } from '../console/wake.ts';
 import type { VirtualPadState } from '../engine/types.ts';
+import { langOf, translate } from '../i18n/index.ts';
 import type { ConsoleLink, LinkHandlers, LinkStartOptions } from './console-link.ts';
 import type { Handover } from './handover.ts';
 import { CODEC } from './protocol.ts';
@@ -281,14 +282,16 @@ export class Ps5Link implements ConsoleLink {
   }
 
   async start(handlers: LinkHandlers, quality: QualityRequest, options: LinkStartOptions = {}): Promise<void> {
+    // What this link says to the person (the steps, and why a step failed) is in their language: the bridge serves many at once.
+    const lang = langOf(options.lang);
     const log = this.#opts.log ?? (() => {});
     const store = this.#opts.store;
     const research = this.#research;
     const list = store.list();
     const chosen = options.mac ? list.find((c) => c.mac === options.mac) : list[0];
-    if (!chosen) throw new Error(list.length === 0 ? '등록된 PS5가 없습니다. 먼저 콘솔을 등록하세요.' : '선택한 콘솔의 등록 정보가 이 컴퓨터에 없습니다.');
+    if (!chosen) throw new Error(list.length === 0 ? translate(lang, 'No PS5 is registered. Register a console first.') : translate(lang, 'The registration of the chosen console is not on this computer.'));
     const record = store.get(chosen.mac);
-    if (!record) throw new Error('등록 정보를 읽지 못했습니다.');
+    if (!record) throw new Error(translate(lang, 'The registration could not be read.'));
     const name = chosen.nickname || 'PS5';
     const registKey = Buffer.from(record.registKey, 'hex');
     const step = (detail: string): void => handlers.onStatus({ state: 'connecting', detail });
@@ -323,7 +326,7 @@ export class Ps5Link implements ConsoleLink {
         stats.event('moved', `address changed to ${where.host}`);
         store.setHost(record.mac, where.host);
         record.host = where.host;
-        step(`${name}의 주소가 바뀐 것을 찾았습니다`);
+        step(translate(lang, 'Found that the address of {name} has changed', { name }));
       }
     }
 
@@ -334,19 +337,19 @@ export class Ps5Link implements ConsoleLink {
         {
           ...this.#opts.wakeOptions,
           stopped: () => this.#stopped,
-          onSent: () => step(`${name}이(가) 대기 모드입니다. 깨우는 중입니다`),
-          onState: (presence, seconds) => step(presence === 'standby' ? `${name}을(를) 깨우는 중입니다 (${seconds}초)` : `${name}이(가) 켜지는 중입니다 (${seconds}초)`),
+          onSent: () => step(translate(lang, '{name} is in rest mode. Waking it up', { name })),
+          onState: (presence, seconds) => step(presence === 'standby' ? translate(lang, 'Waking {name} up ({seconds} s)', { name, seconds }) : translate(lang, '{name} is starting up ({seconds} s)', { name, seconds })),
         },
         this.#opts.wakeDeps,
       );
       if (this.#stopped || woken.result === 'cancelled') return;
-      if (woken.result === 'error') return fail(`${name}을(를) 깨우지 못했습니다. ${woken.message}`);
+      if (woken.result === 'error') return fail(translate(lang, 'Could not wake {name}. {detail}', { name, detail: woken.message }));
       if (woken.result === 'timeout') {
-        return fail(`${name}이(가) ${woken.seconds}초가 지나도 깨어나지 않았습니다. PS5의 설정 > 시스템 > 절전 > 대기 모드에서 사용할 수 있는 기능에서 "네트워크에서 PS5 켜기 활성화"가 켜져 있는지, 같은 집 네트워크인지 확인하세요.`);
+        return fail(translate(lang, '{name} did not wake up after {seconds} s. Check that "Enable Turning On PS5 from Network" is on (PS5 Settings > System > Power Saving > Features Available in Rest Mode) and that you are on the same home network.', { name, seconds: woken.seconds }));
       }
       if (woken.result === 'woke') {
         stats.event('wake', `woke after ${woken.seconds} s`);
-        step(`${name}이(가) 켜졌습니다 (${woken.seconds}초). 연결합니다`);
+        step(translate(lang, '{name} is on ({seconds} s). Connecting', { name, seconds: woken.seconds }));
       }
     }
 
@@ -354,7 +357,7 @@ export class Ps5Link implements ConsoleLink {
     let ctrl: Pick<Ctrl, 'connect' | 'waitForSessionId' | 'close' | 'events'>;
     let sessionId: string;
     for (let attempt = 1; ; attempt++) {
-      step(attempt === 1 ? `${name}에 세션을 요청하는 중` : `${name}이(가) 제어 연결에 답하지 않아 처음부터 다시 연결하는 중`);
+      step(attempt === 1 ? translate(lang, 'Asking {name} for a session', { name }) : translate(lang, '{name} did not answer on the control connection. Connecting again from the start', { name }));
       for (;;) {
         try {
           grant = await (this.#opts.session ?? requestSession)({ host: record.host, target: record.target, registKey, rpKey: Buffer.from(record.rpKey, 'hex'), log });
@@ -363,23 +366,23 @@ export class Ps5Link implements ConsoleLink {
           if (!(e instanceof SessionError)) throw e;
           // No answer at all is not a refusal: the console is off, asleep, or not where it was.
           if (e.code === 'timeout' || e.code === 'network' || e.code === 'refused') {
-            return fail(`${name}이(가) 응답하지 않습니다. 꺼져 있거나 대기 모드이거나, 주소가 바뀌었을 수 있습니다. (${e.message})`);
+            return fail(translate(lang, '{name} is not answering. It may be off or in rest mode, or its address may have changed. ({detail})', { name, detail: e.message }));
           }
-          if (e.reason !== APPLICATION_REASON.inUse) return fail(`${name}이(가) 세션을 받아들이지 않았습니다. ${e.message}`);
-          if (asked >= retries) return fail(`${name}에서 원격 플레이가 이미 사용 중입니다. Great Theft P.S가 아닌 앱(공식 앱, chiaki 등)이 연결 중이면 그쪽에서 끊어야 합니다.`);
+          if (e.reason !== APPLICATION_REASON.inUse) return fail(translate(lang, '{name} did not accept the session. {detail}', { name, detail: e.message }));
+          if (asked >= retries) return fail(translate(lang, 'Remote Play is already in use on {name}. If an app other than Great Theft P.S (the official app, chiaki and so on) is connected, disconnect it there.', { name }));
           asked++;
           stats.event('session-in-use', `asking again (${asked} of ${retries})`);
           if (asked === 1 && this.#opts.handover) {
             // Is it one of this project's own clients that has the console? Then it lets go when asked, unless locked.
             const answer = await this.#opts.handover.ask(record.mac);
             if (this.#stopped) return;
-            if (answer.result === 'locked') return fail(`${answer.name}에서 잠금 상태로 사용 중입니다. 그 기기에서 잠금을 풀거나 연결을 끊으면 가져올 수 있습니다.`);
+            if (answer.result === 'locked') return fail(translate(lang, 'The console is in use on {device} and locked. Unlock it or disconnect it on that device, and you can take it over.', { device: answer.name }));
             if (answer.result === 'yielded') {
               yieldedBy = answer.name;
               stats.event('handover', 'another client let go');
             }
           }
-          step(yieldedBy ? `${yieldedBy}이(가) 자리를 내주었습니다. ${name}이(가) 그 연결을 정리하는 동안 기다립니다 (${asked}/${retries})` : `${name}이(가) 앞선 원격 플레이 연결을 정리하는 중입니다 (길면 30초쯤). 다시 시도합니다 (${asked}/${retries})`);
+          step(yieldedBy ? translate(lang, '{device} let go of the console. Waiting while {name} cleans up that connection ({asked}/{retries})', { device: yieldedBy, name, asked, retries }) : translate(lang, '{name} is clearing up the earlier Remote Play connection (up to about 30 s). Trying again ({asked}/{retries})', { name, asked, retries }));
           await new Promise((r) => setTimeout(r, retryWaitMs));
           if (this.#stopped) return;
         }
@@ -388,7 +391,7 @@ export class Ps5Link implements ConsoleLink {
       store.markVerified(record.mac, record.host);
       stats.stage('session');
 
-      step(`${name}이(가) 세션 요청을 받아들였습니다. 제어 연결을 여는 중`);
+      step(translate(lang, '{name} accepted the session request. Opening the control connection', { name }));
       const ctrlOptions = { host: record.host, target: record.target, crypt: grant.crypt, registKey, codec: video.codec, log, timeoutMs: attempt === 1 ? 5000 : 10000 };
       ctrl = this.#opts.createCtrl ? this.#opts.createCtrl(ctrlOptions) : new Ctrl(ctrlOptions);
       this.#ctrl = ctrl;
@@ -399,10 +402,10 @@ export class Ps5Link implements ConsoleLink {
         sessionId = await ctrl.waitForSessionId(8000);
         break;
       } catch (e) {
-        if (pinAsked) return fail(`${name}의 계정에 로그인 암호(PIN)가 걸려 있어 콘솔이 암호를 요구합니다. 아직 지원하지 않습니다.`);
+        if (pinAsked) return fail(translate(lang, 'The account on {name} is protected by a login PIN, so the console asks for it. That is not supported yet.', { name }));
         if (!(e instanceof CtrlError)) throw e;
         const silent = e.code === 'timeout' || e.code === 'network' || e.code === 'closed';
-        if (!silent || attempt >= 2 || this.#stopped) return fail(`${name}과(와) 제어 연결을 열지 못했습니다. ${e.message}`);
+        if (!silent || attempt >= 2 || this.#stopped) return fail(translate(lang, 'Could not open the control connection to {name}. {detail}', { name, detail: e.message }));
         stats.event('control-retry', e.code);
         ctrl.close();
         this.#ctrl = null;
@@ -410,10 +413,10 @@ export class Ps5Link implements ConsoleLink {
     }
     if (this.#stopped) return this.#cleanup();
     stats.stage('control');
-    ctrl.events.onClose = (reason) => this.#ended(handlers, `제어 연결이 끊어졌습니다 (${reason})`);
+    ctrl.events.onClose = (reason) => this.#ended(handlers, translate(lang, 'The control connection was lost ({reason})', { reason }));
 
     // 4. stream connection
-    step('제어 연결이 열렸습니다. 영상 스트림을 여는 중');
+    step(translate(lang, 'The control connection is open. Opening the video stream'));
     const protocolVersion = isPs5Target(record.target) ? 12 : 9;
     const transport = this.#opts.createTransport ? this.#opts.createTransport({ host: record.host, protocolVersion, log }) : takionTransport({ host: record.host, protocolVersion, log });
     this.#startedAt = Date.now();
@@ -429,14 +432,14 @@ export class Ps5Link implements ConsoleLink {
     try {
       await stream.start();
     } catch (e) {
-      if (e instanceof StreamError) return fail(`${name}과(와) 영상 스트림을 열지 못했습니다. ${e.message} [${e.code}]`);
+      if (e instanceof StreamError) return fail(translate(lang, 'Could not open the video stream to {name}. {detail} [{code}]', { name, detail: e.message, code: e.code }));
       throw e;
     }
     if (this.#stopped) return this.#cleanup();
     research.state = 'streaming';
     // From here on another of this project's clients can ask for the console, and gets it unless this one is locked.
-    this.#unhold = this.#opts.handover?.hold(record.mac, { locked: this.#locked, release: (by) => this.#ended(handlers, `다른 내 기기(${by})에 자리를 내주었습니다.`) }) ?? null;
-    handlers.onStatus({ state: 'streaming', detail: `${name} · ${stream.profiles.map((p) => `${p.width}×${p.height}`).join(', ') || '프로필 없음'}` });
+    this.#unhold = this.#opts.handover?.hold(record.mac, { locked: this.#locked, release: (by) => this.#ended(handlers, translate(lang, 'Handed the console over to your other device ({device}).', { device: by })) }) ?? null;
+    handlers.onStatus({ state: 'streaming', detail: `${name} · ${stream.profiles.map((p) => `${p.width}×${p.height}`).join(', ') || translate(lang, 'no profiles')}` });
   }
 
   #frame(handlers: LinkHandlers, frame: StreamFrame): void {

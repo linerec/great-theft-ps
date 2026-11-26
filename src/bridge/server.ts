@@ -18,6 +18,7 @@ import https from 'node:https';
 import type { AddressInfo } from 'node:net';
 
 import { emptyPadState, type VirtualPadState } from '../engine/types.ts';
+import { langOf, translate } from '../i18n/index.ts';
 import type { ConsoleLink } from './console-link.ts';
 import { decodePad, decodePing, encodeAudio, encodePong, encodeVideo, isNeutral, MSG, type ClientControl } from './protocol.ts';
 import { DEFAULT_QUALITY, parseQuality, type QualityRequest } from './quality.ts';
@@ -254,6 +255,9 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
     conn.onClose = () => void cleanup();
 
     async function authenticate(msg: ClientControl): Promise<void> {
+      // One bridge serves many people at once, each reading their own language: the page says which in its first message.
+      // It is not trusted: whatever is not a known language is English.
+      const lang = langOf((msg as { lang?: unknown }).lang);
       const tokenGiven = face.token !== undefined && typeof msg.token === 'string' && timingSafeEqual(sha(msg.token), sha(face.token));
       // With accounts a login (or the token) is needed everywhere; without them only an address with a token asks for it.
       const allowed = accounts ? !!from.user || tokenGiven : face.token === undefined || tokenGiven;
@@ -264,7 +268,7 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
       // Whoever logged in has minutes per day. The token is the owner's (a tool, no limit), so it is not counted.
       player = accounts && from.user && !tokenGiven ? from.user : null;
       if (player && accounts && accounts.remainingSeconds(player.name) === 0) {
-        sendJson({ type: 'error', code: 'quota-exhausted', message: '오늘 사용할 수 있는 시간을 모두 썼습니다' });
+        sendJson({ type: 'error', code: 'quota-exhausted', message: translate(lang, 'You have used all your time for today') });
         return conn.close(4403, 'no time left today');
       }
       if (active) {
@@ -317,7 +321,7 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
             },
           },
           quality,
-          { ...(typeof msg.console === 'string' && /^[0-9a-f]{12}$/i.test(msg.console) ? { mac: msg.console.toLowerCase() } : {}), locked: msg.lock === true },
+          { ...(typeof msg.console === 'string' && /^[0-9a-f]{12}$/i.test(msg.console) ? { mac: msg.console.toLowerCase() } : {}), locked: msg.lock === true, lang },
         );
       } catch (e) {
         sendJson({ type: 'error', code: 'link', message: String((e as Error).message ?? e) });
@@ -340,7 +344,7 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
             if (quotaTick % 5 === 1 || (remaining !== null && remaining <= 60)) sendJson({ type: 'quota', remainingSeconds: remaining, dailyMinutes: accounts.get(player.name)?.dailyMinutes ?? null });
             if (remaining === 0) {
               flushUsage();
-              sendJson({ type: 'error', code: 'quota-ended', message: '오늘 사용할 수 있는 시간이 끝났습니다' });
+              sendJson({ type: 'error', code: 'quota-ended', message: translate(lang, 'Your time for today has ended') });
               return conn.close(4403, 'no time left today');
             }
           }

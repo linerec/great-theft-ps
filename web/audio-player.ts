@@ -19,6 +19,7 @@
 // STATUS: the logic is tested with a stand-in decoder and audio context (test/audio-player.test.ts). NOT yet heard with
 // a real console's sound, and not yet tried on an iPhone.
 
+import { N_, t, type Vars } from '../src/i18n/index.ts';
 import { AudioScheduler } from './audio-schedule.ts';
 
 export interface AudioInfo {
@@ -76,7 +77,7 @@ export type AudioState = 'idle' | 'unsupported' | 'playing' | 'muted' | 'hidden'
 
 export interface AudioStats {
   state: AudioState;
-  /** Why there is no sound, in words for the page (empty when there is). */
+  /** Why there is no sound, in words for the page, in the language it has now (empty when there is; see refreshLanguage). */
   reason: string;
   info: AudioInfo | null;
   frames: number;
@@ -101,7 +102,7 @@ const DEFAULT_DELAY_SEC = 0.08;
 const realDeps = (): Required<AudioPlayerDeps> => ({
   createContext: () => {
     const Ctx: typeof AudioContext | undefined = (globalThis as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).AudioContext ?? (globalThis as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctx) throw new Error('AudioContext가 없는 브라우저');
+    if (!Ctx) throw new Error('no AudioContext in this browser'); // a technical detail, like the messages browsers give
     return new Ctx({ latencyHint: 'interactive' }) as unknown as AudioContextLike;
   },
   isConfigSupported: async (config) => {
@@ -137,7 +138,8 @@ export class AudioPlayer {
   #muted = false;
   #volume = 1;
   #visible = true;
-  #unsupportedReason = '';
+  /** Why there is no sound, as the sentence and its values, so that it can be said again in another language. */
+  #unsupported: { en: string; vars?: Vars } | null = null;
   #generation = 0;
   stats: AudioStats = { state: 'idle', reason: '', info: null, frames: 0, concealed: 0, decoded: 0, dropped: 0, underruns: 0, errors: 0, delayMs: 0 };
 
@@ -167,7 +169,7 @@ export class AudioPlayer {
       source.start(0);
       return true;
     } catch (error) {
-      this.#setUnsupported(`이 브라우저는 소리를 낼 수 없습니다 (${(error as Error).message})`);
+      this.#setUnsupported(N_('This browser cannot play sound ({message})'), { message: (error as Error).message });
       return false;
     }
   }
@@ -180,13 +182,13 @@ export class AudioPlayer {
     this.#frameIndex = 0;
     this.#scheduler.reset();
     this.#frameSec = info.rate > 0 ? info.frameSize / info.rate : 0.01;
-    if (!this.#ctx) return this.#setUnsupported('소리가 아직 풀리지 않았습니다 (연결 버튼을 누를 때 풀립니다)');
+    if (!this.#ctx) return this.#setUnsupported(N_('Sound is not unlocked yet (it unlocks when you press Connect)'));
     if (info.channels < 1 || info.channels > MAX_CHANNELS) {
-      return this.#setUnsupported(`PS5가 보내는 소리는 ${info.channels}채널이고, 브라우저는 ${MAX_CHANNELS}채널까지만 풀 수 있습니다`);
+      return this.#setUnsupported(N_('The PS5 sends {channels}-channel sound, and the browser can only decode up to {max} channels'), { channels: info.channels, max: MAX_CHANNELS });
     }
     const config = { codec: 'opus' as const, sampleRate: info.rate, numberOfChannels: info.channels };
     if (!(await this.#deps.isConfigSupported(config))) {
-      return this.#setUnsupported('이 브라우저는 소리(Opus)를 풀 수 없습니다. iPhone은 iOS 26 이상이어야 합니다');
+      return this.#setUnsupported(N_('This browser cannot decode sound (Opus). On an iPhone it needs iOS 26 or later'));
     }
     if (generation !== this.#generation) return; // a newer start() or a close() came while we waited
     try {
@@ -194,9 +196,9 @@ export class AudioPlayer {
       decoder.configure(config);
       this.#decoder = decoder;
     } catch (error) {
-      return this.#setUnsupported(`소리 디코더를 만들지 못했습니다 (${(error as Error).message})`);
+      return this.#setUnsupported(N_('Could not create the sound decoder ({message})'), { message: (error as Error).message });
     }
-    this.#unsupportedReason = '';
+    this.#unsupported = null;
     this.#refreshState();
   }
 
@@ -314,7 +316,7 @@ export class AudioPlayer {
     this.#generation++;
     this.#closeDecoder();
     this.#scheduler.reset();
-    this.stats = { state: this.#unsupportedReason ? 'unsupported' : 'idle', reason: this.#unsupportedReason, info: null, frames: 0, concealed: 0, decoded: 0, dropped: 0, underruns: 0, errors: 0, delayMs: 0 };
+    this.stats = { state: this.#unsupported ? 'unsupported' : 'idle', reason: this.#unsupported ? t(this.#unsupported.en, this.#unsupported.vars) : '', info: null, frames: 0, concealed: 0, decoded: 0, dropped: 0, underruns: 0, errors: 0, delayMs: 0 };
     this.#queueDropped = 0;
     this.#scheduler.underruns = 0;
     this.#scheduler.dropped = 0;
@@ -343,14 +345,20 @@ export class AudioPlayer {
     this.#decoder = null;
   }
 
-  #setUnsupported(reason: string): void {
-    this.#unsupportedReason = reason;
+  /** `en` is the sentence (see src/i18n): it is said in the page's language now, and again when the language changes. */
+  #setUnsupported(en: string, vars?: Vars): void {
+    this.#unsupported = { en, vars };
     this.stats.state = 'unsupported';
-    this.stats.reason = reason;
+    this.stats.reason = t(en, vars);
+  }
+
+  /** The page's language changed: the reason that is kept is said again in it. */
+  refreshLanguage(): void {
+    if (this.#unsupported) this.stats.reason = t(this.#unsupported.en, this.#unsupported.vars);
   }
 
   #refreshState(): void {
-    if (this.#unsupportedReason && !this.#decoder) return;
+    if (this.#unsupported && !this.#decoder) return;
     this.stats.reason = '';
     this.stats.state = !this.#decoder ? 'idle' : this.#muted ? 'muted' : !this.#visible ? 'hidden' : 'playing';
   }

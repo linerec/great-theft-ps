@@ -14,6 +14,7 @@
 // controller after a button has been pressed on it once; that is a browser rule, not a choice here.
 
 import { BUTTON, type VirtualPadState } from '../src/engine/types.ts';
+import { t } from '../src/i18n/index.ts';
 
 /** What a controller says right now, in the pad state's own terms. */
 export interface PadSample {
@@ -105,7 +106,7 @@ export function padName(id: string): string {
   if (/054c.*0ce6|dualsense/i.test(id)) return 'DualSense';
   if (/054c.*(05c4|09cc)|dualshock/i.test(id)) return 'DualShock 4';
   const cleaned = id.replace(/\(.*?\)/g, '').trim();
-  return cleaned.slice(0, 40) || '컨트롤러';
+  return cleaned.slice(0, 40) || t('Controller');
 }
 
 /** Reads the first controller that is there, every time it is asked (once per frame). */

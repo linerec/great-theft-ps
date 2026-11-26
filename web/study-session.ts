@@ -6,8 +6,14 @@
 // (study-ui.ts) keeps the state in this browser and sends the ratings.
 
 import {
-  knobsEqual, nextCandidate, parseRating, ROUND_1, SITUATIONS, type Candidate, type Feel, type FeelRating, type GameModel, type Knobs, type Playout, type Round, type SceneKey, type SituationKey,
+  knobsEqual, MIN_TRIAL_SECONDS, nextCandidate, parseRating, ROUND_1, SITUATIONS, type Candidate, type Feel, type FeelRating, type GameModel, type Knobs, type Playout, type Round, type SceneKey, type SituationKey,
 } from '../src/engine/feel-study.ts';
+
+export interface HistoryEntry {
+  id: string;
+  /** The rating that was kept for it, when one was. */
+  rating: string | null;
+}
 
 /** What is kept between visits to the page. */
 export interface StudyState {
@@ -21,8 +27,8 @@ export interface StudyState {
   original: Knobs | null;
   /** Candidates the person passed over; they come back when everything else has been tried. */
   skipped: string[];
-  /** The candidates shown before this one, for "back". */
-  history: string[];
+  /** What was done with the candidates shown before this one (a rating kept, or a pass), for "undo". */
+  history: HistoryEntry[];
   scene: SceneKey | null;
 }
 
@@ -42,7 +48,11 @@ export interface Pending {
   note: string;
 }
 
-export type SaveResult = { ok: true; rating: FeelRating; next: Candidate; retest: boolean } | { ok: false; error: 'not-running' | 'no-score' | 'invalid'; detail?: string };
+export type SaveResult =
+  | { ok: true; rating: FeelRating; next: Candidate; retest: boolean }
+  | { ok: false; error: 'not-running' | 'no-score' | 'invalid'; detail?: string }
+  /** Not enough time with the mouse in the game's hands to have felt anything: nothing is kept, and `secondsLeft` says how long to go on. */
+  | { ok: false; error: 'too-short'; secondsLeft: number };
 
 const knobsOfFeel = (f: Feel): Knobs => ({ smoothingMs: f.smoothingMs, smoothingFadeRate: f.smoothingFadeRate, carryMs: f.carryMs, curve: f.curve });
 /** An id that is new on every device and every time (crypto.randomUUID needs a secure page; getRandomValues does not). */
@@ -62,15 +72,19 @@ export class StudySession {
   readonly sent: Set<string>;
   state: StudyState;
   pending: Pending = { score: null, flags: {}, note: '' };
+  readonly minSeconds: number;
   #newId: () => string;
   #now: () => Date;
 
-  constructor(o: { round?: Round; ratings?: readonly unknown[]; sent?: readonly string[]; state?: Partial<StudyState>; newId?: () => string; now?: () => Date } = {}) {
+  constructor(o: { round?: Round; ratings?: readonly unknown[]; sent?: readonly string[]; state?: Partial<StudyState>; minSeconds?: number; newId?: () => string; now?: () => Date } = {}) {
     this.round = o.round ?? ROUND_1;
     // What was kept in the browser is checked as the server would: a hand-edited or damaged entry is not carried along.
     this.ratings = (o.ratings ?? []).map((r) => parseRating(r)).flatMap((p) => (p.ok ? [p.rating] : []));
     this.sent = new Set(o.sent ?? []);
     this.state = { ...emptyState(this.round.id), ...o.state, roundId: this.round.id };
+    // What an earlier version of the page kept was a list of ids.
+    this.state.history = (Array.isArray(this.state.history) ? (this.state.history as unknown[]) : []).flatMap((h) => (typeof h === 'string' ? [{ id: h, rating: null }] : h && typeof (h as HistoryEntry).id === 'string' ? [{ id: (h as HistoryEntry).id, rating: typeof (h as HistoryEntry).rating === 'string' ? (h as HistoryEntry).rating : null }] : []));
+    this.minSeconds = o.minSeconds ?? MIN_TRIAL_SECONDS;
     this.#newId = o.newId ?? randomId;
     this.#now = o.now ?? (() => new Date());
     if (this.state.currentId && !this.round.candidates.some((c) => c.id === this.state.currentId)) this.state.currentId = null;
@@ -139,12 +153,6 @@ export class StudySession {
     return original;
   }
 
-  /** The score goes up or down from where it is (5 when it has not been touched), within 1 to 10. */
-  bumpScore(delta: number): number {
-    this.pending.score = Math.min(10, Math.max(1, (this.pending.score ?? 5) + delta));
-    return this.pending.score;
-  }
-
   setScore(score: number): number {
     this.pending.score = Math.min(10, Math.max(1, Math.round(score)));
     return this.pending.score;
@@ -174,11 +182,22 @@ export class StudySession {
     this.pending.note = note.slice(0, 200);
   }
 
-  /** Keeps the rating and moves on to the next candidate. Refuses when nothing is running, no score was given, or the server would refuse it. */
+  /** Gives the score and keeps the rating in one go (a key press while playing). */
+  rate(score: number, ctx: TrialContext): SaveResult {
+    if (!this.state.active || !this.candidate) return { ok: false, error: 'not-running' };
+    this.setScore(score);
+    return this.save(ctx);
+  }
+
+  /**
+   * Keeps the rating and moves on to the next candidate. Refuses when nothing is running, no score was given, too little time
+   * was spent with the mouse (the score is kept for when there has been), or the server would refuse it.
+   */
   save(ctx: TrialContext): SaveResult {
     const current = this.candidate;
     if (!this.state.active || !current) return { ok: false, error: 'not-running' };
     if (this.pending.score === null) return { ok: false, error: 'no-score' };
+    if (ctx.trial.seconds < this.minSeconds) return { ok: false, error: 'too-short', secondsLeft: Math.ceil(this.minSeconds - ctx.trial.seconds) };
     const parsed = parseRating({
       id: this.#newId(), at: this.#now().toISOString(), round: this.round.id, preset: current.id,
       feel: ctx.feel, changed: !knobsEqual(current.set, knobsOfFeel(ctx.feel)), score: this.pending.score, flags: this.pending.flags, scene: this.state.scene, note: this.pending.note,
@@ -186,7 +205,7 @@ export class StudySession {
     }, this.#now().getTime());
     if (!parsed.ok) return { ok: false, error: 'invalid', detail: parsed.error };
     this.ratings.push(parsed.rating);
-    this.state.history.push(current.id);
+    this.state.history.push({ id: current.id, rating: parsed.rating.id });
     const next = this.#pick();
     this.#show(next.candidate, next.retest);
     return { ok: true, rating: parsed.rating, next: next.candidate, retest: next.retest };
@@ -197,18 +216,34 @@ export class StudySession {
     const current = this.candidate;
     if (!this.state.active || !current) return null;
     if (!this.state.skipped.includes(current.id)) this.state.skipped.push(current.id);
-    this.state.history.push(current.id);
+    this.state.history.push({ id: current.id, rating: null });
     const next = this.#pick();
     return this.#show(next.candidate, next.retest);
   }
 
-  /** Goes back to the candidate shown before this one (to rate it again, or to rate it after all). */
-  back(): Candidate | null {
-    const id = this.state.history.pop();
-    const c = id ? this.round.candidates.find((x) => x.id === id) : undefined;
-    if (!c) return null;
-    this.state.skipped = this.state.skipped.filter((s) => s !== c.id);
-    return this.#show(c, this.ratingsInRound.some((r) => r.preset === c.id));
+  /**
+   * Takes back the last thing done: a rating that was kept is dropped (and the candidate is there to be rated again), a pass is
+   * undone. `wasSent` says whether the server had the dropped rating, so that the page can take it back there too.
+   */
+  undo(): { candidate: Candidate; removed: FeelRating | null; wasSent: boolean } | null {
+    for (let last = this.state.history.pop(); last; last = this.state.history.pop()) {
+      const candidate = this.round.candidates.find((x) => x.id === last.id);
+      if (!candidate) continue;
+      let removed: FeelRating | null = null;
+      let wasSent = false;
+      if (last.rating !== null) {
+        const at = this.ratings.findIndex((r) => r.id === last.rating);
+        if (at >= 0) {
+          removed = this.ratings.splice(at, 1)[0]!;
+          wasSent = this.sent.delete(removed.id);
+        }
+      } else {
+        this.state.skipped = this.state.skipped.filter((id) => id !== candidate.id);
+      }
+      this.#show(candidate, this.ratingsInRound.some((r) => r.preset === candidate.id));
+      return { candidate, removed, wasSent };
+    }
+    return null;
   }
 
   get unsent(): FeelRating[] {

@@ -7,3 +7,16 @@ try {
 } catch (e) {
   /* storage blocked: the device's setting decides */
 }
+// A Korean choice: hold the page back until lang.ts has put the words in, so that English does not flash first.
+try {
+  var l = new URLSearchParams(location.search).get('lang') || localStorage.getItem('gtp.lang');
+  if (l === 'ko') {
+    document.documentElement.setAttribute('data-lang-pending', '');
+    // If the page's code never runs, the English page is better than none.
+    setTimeout(function () {
+      document.documentElement.removeAttribute('data-lang-pending');
+    }, 2500);
+  }
+} catch (e) {
+  /* storage blocked: English */
+}

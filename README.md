@@ -58,19 +58,19 @@ npm run handover -- who|hold|ask          # try the handover between your client
 
 `npm run dev` (or `npm run bridge`: the same), open the address it prints, and on the **PS5** page press the one button: it registers a console when
 there is none and connects when there is one. Click the picture to lock the mouse (Esc releases it); keyboard and mouse
-then go to the console through the current profile (arrow keys are the d-pad). **연습장** holds two test games for trying
-the mapping without a console, and **설정** has the mapping, console management and advanced items.
+then go to the console through the current profile (arrow keys are the d-pad). **Practice range** holds two test games for trying
+the mapping without a console, and **Settings** has the mapping, console management and advanced items.
 
 Above the picture:
 
-- **화질**: 640x360@30 to 1920x1080@60. A console fixes this when the stream starts, so changing it reconnects.
-- **표시**: how frames are paced onto the screen. *부드럽게* holds each frame back a little (as much as the latest frame
+- **Quality**: 640x360@30 to 1920x1080@60. A console fixes this when the stream starts, so changing it reconnects.
+- **Display mode**: how frames are paced onto the screen. *Smooth* holds each frame back a little (as much as the latest frame
   of the last minute needed, at most 100 ms) and shows frames on the console's own even pace, so that a frame arriving
-  40 ms late on Wi-Fi does not show as a freeze. *균형* does the same with at most 50 ms. *최소 지연* shows every frame the
-  moment it arrives. "표시 지연" is the delay in use, "화면 끊김" counts the hitches you actually saw.
-- **잠금**: see "Several computers, one console".
+  40 ms late on Wi-Fi does not show as a freeze. *Balanced* does the same with at most 50 ms. *Minimum delay* shows every frame the
+  moment it arrives. "Display delay" is the delay in use, "Picture stalls" counts the hitches you actually saw.
+- **Lock so other devices cannot take over**: see "Several computers, one console".
 
-A console in rest mode shows as 대기 모드 and the button says **깨우고 연결**: the bridge sends the wake-up datagram, waits
+A console in rest mode shows as "Rest mode" and the button says **Wake and connect**: the bridge sends the wake-up datagram, waits
 until the console answers, then connects, so from a phone it is still one press. The console must allow it in its rest-mode
 settings (*Enable Turning on PS5 from Network*). `npm run wake` does the waking alone (`-- --check` only reports what the
 console answers). A console that is already on is not sent anything, and `--no-wake` on the bridge switches the waking off.
@@ -78,7 +78,7 @@ console answers). A console that is already on is not sent anything, and `--no-w
 ### Register your console (once)
 
 On a computer in the same network as the console. The console must be **on** (not in rest mode) with **Settings > System >
-Remote Play > Link Device** open; it shows an 8 digit code. Use the page ("콘솔 등록하기") or `npm run register`; both say
+Remote Play > Link Device** open; it shows an 8 digit code. Use the page ("Register a console") or `npm run register`; both say
 exactly why it failed when it does. The first registration also needs your PSN account id (a decimal number, or its 8
 bytes in base64); it is remembered afterwards. If you do not know it, the page can fetch it: it opens Sony's own login
 page in your browser and reads the id from the address it redirects to. **Read the notice there:** this uses the client
@@ -108,7 +108,7 @@ copies of this program agree on a rule among themselves:
 
 - A copy that is connected **lets go when another of your copies wants the console**, and that one takes over
   (a few seconds: the console needs about six to free the session).
-- Tick **잠금** and the connection is kept instead: the other copy is told who has it, locked. The lock belongs to the
+- Tick **Lock so other devices cannot take over** and the connection is kept instead: the other copy is told who has it, locked. The lock belongs to the
   connection and ends with it.
 
 This works between computers that hold the **same registration** (moved with `npm run consoles`, above): the signal is a
@@ -275,7 +275,7 @@ Mouse movement arrives once per display frame, so `runFor()` spreads each frame'
 fixed ticks to keep the speed steady.
 
 **Measuring a console game's response.** The table that turns a turn rate into a stick value is the game's own, and a
-console does not tell it. In the settings, **콘솔 게임 자동 보정** measures it from the picture: with a scene where the
+console does not tell it. In the settings, **Auto-calibrate to the game** measures it from the picture: with a scene where the
 camera can turn (not a menu or a cut scene), it holds the right stick by itself, first at full deflection until the
 picture has come all the way round (one full turn is 360 degrees, which gives the scale without knowing the field of
 view and shows how long a stick takes to be seen), then at each deflection from small to large, and measures how fast the
@@ -298,7 +298,7 @@ A profile is data only. It is validated and normalised (unknown fields dropped, 
 bounded numbers, strict action syntax) and never executed. It records the in-game settings it was tuned for,
 because the same profile only reproduces the same feel when those match.
 
-The page edits a profile by pressing keys (설정 → 입력 매핑: one row per pad button, "+ 키", then the key) and keeps one
+The page edits a profile by pressing keys (Settings → Input mapping: one row per pad button, "+ Key", then the key) and keeps one
 per game in the browser. `docs/keyboard-mouse-mapping.md` has the built-in layout, why it is what it is, and what the
 established remappers do.
 

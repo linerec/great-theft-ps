@@ -4,8 +4,10 @@
 // was tried and resamples the ratings many times), and a stream that is running must not wait for that.
 
 import { analyzeRatings, formatReport, type FeelRating } from '../src/engine/feel-study.ts';
+import { langOf } from '../src/i18n/index.ts';
 
-self.onmessage = (e: MessageEvent<{ ratings: FeelRating[] }>) => {
+// The page's language comes with the ratings: a worker has no page, and so no language of its own.
+self.onmessage = (e: MessageEvent<{ ratings: FeelRating[]; lang?: string }>) => {
   const report = analyzeRatings(e.data.ratings);
-  self.postMessage({ text: formatReport(report) });
+  self.postMessage({ text: formatReport(report, langOf(e.data.lang)) });
 };

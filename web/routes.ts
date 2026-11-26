@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The ways a client can reach a PS5, and what works on each. Pure data and logic (no DOM), so it can be tested.
-// Ports and order come from chiaki-ng (commit 43728af). "확인됨" (ok) means seen on a real console in this project;
-// "코드 있음" (likely) means written and tested against a simulated console and the reference's vectors only.
+// Ports and order come from chiaki-ng (commit 43728af). "Confirmed" (ok) means seen on a real console in this project;
+// "Code exists" (likely) means written and tested against a simulated console and the reference's vectors only.
+//
+// Every word the tables hold is a sentence marked with N_(): the page shows it through t(), in the language in use at that
+// moment. Text that is the same in every language (WAKEUP, a port) is marked too and has the same Korean as English.
+
+import { N_, t } from '../src/i18n/index.ts';
 
 export type PathId = 'lan' | 'bridge' | 'vlan' | 'vpn' | 'rbridge' | 'psn' | 'fwd';
 export type StepId = 'discover' | 'wake' | 'register' | 'session' | 'stream';
@@ -36,121 +41,121 @@ export interface RoutePath {
 }
 
 export const STEPS: Array<{ id: StepId; title: string }> = [
-  { id: 'discover', title: '발견' },
-  { id: 'wake', title: '깨우기' },
-  { id: 'register', title: '등록' },
-  { id: 'session', title: '세션 시작' },
-  { id: 'stream', title: '영상·입력' },
+  { id: 'discover', title: N_('Discover') },
+  { id: 'wake', title: N_('Wake') },
+  { id: 'register', title: N_('Register') },
+  { id: 'session', title: N_('Start session') },
+  { id: 'stream', title: N_('Video and input') },
 ];
 
 export const VERDICTS: Record<Verdict, { symbol: string; title: string; short: string }> = {
-  ok: { symbol: '✔', title: '확인됨', short: '확인됨' },
-  likely: { symbol: '◐', title: '코드 있음 · 실기 미확인', short: '코드 있음' },
-  direct: { symbol: '△', title: '조건부', short: '조건부' },
-  plan: { symbol: '○', title: '미구현', short: '미구현' },
-  no: { symbol: '✕', title: '비권장 · 불가', short: '불가' },
+  ok: { symbol: '✔', title: N_('Confirmed'), short: N_('Confirmed') },
+  likely: { symbol: '◐', title: N_('Code exists · not tried on a real console'), short: N_('Code exists') },
+  direct: { symbol: '△', title: N_('Conditional'), short: N_('Conditional') },
+  plan: { symbol: '○', title: N_('Not built'), short: N_('Not built') },
+  no: { symbol: '✕', title: N_('Not recommended · impossible'), short: N_('Impossible') },
 };
 
-const PS5: RouteNode = { zone: 'home', title: 'PS5', sub: '켜짐 또는 대기', ps5: true };
+const PS5: RouteNode = { zone: 'home', title: N_('PS5'), sub: N_('On or in rest mode'), ps5: true };
 
 export const PATHS: RoutePath[] = [
   {
-    id: 'lan', name: '집 안 · 같은 네트워크', sub: '기기 → 공유기 → PS5', tag: '가장 단순',
-    nodes: [{ zone: 'home', title: '이 PC · 맥', sub: '같은 Wi‑Fi' }, { zone: 'home', title: '공유기', sub: '192.168.1.x' }, PS5],
+    id: 'lan', name: N_('At home · same network'), sub: N_('Device → router → PS5'), tag: N_('Simplest'),
+    nodes: [{ zone: 'home', title: N_('This PC · Mac'), sub: N_('Same Wi-Fi') }, { zone: 'home', title: N_('Router'), sub: N_('192.168.1.x') }, PS5],
     steps: {
-      discover: { v: 'ok', proto: 'UDP 브로드캐스트 · 9302', labels: ['SRCH 브로드캐스트', '응답: 상태·이름·ID'], note: '맥과 이 PC에서 실제 PS5가 응답했습니다. 같은 대역이면 주소를 몰라도 찾습니다.' },
-      wake: { v: 'likely', proto: 'UDP 9302 · WAKEUP + 등록 키', labels: ['WAKEUP', '대기 → 켜짐'], note: '함수는 있지만 실제 PS5로는 아직 시험하지 않았습니다.' },
-      register: { v: 'ok', proto: 'UDP 검색 + TCP 9295 · 8자리 코드', labels: ['검색 + 등록 요청', '키 응답(암호화)'], note: '실제 PS5로 확인했습니다. 한 번만 하면 되고, 결과는 컴퓨터에 저장됩니다.' },
-      session: { v: 'ok', proto: 'TCP 9295 · /sie/ps5/rp/sess/init, /ctrl', labels: ['init + 등록 키', 'nonce · 세션 ID'], note: '실제 PS5로 확인했습니다. 세션 요청 뒤 암호화된 제어 연결을 열고 세션 ID를 받습니다.' },
-      stream: { v: 'ok', proto: 'UDP 9296 Takion', labels: ['입력 · 수신 보고', '영상 (H.264)'], note: '실제 PS5의 화면을 받고 입력을 보내는 것까지 확인했습니다. 음성과 RTT·MTU 측정(9297)은 아직 없습니다.' },
+      discover: { v: 'ok', proto: N_('UDP broadcast · 9302'), labels: [N_('SRCH broadcast'), N_('Reply: state · name · ID')], note: N_('A real PS5 answered from the Mac and from this PC. On the same subnet it is found even if you do not know its address.') },
+      wake: { v: 'likely', proto: N_('UDP 9302 · WAKEUP + registration key'), labels: [N_('WAKEUP'), N_('Rest mode → on')], note: N_('The function exists, but it has not been tried on a real PS5 yet.') },
+      register: { v: 'ok', proto: N_('UDP search + TCP 9295 · 8-digit code'), labels: [N_('Search + registration request'), N_('Key reply (encrypted)')], note: N_('Confirmed on a real PS5. You only do it once, and the result is saved on the computer.') },
+      session: { v: 'ok', proto: N_('TCP 9295 · /sie/ps5/rp/sess/init, /ctrl'), labels: [N_('init + registration key'), N_('nonce · session ID')], note: N_('Confirmed on a real PS5. After the session request, an encrypted control connection is opened and the session ID is received.') },
+      stream: { v: 'ok', proto: N_('UDP 9296 Takion'), labels: [N_('Input · receive report'), N_('Video (H.264)')], note: N_('Confirmed up to receiving the picture of a real PS5 and sending input. Sound and the RTT/MTU measurement (9297) are not there yet.') },
     },
-    needs: 'PC와 PS5가 같은 공유기(같은 대역). PS5에서 원격 플레이 켜기.',
-    watch: '공유기의 “클라이언트 격리”가 켜져 있으면 어떤 방법도 막힙니다.',
-    status: '발견, 등록, 세션, 영상, 입력까지 실제 PS5로 확인. 음성과 깨우기는 아직.',
+    needs: N_('The PC and the PS5 on the same router (same subnet). Remote Play turned on in the PS5.'),
+    watch: N_('If “client isolation” is on in the router, every method is blocked.'),
+    status: N_('Discovery, registration, session, video and input confirmed on a real PS5. Sound and waking are not done yet.'),
   },
   {
-    id: 'bridge', name: '집 안 · 브라우저 + 브리지', sub: '브라우저 → 브리지 → PS5', tag: '지금 쓰는 구조',
-    nodes: [{ zone: 'home', title: '브라우저', sub: '맥 · 이 PC · 폰' }, { zone: 'home', title: '브리지', sub: 'Node · 집의 맥, 이 PC' }, PS5],
+    id: 'bridge', name: N_('At home · browser + bridge'), sub: N_('Browser → bridge → PS5'), tag: N_('What is used now'),
+    nodes: [{ zone: 'home', title: N_('Browser'), sub: N_('Mac · this PC · phone') }, { zone: 'home', title: N_('Bridge'), sub: N_('Node · the Mac at home, this PC') }, PS5],
     steps: {
-      discover: { v: 'ok', proto: 'HTTP /api/discover → UDP 9302', labels: ['“콘솔 찾기”', 'UDP 브로드캐스트'], note: '브라우저는 UDP를 못 열어서, 브리지가 대신 찾아 줍니다.' },
-      wake: { v: 'likely', proto: '브리지 → UDP 9302 WAKEUP', labels: ['(버튼 예정)', 'WAKEUP'], note: '깨우기 함수는 있고 화면 버튼은 아직 없습니다.' },
-      register: { v: 'ok', proto: 'HTTP /api/register → TCP 9295', labels: ['코드 · 계정 ID 입력', '등록 요청'], note: '실제 PS5로 확인했습니다. 키는 브리지가 있는 컴퓨터에만 저장되고 브라우저로 오지 않습니다.' },
-      session: { v: 'ok', proto: 'WebSocket hello → TCP 9295', labels: ['연결', '세션 · 제어 연결'], note: '실제 PS5로 확인했습니다. 브리지가 저장된 키로 세션을 요청하고 제어 연결을 엽니다.' },
-      stream: { v: 'ok', proto: 'WebSocket(TCP) ↔ UDP 9296', labels: ['영상 · 입력(TCP)', 'Takion UDP'], note: '실제 PS5 화면이 브라우저에 나오고 키 입력이 전달되는 것을 확인했습니다. WebSocket은 TCP라 손실 시 지연이 커서, 나중에 WebRTC를 계획합니다. 음성은 아직 없습니다.' },
+      discover: { v: 'ok', proto: N_('HTTP /api/discover → UDP 9302'), labels: [N_('“Find console”'), N_('UDP broadcast')], note: N_('A browser cannot open UDP, so the bridge searches for it.') },
+      wake: { v: 'likely', proto: N_('Bridge → UDP 9302 WAKEUP'), labels: [N_('(button planned)'), N_('WAKEUP')], note: N_('The wake function exists; the button on the screen does not yet.') },
+      register: { v: 'ok', proto: N_('HTTP /api/register → TCP 9295'), labels: [N_('Enter code · account ID'), N_('Registration request')], note: N_('Confirmed on a real PS5. The key is stored only on the computer that has the bridge and never comes to the browser.') },
+      session: { v: 'ok', proto: N_('WebSocket hello → TCP 9295'), labels: [N_('Connect'), N_('Session · control connection')], note: N_('Confirmed on a real PS5. The bridge asks for a session with the stored key and opens the control connection.') },
+      stream: { v: 'ok', proto: N_('WebSocket(TCP) ↔ UDP 9296'), labels: [N_('Video · input (TCP)'), N_('Takion UDP')], note: N_('Confirmed: the picture of a real PS5 shows in the browser and key presses get through. WebSocket is TCP, so delay grows when packets are lost; WebRTC is planned for later. There is no sound yet.') },
     },
-    needs: 'PS5와 같은 네트워크의 컴퓨터에서 npm run bridge. 같은 컴퓨터의 브라우저는 토큰 없이, 다른 기기는 --host와 토큰.',
-    watch: '브라우저와 브리지 사이는 TCP입니다. 지연은 화면의 “입력→화면 지연”으로 잽니다.',
-    status: '이 PC의 브리지로 실제 PS5 화면과 입력을 확인. 측정값은 /api/stream/stats 에서 볼 수 있음.',
+    needs: N_('npm run bridge on a computer on the same network as the PS5. A browser on the same computer needs no token; other devices need --host and a token.'),
+    watch: N_('Between the browser and the bridge it is TCP. Delay is measured with the “input → picture delay” on the screen.'),
+    status: N_('Real PS5 picture and input confirmed through the bridge on this PC. The measurements can be seen at /api/stream/stats.'),
   },
   {
-    id: 'vlan', name: '집 안 · 다른 대역 / 게스트', sub: 'IoT·게스트 망 → 라우터 → PS5', tag: '조건부',
-    nodes: [{ zone: 'home', title: '기기', sub: '게스트 · IoT 대역' }, { zone: 'home', title: '대역 경계', sub: '라우터 · 방화벽' }, PS5],
+    id: 'vlan', name: N_('At home · other subnet / guest'), sub: N_('IoT/guest network → router → PS5'), tag: N_('Conditional'),
+    nodes: [{ zone: 'home', title: N_('Device'), sub: N_('Guest · IoT subnet') }, { zone: 'home', title: N_('Subnet border'), sub: N_('Router · firewall') }, PS5],
     steps: {
-      discover: { v: 'direct', proto: 'UDP 9302 · PS5 주소로 직접', labels: ['✕ 브로드캐스트', '직접 질의'], note: '브로드캐스트는 대역을 넘지 못합니다. PS5의 IP를 알면 discover --host IP로 직접 묻습니다.' },
-      wake: { v: 'direct', proto: 'UDP 9302 · 직접 전송', labels: ['WAKEUP 직접', '대기 → 켜짐'], note: '라우터가 UDP 9302를 통과시켜야 합니다.' },
-      register: { v: 'direct', proto: 'UDP·TCP 9295 · 직접', labels: ['검색 + 요청', '응답'], note: 'PS5 주소로 직접 보냅니다. 라우터가 9295를 통과시켜야 합니다.' },
-      session: { v: 'direct', proto: 'TCP 9295 · 직접', labels: ['init', 'nonce'], note: '등록 정보는 대역과 상관없이 그대로 씁니다.' },
-      stream: { v: 'direct', proto: 'UDP 9296 · 양방향 통과', labels: ['입력', '영상'], note: 'UDP 9296이 양방향으로 통과해야 합니다. 게스트 Wi‑Fi의 AP 격리는 완전히 막습니다.' },
+      discover: { v: 'direct', proto: N_('UDP 9302 · straight to the PS5 address'), labels: [N_('✕ broadcast'), N_('Direct query')], note: N_("A broadcast cannot cross subnets. If you know the PS5's IP, ask it directly with discover --host IP.") },
+      wake: { v: 'direct', proto: N_('UDP 9302 · sent directly'), labels: [N_('WAKEUP direct'), N_('Rest mode → on')], note: N_('The router has to let UDP 9302 through.') },
+      register: { v: 'direct', proto: N_('UDP·TCP 9295 · direct'), labels: [N_('Search + request'), N_('Reply')], note: N_('Sent straight to the PS5 address. The router has to let 9295 through.') },
+      session: { v: 'direct', proto: N_('TCP 9295 · direct'), labels: [N_('init'), N_('nonce')], note: N_('The registration data is used as it is, whatever the subnet.') },
+      stream: { v: 'direct', proto: N_('UDP 9296 · both ways through'), labels: [N_('Input'), N_('Video')], note: N_('UDP 9296 has to get through in both directions. AP isolation on a guest Wi-Fi blocks it completely.') },
     },
-    needs: 'PS5의 IP 주소. 라우터가 UDP·TCP 9295, UDP 9296, 9297, 9302를 통과.',
-    watch: 'AP 격리나 클라이언트 격리가 켜져 있으면 어떤 경로도 안 됩니다. 그때는 PC를 PS5와 같은 대역에 두세요.',
-    status: 'discover에 --host 옵션이 있음. 나머지는 첫 번째 경로와 같은 코드.',
+    needs: N_("The PS5's IP address. The router lets UDP·TCP 9295, UDP 9296, 9297 and 9302 through."),
+    watch: N_('If AP isolation or client isolation is on, no route works. Then put the PC on the same subnet as the PS5.'),
+    status: N_('discover has a --host option. The rest is the same code as the first route.'),
   },
   {
-    id: 'vpn', name: '밖 · VPN으로 집 안에 들어가기', sub: '밖의 기기 → VPN → 집 → PS5', tag: '다음 후보',
-    nodes: [{ zone: 'away', title: '밖의 기기', sub: '카페 · 회사 · 이동 중' }, { zone: 'cloud', title: 'VPN 터널', sub: 'Tailscale · WireGuard' }, { zone: 'home', title: '집의 맥', sub: 'VPN 노드 · 서브넷 라우터' }, PS5],
+    id: 'vpn', name: N_('Away · into the home through a VPN'), sub: N_('Device away → VPN → home → PS5'), tag: N_('Next candidate'),
+    nodes: [{ zone: 'away', title: N_('Device away from home'), sub: N_('Café · office · on the move') }, { zone: 'cloud', title: N_('VPN tunnel'), sub: N_('Tailscale · WireGuard') }, { zone: 'home', title: N_('Mac at home'), sub: N_('VPN node · subnet router') }, PS5],
     steps: {
-      discover: { v: 'direct', proto: 'UDP 9302 · 집 LAN 주소로 직접', labels: ['✕ 브로드캐스트', 'VPN 터널', '직접 질의'], note: '브로드캐스트는 터널을 못 넘습니다. PS5의 집 IP(192.168.1.x)로 직접 묻습니다.' },
-      wake: { v: 'direct', proto: 'UDP 9302 · 터널 통과', labels: ['WAKEUP', '터널', '대기 → 켜짐'], note: '집에서 등록해 둔 키로 밖에서도 깨울 수 있는 길입니다. 실기 확인 전.' },
-      register: { v: 'direct', proto: 'UDP·TCP 9295 · 터널 통과', labels: ['등록 요청', '터널', '키 응답'], note: '등록은 집에서 한 번만 하세요. 저장한 정보를 옮겨 쓰면 밖에서 다시 할 일이 없습니다.' },
-      session: { v: 'direct', proto: 'TCP 9295 · 터널 통과', labels: ['init', '터널', 'nonce'], note: '집 LAN과 똑같은 요청이 터널을 지나갑니다.' },
-      stream: { v: 'direct', proto: 'UDP 9296 · 터널 통과', labels: ['입력', '터널', '영상'], note: '터널 지연과 오버헤드(MTU) 때문에 화질을 낮춰야 할 수 있습니다. 낮은 대역폭 프리셋이 필요한 곳입니다.' },
+      discover: { v: 'direct', proto: N_('UDP 9302 · straight to the home LAN address'), labels: [N_('✕ broadcast'), N_('VPN tunnel'), N_('Direct query')], note: N_('A broadcast cannot cross the tunnel. The PS5 is asked directly at its home IP (192.168.1.x).') },
+      wake: { v: 'direct', proto: N_('UDP 9302 · through the tunnel'), labels: [N_('WAKEUP'), N_('Tunnel'), N_('Rest mode → on')], note: N_('A way to wake it from away with the key registered at home. Not confirmed on a real console yet.') },
+      register: { v: 'direct', proto: N_('UDP·TCP 9295 · through the tunnel'), labels: [N_('Registration request'), N_('Tunnel'), N_('Key reply')], note: N_('Register once, at home. If the saved data is carried over, there is nothing to redo away from home.') },
+      session: { v: 'direct', proto: N_('TCP 9295 · through the tunnel'), labels: [N_('init'), N_('Tunnel'), N_('nonce')], note: N_('The same request as on the home LAN goes through the tunnel.') },
+      stream: { v: 'direct', proto: N_('UDP 9296 · through the tunnel'), labels: [N_('Input'), N_('Tunnel'), N_('Video')], note: N_('The tunnel delay and overhead (MTU) may make you lower the picture quality. This is where the low-bandwidth preset is needed.') },
     },
-    needs: '맥과 밖의 기기가 같은 VPN. 맥이 집 대역을 알려 주거나 프로토콜 클라이언트가 맥에서 돕니다. 브라우저만으로는 PS5에 UDP를 못 엽니다.',
-    watch: '터널 지연과 MTU로 끊길 수 있습니다. 브로드캐스트 발견은 안 되니 PS5 IP를 고정해 두세요.',
-    status: '이 PC와 맥 모두 Tailscale 어댑터가 보임(같은 tailnet이면 후보). 서브넷 설정은 아직 안 해봄.',
+    needs: N_('The Mac and the device away on the same VPN. Either the Mac announces the home subnet or the protocol client runs on the Mac. A browser alone cannot open UDP to the PS5.'),
+    watch: N_('Tunnel delay and MTU can cut the connection. Broadcast discovery does not work, so give the PS5 a fixed IP.'),
+    status: N_('Both this PC and the Mac show a Tailscale adapter (a candidate if they are on the same tailnet). The subnet setup has not been tried yet.'),
   },
   {
-    id: 'rbridge', name: '밖 · 집의 브리지에 브라우저로', sub: '밖의 브라우저 → 집의 브리지 → PS5', tag: '다음 목표',
-    nodes: [{ zone: 'away', title: '밖의 브라우저', sub: '노트북 · 폰' }, { zone: 'cloud', title: '인터넷 · Tailscale', sub: 'TLS 또는 VPN 안' }, { zone: 'home', title: '집의 브리지', sub: '맥, PS5와 같은 LAN' }, PS5],
+    id: 'rbridge', name: N_('Away · browser to the bridge at home'), sub: N_('Browser away → bridge at home → PS5'), tag: N_('Next goal'),
+    nodes: [{ zone: 'away', title: N_('Browser away from home'), sub: N_('Laptop · phone') }, { zone: 'cloud', title: N_('Internet · Tailscale'), sub: N_('Over TLS or inside the VPN') }, { zone: 'home', title: N_('Bridge at home'), sub: N_('Mac, on the same LAN as the PS5') }, PS5],
     steps: {
-      discover: { v: 'likely', proto: 'HTTPS /api/discover → 집 LAN UDP 9302', labels: ['“콘솔 찾기”', '밖 → 집', 'UDP 브로드캐스트'], note: '찾는 일은 집 안의 브리지가 합니다. 밖의 기기는 PS5와 직접 통신하지 않습니다.' },
-      wake: { v: 'likely', proto: '브리지 → UDP 9302', labels: ['깨우기 요청', '밖 → 집', 'WAKEUP'], note: '집의 브리지가 대신 깨웁니다.' },
-      register: { v: 'likely', proto: 'HTTPS /api/register → TCP 9295', labels: ['코드 입력', '밖 → 집', '등록 요청'], note: '등록은 집에서 한 번만. 키는 브리지가 있는 맥에만 저장되고 밖으로 나가지 않습니다.' },
-      session: { v: 'likely', proto: 'HTTPS /api/session-check → TCP 9295', labels: ['연결 확인', '밖 → 집', '세션 요청'], note: '밖의 기기에는 키가 없어도 됩니다.' },
-      stream: { v: 'plan', proto: 'WebSocket(TCP) ↔ UDP 9296', labels: ['영상 · 입력(TCP)', '밖 → 집', 'Takion UDP'], note: 'WebSocket은 TCP라 패킷 손실이 있으면 지연이 커집니다. 나중에 WebRTC로 바꿀 계획입니다.' },
+      discover: { v: 'likely', proto: N_('HTTPS /api/discover → home LAN UDP 9302'), labels: [N_('“Find console”'), N_('Away → home'), N_('UDP broadcast')], note: N_('The bridge inside the home does the searching. The device away never talks to the PS5 directly.') },
+      wake: { v: 'likely', proto: N_('Bridge → UDP 9302'), labels: [N_('Wake request'), N_('Away → home'), N_('WAKEUP')], note: N_('The bridge at home wakes it instead.') },
+      register: { v: 'likely', proto: N_('HTTPS /api/register → TCP 9295'), labels: [N_('Enter code'), N_('Away → home'), N_('Registration request')], note: N_('Register once, at home. The key is stored only on the Mac that has the bridge and never leaves it.') },
+      session: { v: 'likely', proto: N_('HTTPS /api/session-check → TCP 9295'), labels: [N_('Connection check'), N_('Away → home'), N_('Session request')], note: N_('The device away does not need the key.') },
+      stream: { v: 'plan', proto: N_('WebSocket(TCP) ↔ UDP 9296'), labels: [N_('Video · input (TCP)'), N_('Away → home'), N_('Takion UDP')], note: N_('WebSocket is TCP, so delay grows when packets are lost. The plan is to change to WebRTC later.') },
     },
-    needs: '집의 브리지(--host와 토큰)와 밖에서 브리지까지 가는 안전한 길: Tailscale 같은 VPN 안, 또는 TLS + 토큰.',
-    watch: '브리지를 인터넷에 그냥 열면 누구나 PS5에 입력을 보낼 수 있습니다. 토큰은 필수이고, 가능하면 VPN 안에서만 쓰세요.',
-    status: '계획된 다음 목표. 브리지는 --host와 토큰을 지원. TLS와 WebRTC는 아직.',
+    needs: N_('The bridge at home (--host and a token) and a safe way to it from away: inside a VPN such as Tailscale, or TLS + a token.'),
+    watch: N_('If the bridge is simply opened to the internet, anyone can send input to the PS5. A token is a must; if you can, use it only inside a VPN.'),
+    status: N_('The planned next goal. The bridge supports --host and a token. TLS and WebRTC are not there yet.'),
   },
   {
-    id: 'psn', name: '밖 · PSN 원격(인터넷, Sony 경유)', sub: '밖의 기기 → Sony → 집 공유기 → PS5', tag: '가장 무거움',
-    nodes: [{ zone: 'away', title: '밖의 기기', sub: 'PSN 로그인' }, { zone: 'cloud', title: 'Sony PSN 서버', sub: '로그인 · 신호 중계' }, { zone: 'home', title: '집 공유기(NAT)', sub: '홀펀칭' }, { ...PS5, sub: '대기 + 인터넷 유지' }],
+    id: 'psn', name: N_('Away · PSN remote play (internet, through Sony)'), sub: N_('Device away → Sony → home router → PS5'), tag: N_('Heaviest'),
+    nodes: [{ zone: 'away', title: N_('Device away from home'), sub: N_('PSN login') }, { zone: 'cloud', title: N_('Sony PSN server'), sub: N_('Login · signal relay') }, { zone: 'home', title: N_('Home router (NAT)'), sub: N_('Hole punching') }, { ...PS5, sub: N_('Rest mode + internet kept on') }],
     steps: {
-      discover: { v: 'plan', proto: 'PSN 장치 목록', labels: ['PSN 로그인', '장치 조회', 'PS5 상태'], note: 'LAN 발견과 완전히 다른 방식입니다.' },
-      wake: { v: 'plan', proto: 'PSN 경유 깨우기', labels: ['깨우기 요청', '신호 중계', 'WAKEUP'], note: 'PS5가 대기 중에도 인터넷에 연결돼 있어야 합니다.' },
-      register: { v: 'plan', proto: 'PSN 등록 경로', labels: ['계정 토큰', '신호', '등록 요청'], note: '원본에서는 별도 코드 경로(lib/src/remote/)로 구현되어 있습니다.' },
-      session: { v: 'plan', proto: 'PSN 신호 + UDP 홀펀칭', labels: ['세션 신호', '중계', '홀펀칭'], note: 'Sony 서버가 두 기기의 주소를 서로 알려 주어 직접 연결을 시도합니다.' },
-      stream: { v: 'plan', proto: 'UDP 직접(홀펀칭 성공 시)', labels: ['입력', 'Sony 우회', '영상'], note: '통신사 공유 IP(CGNAT)나 엄격한 NAT에서는 실패할 수 있습니다.' },
+      discover: { v: 'plan', proto: N_('PSN device list'), labels: [N_('PSN login'), N_('Device lookup'), N_('PS5 state')], note: N_('A completely different way from LAN discovery.') },
+      wake: { v: 'plan', proto: N_('Wake through PSN'), labels: [N_('Wake request'), N_('Signal relay'), N_('WAKEUP')], note: N_('The PS5 must stay connected to the internet even in rest mode.') },
+      register: { v: 'plan', proto: N_('PSN registration path'), labels: [N_('Account token'), N_('Signal'), N_('Registration request')], note: N_('In the original it is built as a separate code path (lib/src/remote/).') },
+      session: { v: 'plan', proto: N_('PSN signal + UDP hole punching'), labels: [N_('Session signal'), N_('Relay'), N_('Hole punching')], note: N_("The Sony server tells the two devices each other's addresses so that they try a direct connection.") },
+      stream: { v: 'plan', proto: N_('Direct UDP (if hole punching works)'), labels: [N_('Input'), N_('Around Sony'), N_('Video')], note: N_('It can fail on an ISP-shared IP (CGNAT) or a strict NAT.') },
     },
-    needs: 'PSN 로그인과 계정 토큰 보관. PS5는 대기 중 인터넷 연결 유지와 원격 플레이 켜기.',
-    watch: '계정 자격증명을 가장 많이 다루는 경로이고, 연결이 되는 망이 제한적입니다.',
-    status: 'Phase 7로 아직 시작하지 않았습니다.',
+    needs: N_('A PSN login and the account token kept. The PS5 must keep its internet connection in rest mode, with Remote Play turned on.'),
+    watch: N_('The route that handles account credentials the most, and the networks where it connects are limited.'),
+    status: N_('Phase 7; not started yet.'),
   },
   {
-    id: 'fwd', name: '밖 · 공유기 포트포워딩', sub: '밖의 기기 → 인터넷 → 포워딩 → PS5', tag: '쓰지 마세요',
-    nodes: [{ zone: 'away', title: '밖의 기기', sub: '어디서든' }, { zone: 'cloud', title: '인터넷', sub: '공개 IP' }, { zone: 'home', title: '공유기', sub: '9295 · 9296 · 9302 전달' }, PS5],
+    id: 'fwd', name: N_('Away · router port forwarding'), sub: N_('Device away → internet → forwarding → PS5'), tag: N_('Do not use'),
+    nodes: [{ zone: 'away', title: N_('Device away from home'), sub: N_('From anywhere') }, { zone: 'cloud', title: N_('Internet'), sub: N_('Public IP') }, { zone: 'home', title: N_('Router'), sub: N_('9295 · 9296 · 9302 forwarded') }, PS5],
     steps: {
-      discover: { v: 'no', proto: 'UDP 9302 · 인터넷에 노출', labels: ['누구나 질의', '공개 IP', '전달'], note: 'PS5의 입구가 인터넷에 그대로 보입니다.' },
-      wake: { v: 'no', proto: 'UDP 9302 · 인터넷에 노출', labels: ['WAKEUP', '공개 IP', '전달'], note: '깨우기 패킷도 아무나 보낼 수 있는 상태가 됩니다.' },
-      register: { v: 'no', proto: 'UDP·TCP 9295 · 인터넷에 노출', labels: ['PIN 시도', '공개 IP', '전달'], note: '등록 PIN을 아무나 시도할 수 있는 상태가 됩니다.' },
-      session: { v: 'no', proto: 'TCP 9295 · 인터넷에 노출', labels: ['세션 요청', '공개 IP', '전달'], note: '세션 요청이 누구에게나 열립니다.' },
-      stream: { v: 'no', proto: 'UDP 9296 · 인터넷에 노출', labels: ['입력', '공개 IP', '영상'], note: '통신사 공유 IP(CGNAT)라면 아예 불가능합니다.' },
+      discover: { v: 'no', proto: N_('UDP 9302 · exposed to the internet'), labels: [N_('Anyone can ask'), N_('Public IP'), N_('Forwarded')], note: N_('The entrance of the PS5 is plainly visible from the internet.') },
+      wake: { v: 'no', proto: N_('UDP 9302 · exposed to the internet'), labels: [N_('WAKEUP'), N_('Public IP'), N_('Forwarded')], note: N_('Anyone can also send the wake packet.') },
+      register: { v: 'no', proto: N_('UDP·TCP 9295 · exposed to the internet'), labels: [N_('PIN attempts'), N_('Public IP'), N_('Forwarded')], note: N_('Anyone can try the registration PIN.') },
+      session: { v: 'no', proto: N_('TCP 9295 · exposed to the internet'), labels: [N_('Session request'), N_('Public IP'), N_('Forwarded')], note: N_('Session requests are open to everyone.') },
+      stream: { v: 'no', proto: N_('UDP 9296 · exposed to the internet'), labels: [N_('Input'), N_('Public IP'), N_('Video')], note: N_('With an ISP-shared IP (CGNAT) it is not possible at all.') },
     },
-    needs: '위 표의 포트(9295 · 9296 · 9297 · 9302)를 공유기에서 PS5로 전달.',
-    watch: 'PS5의 원격 플레이 입구가 인터넷에 그대로 열립니다. 이 프로젝트는 이 방법을 지원하지 않고, 쓰지 않기를 권합니다.',
-    status: '지원하지 않을 경로입니다. 밖에서는 VPN이나 브리지를 쓰세요.',
+    needs: N_('Forward the ports in the table above (9295 · 9296 · 9297 · 9302) from the router to the PS5.'),
+    watch: N_('The Remote Play entrance of the PS5 is left wide open to the internet. This project does not support this method and advises against it.'),
+    status: N_('A route that will not be supported. Away from home, use a VPN or the bridge.'),
   },
 ];
 
@@ -185,7 +190,7 @@ export function browserKind(pageHost: string): BrowserKind {
 
 export interface RouteGuess {
   id: PathId;
-  /** One sentence for the person, saying why. */
+  /** One sentence for the person, saying why, in the language in use when it was asked for. */
   reason: string;
 }
 
@@ -197,14 +202,14 @@ export function detectRoute(input: { pageHost: string; consoleHost?: string; int
   const kind = browserKind(input.pageHost);
   const away = kind === 'vpn' || kind === 'public';
   const sameNet = input.consoleHost ? input.interfaces.some((i) => inSubnet(input.consoleHost!, i.address, i.netmask)) : undefined;
-  if (sameNet === false) return { id: 'vlan', reason: `PS5(${input.consoleHost})가 브리지 컴퓨터와 다른 대역에 있어 보입니다.` };
+  if (sameNet === false) return { id: 'vlan', reason: t('The PS5 ({host}) seems to be on a different subnet from the bridge computer.', { host: input.consoleHost! }) };
   if (away) {
-    return { id: 'rbridge', reason: kind === 'vpn' ? '이 페이지를 VPN(Tailscale) 주소로 열었습니다.' : '이 페이지를 집 밖의 주소로 열었습니다.' };
+    return { id: 'rbridge', reason: kind === 'vpn' ? t('This page was opened from a VPN (Tailscale) address.') : t('This page was opened from an address outside the home.') };
   }
   return {
     id: 'bridge',
     reason: sameNet === true
-      ? `브라우저와 브리지, PS5가 같은 집 네트워크에 있습니다.`
-      : kind === 'local' ? '브라우저가 브리지와 같은 컴퓨터에서 열려 있습니다.' : '이 페이지를 집 안의 주소로 열었습니다.',
+      ? t('The browser, the bridge and the PS5 are on the same home network.')
+      : kind === 'local' ? t('The browser is open on the same computer as the bridge.') : t('This page was opened from an address inside the home.'),
   };
 }

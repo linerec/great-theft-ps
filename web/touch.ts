@@ -11,6 +11,7 @@
 // no zooming or scrolling while playing, and the screen kept awake where the browser can do that.
 
 import { TouchPad, type TouchControl } from '../src/engine/touchpad.ts';
+import { onLang, t } from '../src/i18n/index.ts';
 
 interface ControlSpec {
   c: TouchControl;
@@ -97,16 +98,15 @@ export function mountTouch(layer: HTMLElement, host: TouchHost): TouchUi {
   // The menu: the few things needed while playing with no other page element in reach.
   const menuButton = el('button', 'tc-menu', '⋯');
   menuButton.type = 'button';
-  menuButton.setAttribute('aria-label', '메뉴');
   const panel = el('div', 'tc-panel');
   panel.hidden = true;
   const status = el('p', 'tc-status');
   const lookRow = el('div', 'tc-row');
   const lookLabel = el('span', '', '');
-  const slower = el('button', 'btn small', '시점 느리게');
-  const faster = el('button', 'btn small', '시점 빠르게');
+  const slower = el('button', 'btn small');
+  const faster = el('button', 'btn small');
   slower.type = faster.type = 'button';
-  const showLook = (): void => void (lookLabel.textContent = `시점 감도 ${pad.options.lookScale.toFixed(1)}`);
+  const showLook = (): void => void (lookLabel.textContent = t('Look sensitivity {value}', { value: pad.options.lookScale.toFixed(1) }));
   const setLook = (v: number): void => {
     pad.options.lookScale = Math.min(12, Math.max(1, Math.round(v * 2) / 2));
     try {
@@ -125,7 +125,7 @@ export function mountTouch(layer: HTMLElement, host: TouchHost): TouchUi {
   soundButton.type = 'button';
   const showSound = (): void => {
     if (!host.sound) return;
-    soundButton.textContent = host.sound.isOn() ? '소리 끄기' : '소리 켜기';
+    soundButton.textContent = host.sound.isOn() ? t('Turn sound off') : t('Turn sound on');
     soundNote.textContent = host.sound.note();
   };
   soundButton.addEventListener('click', () => {
@@ -134,10 +134,10 @@ export function mountTouch(layer: HTMLElement, host: TouchHost): TouchUi {
   });
   if (host.sound) soundRow.append(soundButton, soundNote);
   const actions = el('div', 'tc-row');
-  const disconnect = el('button', 'btn small', '연결 끊기');
-  const hide = el('button', 'btn small', '터치 패드 끄기');
-  const close = el('button', 'btn small ghost', '닫기');
-  const full = el('button', 'btn small', '전체 화면');
+  const disconnect = el('button', 'btn small');
+  const hide = el('button', 'btn small');
+  const close = el('button', 'btn small ghost');
+  const full = el('button', 'btn small');
   disconnect.type = hide.type = close.type = full.type = 'button';
   full.addEventListener('click', () => {
     panel.hidden = true;
@@ -153,7 +153,7 @@ export function mountTouch(layer: HTMLElement, host: TouchHost): TouchUi {
   });
   close.addEventListener('click', () => (panel.hidden = true));
   actions.append(disconnect, ...(host.onFullscreen ? [full] : []), hide, close);
-  const tip = el('p', 'tc-tip', '왼쪽 빈 곳 = 왼쪽 스틱, 오른쪽 빈 곳을 끌면 시점. 전체 화면으로 쓰려면 Safari의 공유 → "홈 화면에 추가".');
+  const tip = el('p', 'tc-tip');
   panel.append(...(host.sound ? [status, lookRow, soundRow, actions, tip] : [status, lookRow, actions, tip]));
   menuButton.addEventListener('click', () => {
     panel.hidden = !panel.hidden;
@@ -161,6 +161,25 @@ export function mountTouch(layer: HTMLElement, host: TouchHost): TouchUi {
     showSound();
   });
   layer.append(menuButton, panel);
+
+  // The words of the menu are put in here, and again whenever the language changes (the menu is built once). What changes
+  // while it is open (the sensitivity, the sound button) is drawn only when it is open, as it is when it is opened.
+  const paintWords = (): void => {
+    menuButton.setAttribute('aria-label', t('Menu'));
+    slower.textContent = t('Look slower');
+    faster.textContent = t('Look faster');
+    disconnect.textContent = t('Disconnect');
+    hide.textContent = t('Turn off touch pad');
+    close.textContent = t('Close');
+    full.textContent = t('Full screen');
+    tip.textContent = t('Empty left side = left stick; drag on the empty right side to look around. For full screen, in Safari use Share → "Add to Home Screen".');
+    if (!panel.hidden) {
+      showLook();
+      showSound();
+    }
+  };
+  paintWords();
+  onLang(paintWords);
 
   const controlAt = (x: number, y: number): TouchControl | null => {
     const hit = document.elementFromPoint(x, y);

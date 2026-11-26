@@ -4,6 +4,7 @@
 // direction you are looking toward (east green, south blue, west yellow, north red),
 // so a full turn is visible at a glance.
 
+import { t } from '../i18n/index.ts';
 import { MAP_ROWS, MAP_SIZE, type FpsGame } from './fps.ts';
 
 const RAD = Math.PI / 180;
@@ -159,7 +160,7 @@ function drawHud(ctx: CanvasRenderingContext2D, game: FpsGame, w: number, h: num
   ctx.fillStyle = 'rgba(255,255,255,0.9)';
   ctx.fillText(`${game.yaw.toFixed(0)}° ${game.heading}`, cx, 14);
   ctx.textAlign = 'right';
-  ctx.fillText(`명중 ${game.hits} / 발사 ${game.shots}`, w - 8, 14);
+  ctx.fillText(t('Hits {hits} / shots {shots}', { hits: game.hits, shots: game.shots }), w - 8, 14);
 
   // Minimap.
   const cell = 5;

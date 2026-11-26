@@ -22,6 +22,11 @@ against a simulated console, and what to do next).
   (`constructor(private x)` fails), imports end in `.ts`. **No new dependencies** without asking: there are none.
 - Every file starts with the SPDX line. Comments say why. A change comes with a test that would fail without it; no
   test that cannot fail.
+- **Words for people are English in the code, Korean in a dictionary** (`src/i18n/index.ts`, `docs/i18n.md`): write
+  `t('English sentence {value}', { value })` (or `N_('…')` in a table, `data-i18n` in `web/index.html`, `translate(lang, …)`
+  on the bridge) and add the Korean to a part of `src/i18n/ko-*.ts`. No Hangul anywhere else, comments included;
+  `test/i18n.test.ts` fails when a sentence has no Korean, when Korean is left for a sentence that is gone, and when a
+  part of the dictionary contradicts another.
 - Honest status: say what was checked on a real console and what only against the simulator. Do not call something
   verified that was not.
 

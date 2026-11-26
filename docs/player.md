@@ -4,9 +4,9 @@ What the page does around the picture, where it lives, and how far each part has
 
 ## What a person sees
 
-**Before the stream.** The picture area shows the console (its name, "켜짐" or "대기 모드"), and one big button in the middle:
-"연결" or "깨우고 연결". While it connects the icon breathes and a line says what is happening; when the stream ends the
-reason is written in words and the button says "다시 연결". The cards beside it keep the list of consoles, the steps, the
+**Before the stream.** The picture area shows the console (its name, "On" or "Rest mode"), and one big button in the middle:
+"Connect" or "Wake and connect". While it connects the icon breathes and a line says what is happening; when the stream ends the
+reason is written in words and the button says "Reconnect". The cards beside it keep the list of consoles, the steps, the
 connection options and the route.
 
 **While it plays.** Over the picture, shown when the mouse moves and gone after about three seconds of quiet:
@@ -26,18 +26,18 @@ mouse and brings the bar back at once; after Esc the keyboard is not the game's 
 
 **Mouse feel** (the mouse button in the bar, or `G`). A panel with three starting points, a choice of how the picture is
 shown with the delay it has now, and sliders, so that what a mouse feels like can be tried and compared in the game
-instead of read about in the settings. The starting points differ in the low-pass filter only: "또렷하게" none, "균형" 12 ms
-that fades out between 20 and 40 degrees a second (`mouse.smoothingFadeRate`), "부드럽게" 12 ms at every speed (what the
+instead of read about in the settings. The starting points differ in the low-pass filter only: "Crisp" none, "Balanced" 12 ms
+that fades out between 20 and 40 degrees a second (`mouse.smoothingFadeRate`), "Smooth" 12 ms at every speed (what the
 profile always had). The sliders are the sensitivity, the filter, where it fades out and the carry-over; the profile is what
 they change, so the settings page and the saved profile show the same numbers. A profile that is already saved keeps its
-values until a starting point is chosen. The panel also starts the measuring of the game's stick response ("게임에 맞게 자동
-보정", see `status-and-next.md`) with the game in view, which is where a safe place for the 40 seconds of turning is chosen.
+values until a starting point is chosen. The panel also starts the measuring of the game's stick response ("Auto-calibrate to the
+game", see `status-and-next.md`) with the game in view, which is where a safe place for the 40 seconds of turning is chosen.
 
 What the starting points do to the stick, in the engine alone (`node tools/research/feel-sim.mjs`; a simulated hand that
 makes whole counts, and the profile's own model of the game; no console): at a turn of 120 degrees a second the stick starts
 0, 0 and 24 ms after the hand and runs on 0, 0 and 92 ms after it stops; at a slow pan of 3 degrees a second the angle the
-game would turn per 16 ms frame varies by 18, 7 and 7 % (it is the fade that gives "균형" the evenness of "부드럽게" and the
-speed of "또렷하게"). The carry-over (300 ms in all three) does nothing to a turn the game can follow; it only matters for a
+game would turn per 16 ms frame varies by 18, 7 and 7 % (it is the fade that gives "Balanced" the evenness of "Smooth" and the
+speed of "Crisp"). The carry-over (300 ms in all three) does nothing to a turn the game can follow; it only matters for a
 swipe faster than the game turns, where without it a 90 degree swipe turns 55 to 60 degrees and with it about 90.
 `mouse-feel-research.md` has the papers and tools this came from.
 
@@ -51,7 +51,7 @@ page's sound when it can be taken) are saved to the downloads folder. The pictur
 more or less saturated, and fitted by keeping its shape, filling, or stretching. The screen is kept awake while it plays.
 A toast says what happened (controller found, screenshot saved, five minutes left). Light, dark or the device's choice
 (the button in the header; the page does not flash the other theme on load). A member sees the time left as a bar in the
-account menu and gets a word at five minutes and at one. "페이지를 열면 바로 연결" (settings, off by default) connects
+account menu and gets a word at five minutes and at one. "Connect as soon as the page opens" (settings, off by default) connects
 by itself when the address is opened. A web app manifest and icons make "Add to Home Screen" / "Install" give an app.
 
 ## Where it is
@@ -65,6 +65,7 @@ by itself when the address is opened. A web app manifest and icons make "Add to 
 | `web/account-ui.ts` | login, the account menu, the time left (counted down only while a stream runs) |
 | `web/mouse-feel.ts` | the starting points for the mouse feel, the sensitivity step, and the rule that keeps a movement from being counted twice (`RawMouseGate`) |
 | `web/study-ui.ts`, `web/study-session.ts`, `web/study-worker.ts` | the study of the mouse feel (`L`): the panel, the rules of one person's way through it, the analysis off the page's thread (`docs/feel-study.md`) |
+| `web/lang.ts`, `src/i18n/` | English by default, Korean on request: the language of the page, the words of `index.html`, the dictionary (`docs/i18n.md`) |
 | `src/engine/feel-study.ts` | the candidates, the check of a rating, the meter of the hand, what a setting does (by running the engine), the analysis |
 | `src/bridge/study-store.ts` | the file of ratings (`GET/POST/DELETE /api/study/ratings`) |
 | `tools/research/feel-report.mjs` | the analysis of a file of ratings, in the terminal |

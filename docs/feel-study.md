@@ -7,29 +7,32 @@ them, a server file that keeps the scores, and an analysis that says what the sc
 
 ## Doing it
 
-1. In the player press **L** (or the star button in the bar). Press "실험 시작".
-2. A candidate is put in force; only its number (`#07`) is shown. The values are behind "값 보기": seeing a number first
-   colours the feel, so look afterwards. The first three are the old starting points (they teach your own scale), then the
-   rest in a fixed shuffled order.
-3. Click the picture to give the game the mouse, and play (turn, aim, flick, stop, follow something). Tune the sensitivity with
+1. In the player press **L** (or the star button in the bar). Optionally pick what you will be doing (on foot, gun aiming,
+   sniping, driving). Press **Start**: the mouse locks at once, the panel goes away, and the first candidate is in force.
+2. Only its number (`#07`) is shown; the values are behind "Show the values" in the panel, because seeing a number first
+   colours the feel. The first three candidates are the old starting points (they teach your own scale), then the rest in a
+   fixed shuffled order.
+3. Play (turn slowly, snap-turn, aim at something, stop, follow something) for 15 to 30 seconds. Tune the sensitivity with
    `PageUp`/`PageDown` as you like: it is yours, and is recorded with the score.
-4. Score it, while the mouse is still locked:
+4. A strip over the picture (visible while the game has the mouse) says which candidate this is, how far along you are, and
+   when there has been enough time with the mouse to score it. Then, still with the mouse locked:
 
    | Key | Does |
    |---|---|
-   | `=` `-` (or numpad `1`–`9`, `0` = 10) | the score, 1 to 10: "1 unusable", "10 as good as a real mouse" |
-   | `5` `6` `7` `8` `9` `0` | marks a situation as bad: slow aiming, a fast swipe, following, stopping, starting, smoothness (again = take back) |
-   | `]` | saves and puts the next candidate in force |
-   | `[` | goes back to the one before |
+   | `1`–`9`, `0` (or the numpad) | scores the candidate, 1 to 10 (`0` = 10: "1 unusable", "10 as good as a real mouse") **and moves on to the next one** |
+   | `Y` `U` `I` `H` `J` `K` | marks what felt off before you score: slow aiming, a fast flick, tracking, stopping, starting, smooth motion (again = take back). Optional |
+   | `[` or `Backspace` | undoes the last thing: the score is dropped and that candidate is back |
+   | `]` | skips this candidate (it comes back later) |
 
-   Nothing else is needed. With the mouse free the panel has the same things as buttons: good/bad for each situation, what you
-   were doing (walking, aiming, sniping, driving), a note, "skip", and the list of what you scored (each can be deleted).
+   A score pressed before there has been 8 s with the mouse is remembered and saved by itself once there has been. With the
+   mouse free the panel has the same things as buttons (and a list of what you scored, each can be deleted).
 5. Every eighth rating, a candidate already rated comes back (you are not told). The same setting scored twice shows how much
    the scores themselves move; the analysis needs that number to know what a difference means.
-6. "끝내기" puts the settings you had back (the sensitivity stays). "분석 보기" runs the analysis on what you have so far.
+6. "Finish" puts the settings you had back (the sensitivity stays). "See the analysis" runs the analysis on what you have so
+   far, in the language of the page.
 
 Ten ratings are enough for the first look at the effects, twenty for a model of the best setting. More is better; fifty to a
-hundred is a good first round. A rating with less than 8 s of the mouse in the game's hands is kept but left out of the analysis.
+hundred is a good first round. A rating needs 8 s of the mouse in the game's hands: less is not kept.
 
 ## What a rating holds
 
@@ -42,7 +45,7 @@ time in each hand speed: under 0.5, 5, 20, 60, 150, 400 deg/s and above). Nothin
 Ratings are kept in the browser (`gtp.study.*`) and sent to the bridge, which keeps them in `<GTP_HOME>/study/feel-ratings.jsonl`
 (readable by its user only; at most 2000 per person). Each is checked again by the server (`parseRating`); one that is sent
 twice is kept once. The owner can read everybody's (`GET /api/study/ratings?user=all`), a member only their own.
-"기록 복사" puts all of yours on the clipboard as JSON.
+"Copy my scores" puts all of yours on the clipboard as JSON.
 
 ## The candidates
 
@@ -51,13 +54,13 @@ smoothing (0–30 ms), the speed at which the smoothing has faded out (15–160 
 game cannot turn as fast as (0–600 ms), and the response curve (0.8–1.5). The sensitivity is yours. They are:
 
 - 3 starting points: the three the panel has always offered;
-- 8 one-knob-at-a-time variations of the middle one ("균형"), each knob lowered and raised: the cleanest way to read what one
+- 8 one-knob-at-a-time variations of the middle one ("Balanced"), each knob lowered and raised: the cleanest way to read what one
   knob does;
 - 37 points spread over the rest of the space (a shifted Halton sequence, the farthest from everything chosen so far each time).
 
 ## The analysis
 
-`node tools/research/feel-report.mjs <file>` (or "분석 보기" in the panel, which runs it in a worker) prints:
+`node tools/research/feel-report.mjs <file>` (or "See the analysis" in the panel, which runs it in a worker) prints (`--lang ko` for Korean):
 
 - the candidates, best first, with the situations marked;
 - **the noise**: how much the same setting's scores differ (from the repeats). A difference smaller than that is luck;
@@ -78,7 +81,7 @@ predict unseen ratings (R² under 0.1) says its best setting should not be trust
 
 ## What is known and what is not
 
-Tested: the design (48 distinct, in range, deterministic, spread), the rules of the session (save, skip, back, retest), the
+Tested: the design (48 distinct, in range, deterministic, spread), the rules of the session (score, skip, undo, retest, the 8 s rule), the
 check of a rating, the server file and API (whose ratings are whose, limits, damaged lines), the meter of the hand, and the
 analysis against a made-up person with a known taste and a little inconsistency (it finds the effects with the right sign, the
 right behaviours, a best setting about as good as the best there is, and finds nothing in random scores): 83 unit tests, and the

@@ -12,6 +12,7 @@ import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { BUTTON, emptyPadState } from '../src/engine/types.ts';
+import type { Lang } from '../src/i18n/index.ts';
 import type { LinkStatus } from '../src/bridge/console-link.ts';
 import { encodePad } from '../src/bridge/protocol.ts';
 import { Ps5Link, StreamResearch, type Ps5LinkOptions } from '../src/bridge/ps5-link.ts';
@@ -166,11 +167,11 @@ function rig(o: { store?: ConsoleStore; silentStream?: boolean; ctrlFails?: Erro
   });
   return { link, store, research, stream, ctrlClosed: () => closed, asked, ctrlEvents };
 }
-const run = async (link: Ps5Link, mac?: string): Promise<{ statuses: LinkStatus[]; frames: number; error: Error | null }> => {
+const run = async (link: Ps5Link, mac?: string, lang?: Lang): Promise<{ statuses: LinkStatus[]; frames: number; error: Error | null }> => {
   const statuses: LinkStatus[] = [];
   let frames = 0;
   try {
-    await link.start({ onVideo: () => frames++, onStatus: (s) => statuses.push(s) }, DEFAULT_QUALITY, mac ? { mac } : {});
+    await link.start({ onVideo: () => frames++, onStatus: (s) => statuses.push(s) }, DEFAULT_QUALITY, { ...(mac ? { mac } : {}), ...(lang ? { lang } : {}) });
     return { statuses, frames, error: null };
   } catch (e) {
     return { statuses, frames, error: e as Error };
@@ -187,9 +188,9 @@ describe('the PS5 link', () => {
       assert.equal(r.asked[0]!.host, '192.168.1.50');
       assert.equal(Buffer.from(r.asked[0]!.rpKey).toString('hex'), RP_KEY, 'the stored keys reach the session request');
       assert.deepEqual(statuses.map((s) => s.state), ['connecting', 'connecting', 'connecting', 'streaming']);
-      assert.match(statuses[0]!.detail!, /세션을 요청하는 중/);
-      assert.match(statuses[1]!.detail!, /제어 연결을 여는 중/);
-      assert.match(statuses[2]!.detail!, /영상 스트림을 여는 중/);
+      assert.match(statuses[0]!.detail!, /^Asking Living room for a session$/);
+      assert.match(statuses[1]!.detail!, /^Living room accepted the session request\. Opening the control connection$/);
+      assert.match(statuses[2]!.detail!, /^The control connection is open\. Opening the video stream$/);
       assert.match(statuses[3]!.detail!, /Living room · 960×540/);
       // What was asked of the console follows the quality request.
       assert.deepEqual(r.research.video, { width: DEFAULT_QUALITY.width, height: DEFAULT_QUALITY.height, maxFps: DEFAULT_QUALITY.fps, bitrateKbps: DEFAULT_QUALITY.bitrateKbps, codec: 'h264' });
@@ -233,10 +234,10 @@ describe('the PS5 link', () => {
 
   it('says what is missing instead of trying anything', async () => {
     const none = await run(rig({ store: storeWith(), session: async () => assert.fail('no request without a console') }).link);
-    assert.match(none.error!.message, /등록된 PS5가 없습니다/);
+    assert.match(none.error!.message, /^No PS5 is registered\. Register a console first\.$/);
     assert.deepEqual(none.statuses, []);
     const wrong = await run(rig({ session: async () => assert.fail('no request for an unknown console') }).link, 'ffffffffffff');
-    assert.match(wrong.error!.message, /선택한 콘솔/);
+    assert.match(wrong.error!.message, /chosen console is not on this computer/);
   });
 
   it('stops with the console\'s own reason when the session is refused, and records why', async () => {
@@ -246,7 +247,7 @@ describe('the PS5 link', () => {
       },
     });
     const { error } = await run(r.link);
-    assert.match(error!.message, /Living room.*세션을 받아들이지 않았습니다/);
+    assert.match(error!.message, /^Living room did not accept the session\./);
     assert.match(error!.message, /0x80108b09/);
     assert.equal(r.research.state, 'ended');
     assert.equal(r.research.lastError, error!.message);
@@ -267,7 +268,7 @@ describe('the PS5 link', () => {
       assert.equal(error, null);
       assert.equal(calls, 3);
       assert.deepEqual(statuses.map((s) => s.state), ['connecting', 'connecting', 'connecting', 'connecting', 'connecting', 'streaming']);
-      assert.match(statuses[1]!.detail!, /정리하는 중입니다.*다시 시도합니다 \(1\/18\)/);
+      assert.match(statuses[1]!.detail!, /Living room is clearing up the earlier Remote Play connection.*Trying again \(1\/18\)/);
       assert.match(statuses[2]!.detail!, /\(2\/18\)/);
       assert.equal(r.research.stats!.events.filter((e) => e.kind === 'session-in-use').length, 2, 'the waiting shows in the measurements');
     } finally {
@@ -284,7 +285,7 @@ describe('the PS5 link', () => {
     });
     const refused = await run(busy.link);
     assert.equal(tries, 19, 'the first request and eighteen more: a little longer than the console holds an abandoned session');
-    assert.match(refused.error!.message, /이미 사용 중입니다/);
+    assert.match(refused.error!.message, /^Remote Play is already in use on Living room\./);
     assert.equal(busy.research.state, 'ended');
   });
 
@@ -305,7 +306,7 @@ describe('the PS5 link', () => {
       assert.equal(error, null);
       assert.equal(calls, 4, 'one that led nowhere, two refusals while the console let go, one that worked');
       assert.equal(statuses.at(-1)!.state, 'streaming');
-      assert.ok(statuses.some((s) => /제어 연결에 답하지 않아 처음부터 다시/.test(s.detail ?? '')));
+      assert.ok(statuses.some((s) => /did not answer on the control connection\. Connecting again from the start/.test(s.detail ?? '')));
       assert.equal(r.ctrlClosed(), 1, 'the control connection that led nowhere was closed');
       assert.deepEqual(r.research.stats!.events.filter((e) => e.kind === 'control-retry').map((e) => e.detail), ['timeout']);
     } finally {
@@ -315,7 +316,7 @@ describe('the PS5 link', () => {
     // It does that once, not for ever.
     const never = rig({ ctrlFails: new CtrlError('timeout', 'The console did not answer the control request in time') });
     const failed = await run(never.link);
-    assert.match(failed.error!.message, /제어 연결을 열지 못했습니다/);
+    assert.match(failed.error!.message, /^Could not open the control connection to Living room\./);
     assert.equal(never.asked.length, 2);
   });
 
@@ -327,8 +328,8 @@ describe('the PS5 link', () => {
         },
       });
       const { error } = await run(r.link);
-      assert.match(error!.message, /응답하지 않습니다.*대기 모드/, code);
-      assert.doesNotMatch(error!.message, /받아들이지 않았습니다/);
+      assert.match(error!.message, /^Living room is not answering\. It may be off or in rest mode/, code);
+      assert.doesNotMatch(error!.message, /did not accept the session/);
       assert.equal(r.research.lastError, error!.message);
     }
   });
@@ -336,7 +337,7 @@ describe('the PS5 link', () => {
   it('stops at the control connection when that fails, closing what it opened', async () => {
     const r = rig({ ctrlFails: new CtrlError('rejected', 'The console answered 403 to the control request') });
     const { error, statuses } = await run(r.link);
-    assert.match(error!.message, /제어 연결을 열지 못했습니다.*403/);
+    assert.match(error!.message, /^Could not open the control connection to Living room\..*403/);
     assert.equal(statuses.at(-1)!.state, 'connecting');
     assert.equal(r.ctrlClosed(), 1);
     assert.equal(r.stream.messages.length, 0, 'the stream is never started');
@@ -344,13 +345,13 @@ describe('the PS5 link', () => {
 
   it('explains a console that wants the account\'s login PIN', async () => {
     const { error } = await run(rig({ askPin: true }).link);
-    assert.match(error!.message, /로그인 암호\(PIN\)/);
+    assert.match(error!.message, /protected by a login PIN/);
   });
 
   it('stops at the stream when the console does not answer it, and leaves nothing open', async () => {
     const r = rig({ silentStream: true });
     const { error } = await run(r.link);
-    assert.match(error!.message, /영상 스트림을 열지 못했습니다.*\[timeout\]/);
+    assert.match(error!.message, /^Could not open the video stream to Living room\..*\[timeout\]/);
     assert.equal(r.stream.closed, 1);
     assert.equal(r.ctrlClosed(), 1);
     assert.equal(r.research.state, 'ended');
@@ -363,7 +364,7 @@ describe('the PS5 link', () => {
     await r.link.start({ onVideo: () => {}, onStatus: (s) => statuses.push(s) }, DEFAULT_QUALITY);
     r.ctrlEvents.onClose?.('the control connection was closed');
     assert.equal(statuses.at(-1)!.state, 'closed');
-    assert.match(statuses.at(-1)!.detail!, /제어 연결이 끊어졌습니다/);
+    assert.match(statuses.at(-1)!.detail!, /^The control connection was lost \(the control connection was closed\)$/);
     assert.equal(r.stream.closed, 1);
     await r.link.stop();
   });
@@ -408,14 +409,14 @@ describe('handing the console over to another client of this project', () => {
     try {
       assert.equal(error, null);
       assert.deepEqual(handover.asked, ['0123456789ab'], 'asked once, not on every retry');
-      assert.match(statuses[1]!.detail!, /Mac Studio이\(가\) 자리를 내주었습니다/);
+      assert.match(statuses[1]!.detail!, /^Mac Studio let go of the console\. Waiting while Living room cleans up that connection \(1\/18\)$/);
       assert.equal(statuses.at(-1)!.state, 'streaming');
       // Now this one has the console, unlocked: the next client that asks gets it.
       assert.equal(handover.held.length, 1);
       assert.equal(handover.held[0]!.locked, false);
       handover.held[0]!.release('Desk PC');
       assert.equal(statuses.at(-1)!.state, 'closed');
-      assert.match(statuses.at(-1)!.detail!, /다른 내 기기\(Desk PC\)에 자리를 내주었습니다/);
+      assert.match(statuses.at(-1)!.detail!, /^Handed the console over to your other device \(Desk PC\)\.$/);
       assert.equal(r.stream.closed, 1, 'the stream was ended, so the console is free for the other one');
       assert.equal(r.stream.messages.at(-1)!.type, TAKION_PAYLOAD_TYPE.DISCONNECT);
       assert.equal(handover.held.length, 0);
@@ -430,7 +431,7 @@ describe('handing the console over to another client of this project', () => {
     const r = rig({ handover, session: async () => (calls++, Promise.reject(inUse())) });
     const { error } = await run(r.link);
     assert.equal(calls, 1, 'no waiting around: a locked client does not let go');
-    assert.match(error!.message, /Mac Studio에서 잠금 상태로 사용 중입니다/);
+    assert.match(error!.message, /^The console is in use on Mac Studio and locked\./);
   });
 
   it('keeps waiting as before when no client of this project answers (another program has the console, or it is still letting go)', async () => {
@@ -441,7 +442,7 @@ describe('handing the console over to another client of this project', () => {
     await r.link.stop();
     assert.equal(error, null);
     assert.equal(handover.asked.length, 1);
-    assert.match(statuses[1]!.detail!, /정리하는 중입니다/);
+    assert.match(statuses[1]!.detail!, /is clearing up the earlier Remote Play connection/);
   });
 
   it('holds the console locked when the page asked for that, and follows the switch on the page', async () => {
@@ -547,6 +548,41 @@ describe('through the bridge', () => {
   });
 });
 
+describe('the language of the person who is connecting', () => {
+  /** A bridge on a console store, and what the page is told when it says hello with these extra fields: the error (if any) and the steps. */
+  async function hello(store: ConsoleStore, extra: Record<string, unknown>): Promise<{ error: string | undefined; steps: string[] }> {
+    const bridge = await startBridge({ host: '127.0.0.1', port: 0, root, store, createLink: () => rig({ store }).link });
+    bridges.push(bridge);
+    const ws = new WebSocket(`ws://127.0.0.1:${bridge.port}/ws`);
+    const seen: Array<Record<string, any>> = [];
+    ws.onmessage = (e) => typeof e.data === 'string' && seen.push(JSON.parse(e.data));
+    await new Promise<void>((resolve, reject) => ((ws.onopen = () => resolve()), (ws.onerror = () => reject(new Error('ws error')))));
+    ws.send(JSON.stringify({ type: 'hello', client: 'test', ...extra }));
+    for (let i = 0; i < 100 && !seen.some((m) => m.type === 'ready' || m.type === 'error'); i++) await sleep(10);
+    ws.close();
+    return { error: seen.find((m) => m.type === 'error')?.message, steps: seen.filter((m) => m.type === 'status' && m.state === 'connecting').map((m) => m.detail) };
+  }
+
+  it('says why it could not start in Korean to a page that reads Korean, and in English to everyone else', async () => {
+    const none = storeWith(); // nothing registered: the link says so
+    assert.equal((await hello(none, { lang: 'ko' })).error, '등록된 PS5가 없습니다. 먼저 콘솔을 등록하세요.');
+    const english = 'No PS5 is registered. Register a console first.';
+    assert.equal((await hello(none, {})).error, english, 'a page that says nothing');
+    assert.equal((await hello(none, { lang: 'en' })).error, english);
+    assert.equal((await hello(none, { lang: 'fr' })).error, english, 'a language there is no Korean or other text for');
+    assert.equal((await hello(none, { lang: ['ko'] })).error, english, 'not even a string');
+  });
+
+  it('tells the steps of the connection in that language as well', async () => {
+    const store = storeWith([reg(), '192.168.1.50']);
+    const ko = await hello(store, { lang: 'ko' });
+    assert.equal(ko.error, undefined);
+    assert.deepEqual(ko.steps.slice(0, 2), ['Living room에 세션을 요청하는 중', 'Living room 콘솔이 세션 요청을 받아들였습니다. 제어 연결을 여는 중']);
+    const en = await hello(store, {});
+    assert.deepEqual(en.steps.slice(0, 2), ['Asking Living room for a session', 'Living room accepted the session request. Opening the control connection']);
+  });
+});
+
 describe('waking a console in rest mode before connecting', () => {
   // The key as the console store keeps it: the text "1f2e3d4c" (a hexadecimal number) padded with zero bytes.
   const wakeKey = Buffer.concat([Buffer.from('1f2e3d4c', 'latin1'), Buffer.alloc(8)]);
@@ -563,9 +599,11 @@ describe('waking a console in rest mode before connecting', () => {
     assert.deepEqual(c.sent[0], { host: '192.168.1.50', credential: 0x1f2e3d4cn, ps5: true });
     assert.equal(r.asked.length, 1, 'the session was asked for after the console woke');
     const d = details(out.statuses);
-    assert.ok(d.some((t) => /대기 모드입니다. 깨우는 중/.test(t)));
-    assert.ok(d.some((t) => /켜졌습니다 .*연결합니다/.test(t)));
-    assert.ok(d.findIndex((t) => /켜졌습니다/.test(t)) < d.findIndex((t) => /세션을 요청하는 중/.test(t)), 'woken first, session second');
+    assert.ok(d.some((t) => /^Living room is in rest mode\. Waking it up$/.test(t)));
+    assert.ok(d.some((t) => /^Waking Living room up \(\d+ s\)$/.test(t)));
+    assert.ok(d.some((t) => /^Living room is starting up \(\d+ s\)$/.test(t)));
+    assert.ok(d.some((t) => /^Living room is on \(\d+ s\)\. Connecting$/.test(t)));
+    assert.ok(d.findIndex((t) => /is on \(/.test(t)) < d.findIndex((t) => /for a session/.test(t)), 'woken first, session second');
     assert.ok(r.research.stats?.events.some((e) => e.kind === 'wake'));
   });
 
@@ -577,7 +615,7 @@ describe('waking a console in rest mode before connecting', () => {
     assert.equal(out.error, null);
     assert.equal(c.sent.length, 0);
     assert.equal(r.asked.length, 1);
-    assert.ok(!details(out.statuses).some((t) => /깨우는 중/.test(t)));
+    assert.ok(!details(out.statuses).some((t) => /Waking|rest mode/.test(t)));
   });
 
   it('leaves a console that does not answer at all to the ordinary connection, which says it does not answer', async () => {
@@ -591,7 +629,7 @@ describe('waking a console in rest mode before connecting', () => {
     const out = await run(r.link);
     await r.link.stop();
     assert.equal(c.sent.length, 0, 'nothing to wake: it is shut down or not there');
-    assert.match(out.error?.message ?? '', /응답하지 않습니다/);
+    assert.match(out.error?.message ?? '', /^Living room is not answering\./);
   });
 
   it('gives up after the time allowed, sending the datagram again on the way, and says what to check on the console', async () => {
@@ -599,7 +637,7 @@ describe('waking a console in rest mode before connecting', () => {
     const r = rig({ store: wakeStore(), wakeDeps: c.deps, wakeOptions: { timeoutMs: 6000, pollMs: 1000, resendMs: 2000, settleMs: 0 } });
     const out = await run(r.link);
     await r.link.stop();
-    assert.match(out.error?.message ?? '', /깨어나지 않았습니다.*네트워크에서 PS5 켜기/);
+    assert.match(out.error?.message ?? '', /^Living room did not wake up after 6 s\. Check that "Enable Turning On PS5 from Network" is on/);
     assert.ok(c.sent.length >= 3, `a lost datagram is sent again (${c.sent.length} sent)`);
     assert.equal(r.asked.length, 0, 'no session is asked for from a console that did not wake');
   });
@@ -632,7 +670,7 @@ describe('waking a console in rest mode before connecting', () => {
     const r = rig({ wakeDeps: c.deps }); // the default test key is not a hexadecimal number
     const out = await run(r.link);
     await r.link.stop();
-    assert.match(out.error?.message ?? '', /깨우지 못했습니다/);
+    assert.match(out.error?.message ?? '', /^Could not wake Living room\./);
     assert.equal(c.sent.length, 0);
     assert.equal(r.asked.length, 0);
   });
@@ -654,7 +692,7 @@ describe('a console that was given another address', () => {
       assert.equal(error, null);
       assert.equal(r.asked[0]!.host, '192.168.1.77', 'the session request goes to the new address');
       assert.equal(r.store.list()[0]!.host, '192.168.1.77', 'and the registration follows the console');
-      assert.ok(statuses.some((s) => /주소가 바뀐 것을 찾았습니다/.test(s.detail ?? '')));
+      assert.ok(statuses.some((s) => /^Found that the address of Living room has changed$/.test(s.detail ?? '')));
       assert.ok(r.research.stats!.events.some((e) => e.kind === 'moved' && /192\.168\.1\.77/.test(e.detail ?? '')), 'and the move is noted with the stream');
     } finally {
       await r.link.stop();
@@ -691,3 +729,162 @@ describe('a console that was given another address', () => {
   });
 });
 
+
+// The same situations as above, for a person who reads Korean: the words they knew before the app spoke English by default.
+// Wherever the old wording put a particle after the console's name by guessing its last sound ("이(가)", "을(를)"), the sentence
+// now has a noun after the name ("콘솔이"), so it is right for any name.
+describe('the same situations in Korean', () => {
+  const ko = (r: Rig, mac?: string): ReturnType<typeof run> => run(r.link, mac, 'ko');
+  /** The text is whole: no piece left unfilled and no particle left for the reader to choose. */
+  const whole = (text: string | undefined): string => {
+    assert.ok(text, 'there is a text');
+    assert.doesNotMatch(text, /[{}]|\([가-힣]\)/, text);
+    return text;
+  };
+  const inUse = (): SessionError => new SessionError('rejected', 'The console answered 403: Remote Play is already in use on the console (0x80108b10)', { reason: 0x80108b10 });
+  const wakeKey = Buffer.concat([Buffer.from('1f2e3d4c', 'latin1'), Buffer.alloc(8)]);
+  const wakeStore = (): ConsoleStore => storeWith([reg({ registKey: wakeKey }), '192.168.1.50']);
+
+  it('tells the page each step of a connection', async () => {
+    const r = rig();
+    const { statuses, error } = await ko(r);
+    try {
+      assert.equal(error, null);
+      const d = statuses.map((s) => whole(s.detail));
+      assert.match(d[0]!, /^Living room에 세션을 요청하는 중$/);
+      assert.match(d[1]!, /^Living room 콘솔이 세션 요청을 받아들였습니다\. 제어 연결을 여는 중$/);
+      assert.match(d[2]!, /^제어 연결이 열렸습니다\. 영상 스트림을 여는 중$/);
+      assert.equal(d[3], 'Living room · 960×540');
+    } finally {
+      await r.link.stop();
+    }
+  });
+
+  it('says what is missing', async () => {
+    const none = await ko(rig({ store: storeWith() }));
+    assert.equal(whole(none.error!.message), '등록된 PS5가 없습니다. 먼저 콘솔을 등록하세요.');
+    const wrong = await ko(rig(), 'ffffffffffff');
+    assert.equal(whole(wrong.error!.message), '선택한 콘솔의 등록 정보가 이 컴퓨터에 없습니다.');
+  });
+
+  it('puts the right particle after any name the console has', async () => {
+    for (const name of ['PS5', '거실', 'Den', 'Living room']) {
+      const refused = rig({
+        store: storeWith([reg({ nickname: name }), '192.168.1.50']),
+        session: async () => {
+          throw new SessionError('rejected', 'The console answered 403: Registration failed (0x80108b09)', { reason: 0x80108b09 });
+        },
+      });
+      const { error } = await ko(refused);
+      assert.equal(whole(error!.message), `${name} 콘솔이 세션을 받아들이지 않았습니다. The console answered 403: Registration failed (0x80108b09)`, 'the console\'s own words stay as the console gave them');
+      assert.equal(refused.research.lastError, error!.message);
+    }
+  });
+
+  it('waits and asks again while Remote Play is in use, and says so when it stays in use', async () => {
+    let calls = 0;
+    const r = rig({ session: async (s) => (++calls <= 2 ? Promise.reject(inUse()) : grant(s)) });
+    const { statuses, error } = await ko(r);
+    try {
+      assert.equal(error, null);
+      assert.match(whole(statuses[1]!.detail), /^Living room 콘솔이 앞선 원격 플레이 연결을 정리하는 중입니다 \(길면 30초쯤\)\. 다시 시도합니다 \(1\/18\)$/);
+    } finally {
+      await r.link.stop();
+    }
+    const busy = await ko(rig({ session: async () => Promise.reject(inUse()) }));
+    assert.equal(whole(busy.error!.message), 'Living room에서 원격 플레이가 이미 사용 중입니다. Great Theft P.S가 아닌 앱(공식 앱, chiaki 등)이 연결 중이면 그쪽에서 끊어야 합니다.');
+  });
+
+  it('starts over once when the console says nothing on the control connection, and says when that fails too', async () => {
+    let calls = 0;
+    const r = rig({
+      ctrlFailsFirst: new CtrlError('timeout', 'The console did not answer the control request in time'),
+      session: async (s) => (++calls === 2 || calls === 3 ? Promise.reject(inUse()) : grant(s)),
+    });
+    const { statuses, error } = await ko(r);
+    try {
+      assert.equal(error, null);
+      assert.ok(statuses.some((s) => whole(s.detail) === 'Living room 콘솔이 제어 연결에 답하지 않아 처음부터 다시 연결하는 중'));
+    } finally {
+      await r.link.stop();
+    }
+    const failed = await ko(rig({ ctrlFails: new CtrlError('rejected', 'The console answered 403 to the control request') }));
+    assert.equal(whole(failed.error!.message), 'Living room 콘솔과 제어 연결을 열지 못했습니다. The console answered 403 to the control request');
+  });
+
+  it('says that the console does not answer when nothing comes back', async () => {
+    const { error } = await ko(rig({ session: async () => Promise.reject(new SessionError('timeout', 'The console did not answer the session request')) }));
+    assert.equal(whole(error!.message), 'Living room 콘솔이 응답하지 않습니다. 꺼져 있거나 대기 모드이거나, 주소가 바뀌었을 수 있습니다. (The console did not answer the session request)');
+  });
+
+  it('explains a login PIN, and a stream that does not open', async () => {
+    const pin = await ko(rig({ askPin: true }));
+    assert.equal(whole(pin.error!.message), 'Living room의 계정에 로그인 암호(PIN)가 걸려 있어 콘솔이 암호를 요구합니다. 아직 지원하지 않습니다.');
+    const silent = await ko(rig({ silentStream: true }));
+    assert.match(whole(silent.error!.message), /^Living room 콘솔과 영상 스트림을 열지 못했습니다\. .* \[timeout\]$/);
+  });
+
+  it('tells the page when the control connection drops while streaming', async () => {
+    const r = rig();
+    const statuses: LinkStatus[] = [];
+    await r.link.start({ onVideo: () => {}, onStatus: (s) => statuses.push(s) }, DEFAULT_QUALITY, { lang: 'ko' });
+    r.ctrlEvents.onClose?.('the control connection was closed');
+    assert.equal(statuses.at(-1)!.state, 'closed');
+    assert.equal(statuses.at(-1)!.detail, '제어 연결이 끊어졌습니다 (the control connection was closed)');
+    await r.link.stop();
+  });
+
+  it('names the other device that has the console, and the one it was handed to', async () => {
+    const held: Array<{ release: (by: string) => void }> = [];
+    const handover = (answer: { result: 'yielded' | 'locked'; name: string }): Ps5LinkOptions['handover'] => ({
+      ask: async () => answer,
+      hold: (_mac, h) => {
+        held.push(h);
+        return () => {};
+      },
+      setLocked: () => {},
+    });
+    let calls = 0;
+    const r = rig({ handover: handover({ result: 'yielded', name: 'Mac Studio' }), session: async (s) => (++calls <= 2 ? Promise.reject(inUse()) : grant(s)) });
+    const { statuses, error } = await ko(r);
+    try {
+      assert.equal(error, null);
+      assert.equal(whole(statuses[1]!.detail), 'Mac Studio 기기가 자리를 내주었습니다. Living room 콘솔이 그 연결을 정리하는 동안 기다립니다 (1/18)');
+      held[0]!.release('Desk PC');
+      assert.equal(statuses.at(-1)!.detail, '다른 내 기기(Desk PC)에 자리를 내주었습니다.');
+    } finally {
+      await r.link.stop();
+    }
+    const locked = await ko(rig({ handover: handover({ result: 'locked', name: 'Mac Studio' }), session: async () => Promise.reject(inUse()) }));
+    assert.equal(whole(locked.error!.message), 'Mac Studio에서 잠금 상태로 사용 중입니다. 그 기기에서 잠금을 풀거나 연결을 끊으면 가져올 수 있습니다.');
+  });
+
+  it('says what it does while it wakes a console, and what to check when it does not wake', async () => {
+    const c = scripted(['standby', 'standby', 'ready']);
+    const r = rig({ store: wakeStore(), wakeDeps: c.deps, wakeOptions: { settleMs: 0 } });
+    const woke = await ko(r);
+    await r.link.stop();
+    const d = woke.statuses.map((s) => whole(s.detail));
+    assert.ok(d.includes('Living room 콘솔이 대기 모드입니다. 깨우는 중입니다'));
+    assert.ok(d.some((t) => /^Living room 콘솔을 깨우는 중입니다 \(\d+초\)$/.test(t)));
+    assert.ok(d.some((t) => /^Living room 콘솔이 켜지는 중입니다 \(\d+초\)$/.test(t)));
+    assert.ok(d.some((t) => /^Living room 콘솔이 켜졌습니다 \(\d+초\)\. 연결합니다$/.test(t)));
+
+    const never = scripted(['standby']);
+    const gaveUp = await ko(rig({ store: wakeStore(), wakeDeps: never.deps, wakeOptions: { timeoutMs: 6000, pollMs: 1000, resendMs: 2000, settleMs: 0 } }));
+    assert.equal(whole(gaveUp.error!.message), 'Living room 콘솔이 6초가 지나도 깨어나지 않았습니다. PS5의 설정 > 시스템 > 절전 > 대기 모드에서 사용할 수 있는 기능에서 "네트워크에서 PS5 켜기 활성화"가 켜져 있는지, 같은 집 네트워크인지 확인하세요.');
+
+    const noKey = await ko(rig({ wakeDeps: scripted(['standby']).deps })); // the default test key is not a hexadecimal number
+    assert.match(whole(noKey.error!.message), /^Living room 콘솔을 깨우지 못했습니다\. /);
+  });
+
+  it('says that the console was found at another address', async () => {
+    const r = rig({ locate: async () => ({ result: 'moved', host: '192.168.1.77' }) });
+    const { statuses } = await ko(r);
+    try {
+      assert.equal(whole(statuses[0]!.detail), 'Living room의 주소가 바뀐 것을 찾았습니다');
+    } finally {
+      await r.link.stop();
+    }
+  });
+});
