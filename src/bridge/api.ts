@@ -3,11 +3,18 @@
 // The small JSON API the page uses to find and register consoles. Registration keys stay on this side: no response
 // ever contains them, the PIN or the account id.
 //
-//   GET    /api/consoles          registered consoles (public fields) and whether an account id is saved
+//   GET    /api/consoles          registered consoles (public fields), for each the PSN accounts it is registered for
+//                                 (`profiles`) and the one the person asking plays as (`profile`), and whether an
+//                                 account id is saved (with its last digits)
+//   POST   /api/consoles/profile  { mac, profile, user? }  which PSN account a person plays as on that console: one's own,
+//                                 or (owner) somebody else's
+//   POST   /api/consoles/profile-label  { mac, profile, label }  (owner) what an account is called here
+//   DELETE /api/consoles/<mac>[?profile=]  (owner) forget a console, or only its registration for one account
 //   GET    /api/discover[?host=]  consoles answering on the network, each marked registered or not
-//   POST   /api/register          { host, pin, accountId?, target? }  registers and stores the result
+//   POST   /api/register          { host, pin, accountId?, target?, label? }  registers and stores the result. A console
+//                                 is registered once per PSN account: another account is added next to the first
 //   GET    /api/network           this computer's LAN addresses (the page uses them to tell which kind of route it is on)
-//   POST   /api/session-check     { mac, host? }  asks the console for a session with the stored registration; answers ok
+//   POST   /api/session-check     { mac, host?, profile? }  asks the console for a session with the stored registration; answers ok
 //                                 or the console's reason. Proves the registration works. Never returns keys or the nonce.
 //   POST   /api/wake              { mac }  sends the wake-up datagram to a console in rest mode (it does not wait; connecting
 //                                 does: the link wakes a console that is in rest mode before it asks for a session)
@@ -45,7 +52,7 @@ import { json, readBody } from './http-util.ts';
 import { parseRating } from '../engine/feel-study.ts';
 import type { StudyStore } from './study-store.ts';
 import { originAllowed } from './static.ts';
-import type { ConsoleStore } from '../console/store.ts';
+import { accountHint, profileIdOf, type ConsoleStore } from '../console/store.ts';
 
 export interface ApiOptions {
   store: ConsoleStore;
@@ -150,10 +157,37 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
   const store = opts.store;
   const discover = opts.discover ?? realDiscover;
   const register = opts.register ?? realRegister;
+  // Who is asking, for what is a person's own (the PSN account they play as, their scores). Without logins there is one
+  // person ("local"); the token of a tool is the owner's.
+  const me = opts.accounts ? (who?.name ?? 'owner') : 'local';
+  const isOwner = !opts.accounts || who?.role === 'owner' || (!who && tokenOk);
+  const withProfiles = <T extends { mac: string }>(c: T): T & { profiles: ReturnType<ConsoleStore['profiles']>; profile: string | undefined } => ({ ...c, profiles: store.profiles(c.mac), profile: store.chosen(me, c.mac) });
+  const profileOf = (v: unknown): string | undefined | null => (v === undefined ? undefined : typeof v === 'string' && /^[0-9a-z]{1,16}$/.test(v) ? v : null);
 
   try {
     if (req.method === 'GET' && url.pathname === '/api/consoles') {
-      json(res, 200, { consoles: store.list(), accountIdSaved: store.accountId !== undefined });
+      json(res, 200, { consoles: store.list().map(withProfiles), accountIdSaved: store.accountId !== undefined, accountHint: accountHint(store.accountId) });
+    } else if (req.method === 'POST' && url.pathname === '/api/consoles/profile') {
+      // Which PSN account somebody plays as. Anyone sets their own; the owner also sets it for the others.
+      const body = (await readBody(req)) as { mac?: unknown; profile?: unknown; user?: unknown };
+      const profile = profileOf(body.profile);
+      if (typeof body.mac !== 'string' || !profile) return json(res, 400, { error: 'invalid-input', message: 'mac and profile are needed' }), true;
+      let person = me;
+      if (body.user !== undefined && body.user !== me) {
+        if (!isOwner) return json(res, 403, { error: 'owner-only' }), true;
+        if (typeof body.user !== 'string' || !opts.accounts?.get(body.user)) return json(res, 404, { error: 'unknown-user', message: 'Nobody with that name' }), true;
+        person = body.user;
+      }
+      if (!store.choose(person, body.mac, profile)) return json(res, 404, { error: 'not-registered', message: 'That console is not registered for that account on this computer' }), true;
+      log(`${person} now plays as another PSN account`); // never which one
+      json(res, 200, { ok: true, user: person, profile });
+    } else if (req.method === 'POST' && url.pathname === '/api/consoles/profile-label') {
+      if (!isOwner) return json(res, 403, { error: 'owner-only' }), true;
+      const body = (await readBody(req)) as { mac?: unknown; profile?: unknown; label?: unknown };
+      const profile = profileOf(body.profile);
+      if (typeof body.mac !== 'string' || !profile || typeof body.label !== 'string') return json(res, 400, { error: 'invalid-input', message: 'mac, profile and label are needed' }), true;
+      if (!store.setLabel(body.mac, profile, body.label)) return json(res, 404, { error: 'not-registered', message: 'That console is not registered for that account on this computer' }), true;
+      json(res, 200, { ok: true, profiles: store.profiles(body.mac) });
     } else if (req.method === 'GET' && url.pathname === '/api/discover') {
       const host = url.searchParams.get('host') ?? undefined;
       if (host !== undefined && !isIp(host)) return json(res, 400, { error: 'host must be an IP address' }), true;
@@ -161,7 +195,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
       const registered = new Set(store.list().map((c) => c.mac));
       json(res, 200, { hosts: result.hosts.map((h) => publicHost(h, registered)) });
     } else if (req.method === 'POST' && url.pathname === '/api/register') {
-      const body = (await readBody(req)) as { host?: unknown; pin?: unknown; accountId?: unknown; target?: unknown };
+      const body = (await readBody(req)) as { host?: unknown; pin?: unknown; accountId?: unknown; target?: unknown; label?: unknown };
       if (typeof body.host !== 'string' || !isIp(body.host)) return json(res, 400, { error: 'host must be an IP address' }), true;
       if (typeof body.pin !== 'string' && typeof body.pin !== 'number') return json(res, 400, { error: 'pin is missing' }), true;
       let accountText = typeof body.accountId === 'string' && body.accountId.trim() !== '' ? body.accountId : undefined;
@@ -176,8 +210,11 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
       }
       log(`registering ${body.host}`);
       const result = await register({ host: body.host, target: target as never, pin: body.pin as string | number, accountId: accountText, log });
-      store.setAccountId(Buffer.from(parseAccountId(accountText)).toString('base64'));
-      json(res, 200, { console: store.put(result, body.host) });
+      const account = Buffer.from(parseAccountId(accountText)).toString('base64');
+      store.setAccountId(account);
+      // Kept for this account: it replaces an earlier registration of the same account and leaves those of other accounts.
+      const saved = store.put(result, body.host, { accountId: account, ...(typeof body.label === 'string' ? { label: body.label } : {}) });
+      json(res, 200, { console: withProfiles(saved), registered: profileIdOf(account) });
     } else if (req.method === 'GET' && url.pathname === '/api/handover') {
       // Whether this client takes part in handing the console over, and under which name the others see it.
       const h = opts.handover?.status();
@@ -202,16 +239,20 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
       json(res, 200, { interfaces: (opts.network ?? localNetworks)() });
     } else if (req.method === 'POST' && url.pathname === '/api/session-check') {
       // Ask the console for a session with the stored registration. Proves the registration works; nothing more is done.
-      const body = (await readBody(req)) as { mac?: unknown; host?: unknown };
+      const body = (await readBody(req)) as { mac?: unknown; host?: unknown; profile?: unknown };
       if (typeof body.mac !== 'string') return json(res, 400, { error: 'invalid-input', message: 'mac is missing' }), true;
-      const rec = store.get(body.mac);
+      const asked = profileOf(body.profile);
+      if (asked === null) return json(res, 400, { error: 'invalid-input', message: 'profile is not valid' }), true;
+      // Without a profile: the account the person asking plays as.
+      const rec = asked ? store.get(body.mac, asked) : store.getFor(body.mac, me);
       if (!rec) return json(res, 404, { error: 'not-registered', message: 'That console is not registered on this computer' }), true;
       if (body.host !== undefined && (typeof body.host !== 'string' || !isIp(body.host))) return json(res, 400, { error: 'invalid-input', message: 'host must be an IP address' }), true;
       const host = typeof body.host === 'string' ? body.host : rec.host;
       log(`checking the registration of ${rec.nickname || rec.mac} at ${host}`);
       await (opts.session ?? requestSession)({ host, target: rec.target, registKey: Buffer.from(rec.registKey, 'hex'), rpKey: Buffer.from(rec.rpKey, 'hex'), log });
-      store.markVerified(rec.mac, host);
-      json(res, 200, { ok: true, console: store.list().find((c) => c.mac === rec.mac) });
+      store.markVerified(rec.mac, host, profileIdOf(rec.accountId));
+      const checked = store.list().find((c) => c.mac === rec.mac);
+      json(res, 200, { ok: true, console: checked ? withProfiles(checked) : undefined, profile: profileIdOf(rec.accountId) });
     } else if (req.method === 'GET' && url.pathname === '/api/psn/login-url') {
       json(res, 200, { url: PSN_LOGIN_URL });
     } else if (req.method === 'POST' && url.pathname === '/api/psn/account-id') {
@@ -227,13 +268,13 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
       const accountId = await (opts.psn ?? ((c: string) => fetchAccountId(c)))(code);
       store.setAccountId(accountId);
       // Only the last digits go back, enough to recognise the account. The full value stays in the store.
-      json(res, 200, { accountIdSaved: true, hint: Buffer.from(accountId, 'base64').readBigUInt64LE().toString().slice(-4) });
+      json(res, 200, { accountIdSaved: true, hint: accountHint(accountId) });
     } else if (req.method === 'POST' && url.pathname === '/api/wake') {
       // Wake a console in rest mode: one UDP datagram with the credential made from the stored registration key. It
       // does not wait for the console (connecting does that); GET /api/discover?host= shows when it says "ready".
       const body = (await readBody(req)) as { mac?: unknown };
       if (typeof body.mac !== 'string') return json(res, 400, { error: 'invalid-input', message: 'mac is missing' }), true;
-      const rec = store.get(body.mac);
+      const rec = store.getFor(body.mac, me);
       if (!rec) return json(res, 404, { error: 'not-registered', message: 'That console is not registered on this computer' }), true;
       let credential: bigint;
       try {
@@ -252,9 +293,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
     } else if (url.pathname.startsWith('/api/study/')) {
       const study = opts.study;
       if (!study) return json(res, 404, { error: 'unknown endpoint' }), true;
-      // Scores are a person's own. Without logins there is one person ("local"); the token of a tool is the owner's.
-      const me = opts.accounts ? (who?.name ?? 'owner') : 'local';
-      const isOwner = !opts.accounts || who?.role === 'owner' || (!who && tokenOk);
+      // Scores are a person's own (see `me` above).
       if (req.method === 'GET' && url.pathname === '/api/study/ratings') {
         const wanted = url.searchParams.get('user');
         if (wanted === 'all' || (wanted !== null && wanted !== me)) {
@@ -290,7 +329,9 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
       }
     } else if (req.method === 'DELETE' && url.pathname.startsWith('/api/consoles/')) {
       const mac = decodeURIComponent(url.pathname.slice('/api/consoles/'.length));
-      const removed = store.remove(mac);
+      const only = profileOf(url.searchParams.get('profile') ?? undefined);
+      if (only === null) return json(res, 400, { error: 'invalid-input', message: 'profile is not valid' }), true;
+      const removed = store.remove(mac, only);
       json(res, removed ? 200 : 404, { ok: removed });
     } else {
       json(res, 404, { error: 'unknown endpoint' });
