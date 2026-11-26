@@ -202,4 +202,5 @@ export const KO_PLAY: Record<string, string> = {
   '{name} connected: it can be used together with the keyboard and mouse.': '{name} 연결됨: 키보드·마우스와 함께 쓸 수 있습니다.',
   '{name} connected': '{name} 연결됨',
   'The controller was disconnected': '컨트롤러 연결이 끊어졌습니다',
+  'Key guide hidden. Press B, or open the key layout (K), to show it again.': '키 안내를 숨겼습니다. 다시 보려면 B를 누르거나 키 배치(K)를 여세요.',
 };

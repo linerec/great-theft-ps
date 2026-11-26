@@ -129,6 +129,37 @@ $<HTMLButtonElement>('hudFull').addEventListener('click', () => void toggleFull(
 $<HTMLButtonElement>('heroFull').addEventListener('click', () => void toggleFull());
 document.addEventListener('gtp:toggle-fullscreen', () => void toggleFull());
 
+// ------------------------------------------------------------------ the key guide
+
+// What the keys do, in sight: a row of chips under the picture, and in full screen a bar above it with the picture a little
+// smaller (the layout is in the CSS; tester.ts fills the chips from the profile). It can be hidden, and that is remembered.
+const guide = $<HTMLElement>('keyGuide');
+const guideOn = (): boolean => saved('gtp.keyGuide') !== '0';
+/** What goes over the picture (the bar, the panels, the hero) keeps off the guide: it is told how tall the guide is. */
+function sizeGuide(): void {
+  player.style.setProperty('--kg-h', guide.hidden ? '0px' : `${guide.offsetHeight}px`);
+}
+function paintGuide(): void {
+  const on = guideOn();
+  guide.hidden = !on;
+  player.dataset.guide = String(on);
+  $<HTMLButtonElement>('keysGuideToggle').setAttribute('aria-pressed', String(on));
+  sizeGuide();
+}
+function setGuide(on: boolean): void {
+  save('gtp.keyGuide', on ? '1' : '0');
+  paintGuide();
+}
+// The guide grows and shrinks with the width it has (the chips wrap), so its height is followed, not set once.
+if (typeof ResizeObserver !== 'undefined') new ResizeObserver(sizeGuide).observe(guide);
+$<HTMLButtonElement>('keyGuideHide').addEventListener('click', () => {
+  setGuide(false);
+  toast(t('Key guide hidden. Press B, or open the key layout (K), to show it again.'), 'info');
+});
+$<HTMLButtonElement>('keysGuideToggle').addEventListener('click', () => setGuide(!guideOn()));
+$<HTMLButtonElement>('keyGuideAll').addEventListener('click', () => togglePanel('keysPanel'));
+paintGuide();
+
 // ------------------------------------------------------------------ a wider picture
 
 const theaterBtn = $<HTMLButtonElement>('hudTheater');
@@ -634,6 +665,7 @@ window.addEventListener('keydown', (e) => {
     case 'KeyR': return act(toggleClip);
     case 'KeyS': return act(() => live && togglePanel('statsPanel'));
     case 'KeyK': return act(() => live && togglePanel('keysPanel'));
+    case 'KeyB': return act(() => setGuide(!guideOn()));
     case 'KeyG': return act(() => live && togglePanel('feelPanel'));
     case 'KeyL': return act(() => live && togglePanel('studyPanel'));
     case 'KeyO': return act(() => live && togglePanel('optPanel'));

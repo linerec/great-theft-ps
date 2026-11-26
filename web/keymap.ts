@@ -168,12 +168,18 @@ export function describeLayout(profile: Profile): Array<{ label: string; keys: s
   for (const layer of profile.layers) {
     for (const [key, text] of Object.entries(layer.bindings)) {
       const k = splitBindingKey(key);
-      const b = readBinding(text);
-      if (!k || !b) continue;
-      const markWord = STYLE_MARK[b.style];
-      const mark = markWord ? ` (${t(markWord)})` : '';
-      const when = k.activator === 'regular' ? '' : ` ${t(ACTIVATOR_TEXT[k.activator])}`;
-      by.set(b.control, [...(by.get(b.control) ?? []), `${keyName(k.code)}${when}${mark}`]);
+      if (!k) continue;
+      // A key may do several things at once ("btn:pyramid+toggle:vehicle": get in the car and switch to driving). The summary lists the
+      // key under every button it presses; what else it does (a layer it switches) is not a button and is left out. Without this, the
+      // key for getting into a car was missing from the guide that is shown beside the picture.
+      for (const part of text.split('+')) {
+        const b = readBinding(part);
+        if (!b) continue;
+        const markWord = STYLE_MARK[b.style];
+        const mark = markWord ? ` (${t(markWord)})` : '';
+        const when = k.activator === 'regular' ? '' : ` ${t(ACTIVATOR_TEXT[k.activator])}`;
+        by.set(b.control, [...(by.get(b.control) ?? []), `${keyName(k.code)}${when}${mark}`]);
+      }
     }
   }
   const out: Array<{ label: string; keys: string }> = [];

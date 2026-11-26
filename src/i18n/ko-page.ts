@@ -274,4 +274,11 @@ export const KO_PAGE: Record<string, string> = {
   'Screen color: {theme}': '화면 색: {theme}',
   'Version {commit} · {subject} · started {time}': '버전 {commit} · {subject} · {time}에 시작',
   'Version {commit} · {subject}': '버전 {commit} · {subject}',
+  // The key guide beside the picture
+  'Key guide': '키 안내',
+  'All keys': '모든 키',
+  'Every key and what it does (K)': '모든 키와 하는 일 (K)',
+  'Hide the key guide (B)': '키 안내 숨기기 (B)',
+  'Show the key guide beside the picture': '화면 옆에 키 안내 보이기',
+  'Show or hide the key guide beside the picture': '화면 옆 키 안내 보이기/숨기기',
 };

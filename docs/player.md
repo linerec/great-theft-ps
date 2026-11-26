@@ -19,8 +19,15 @@ connection options and the route.
 While the game has the mouse (a click on the picture locks it) nothing is shown over the picture. **Esc** lets go of the
 mouse and brings the bar back at once; after Esc the keyboard is not the game's any more, so the keys below work.
 
+**The key guide** (`B` shows or hides it; the choice is remembered in the browser). A row of chips under the picture with
+what each key does ("△ F", "R2 Left click" ...), taken from the profile in use, so it follows a changed layout and the
+language. In full screen it is a bar of at most two rows on top of the picture, which is made a little smaller to make room
+(whatever is over the picture, the bar and the panels, starts under it); what does not fit is cut at a whole row, and "All
+keys" (also `K`) opens the full list. Not shown on a touch screen. A key that presses a button and also switches a layer
+(`F`: get in the car and switch to driving) is listed under its button.
+
 **Keys** (only when the mouse is not locked): `F` full screen, `T` a wider picture, `M` sound, `P` screenshot, `R` clip,
-`S` connection, `K` key layout, `G` mouse feel, `O` options, `?` the list. Three keys work while the game has the mouse too
+`S` connection, `K` key layout, `B` key guide, `G` mouse feel, `O` options, `?` the list. Three keys work while the game has the mouse too
 (no layout binds them): `PageUp` / `PageDown` raise and lower the mouse sensitivity by 6 % and say the new value in a toast,
 `Home` goes to the next starting point of the mouse feel.
 

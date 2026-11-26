@@ -133,6 +133,7 @@
             <div id="keysPanel" class="panel panel-left" hidden>
               <div class="panel-head"><h3><span data-i18n>Key layout</span> <span id="keysName" class="muted small"></span></h3><button class="icon-btn small" type="button" data-close="keysPanel" data-i18n-attr="aria-label" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
               <dl id="keysList" class="layout-list"></dl>
+              <button id="keysGuideToggle" class="btn small" type="button" aria-pressed="true" data-i18n>Show the key guide beside the picture</button>
               <p class="muted small" data-i18n>To change it, go to <b>Settings → Input mapping</b></p>
             </div>
 
@@ -194,6 +195,14 @@
               <button id="hudOpts" class="hb" type="button" data-i18n-attr="title" title="Picture, sound and connection settings (O)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg></button>
               <button id="hudTheater" class="hb" type="button" data-i18n-attr="title" title="Wide view (T)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-wide"/></svg></button>
               <button id="hudFull" class="hb" type="button" data-i18n-attr="title" title="Full screen (F)" aria-pressed="false"><svg class="ic" aria-hidden="true"><use id="hudFullIcon" href="#i-expand"/></svg></button>
+            </div>
+          </div>
+          <!-- The keys, always in sight: under the picture, and above it (the picture made a little smaller) in full screen. Filled in by tester.ts. -->
+          <div id="keyGuide" class="key-guide" role="group" data-i18n-attr="aria-label" aria-label="Key guide">
+            <div id="keyGuideList" class="kg-list"></div>
+            <div class="kg-tools">
+              <button id="keyGuideAll" class="kg-btn" type="button" data-i18n-attr="title" title="Every key and what it does (K)"><span data-i18n>All keys</span></button>
+              <button id="keyGuideHide" class="kg-btn kg-icon" type="button" data-i18n-attr="title aria-label" title="Hide the key guide (B)" aria-label="Hide the key guide (B)"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button>
             </div>
           </div>
           <div id="shotFlash" class="shot-flash" aria-hidden="true"></div>
@@ -681,6 +690,7 @@
       <div><dt><kbd>R</kbd></dt><dd data-i18n>Start or stop recording (up to 5 minutes, saved as a file at the end)</dd></div>
       <div><dt><kbd>S</kbd></dt><dd data-i18n>Connection status (delay, frames, graph)</dd></div>
       <div><dt><kbd>K</kbd></dt><dd data-i18n>Show the key layout</dd></div>
+      <div><dt><kbd>B</kbd></dt><dd data-i18n>Show or hide the key guide beside the picture</dd></div>
       <div><dt><kbd>G</kbd></dt><dd data-i18n>Mouse feel: sensitivity, smoothness, fast-swing carry-over</dd></div>
       <div><dt><kbd>L</kbd></dt><dd data-i18n>Mouse feel study: try settings one after another and score them</dd></div>
       <div><dt><kbd>O</kbd></dt><dd data-i18n>Picture, sound and connection settings panel</dd></div>

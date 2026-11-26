@@ -307,6 +307,17 @@ the number, the progress and whether there has been time to score; **one number 
 when the 8 s are there. The keys while the mouse is locked were exercised by calling the page's functions, not with a locked
 mouse (a script cannot lock it).
 
+## The key guide beside the picture (2026-11-26)
+
+Asked for by the owner: the key layout under the picture, and in full screen a bar over it with the picture a little smaller
+(`docs/player.md`, "The key guide"). Checked in a real Chrome by the page's self-test (`npm run e2e`): the guide sits under the
+picture and the bar over the picture ends where it begins; in the covering-the-window full screen it is on top, the picture below
+it is smaller and the bar starts under it; `B` hides it, gives the room back and remembers; the chips follow the language. Looked at
+in screenshots at 1440 and 1100 px wide. **Not checked:** the browser's own full screen (a headless Chrome refuses it, so the
+window-covering path was tested, which has the same rules), a phone, a very narrow window. While fixing it a real gap was found
+and closed: the summary of the layout left out any key that does two things (`F`, get in the car and switch to the driving
+controls), the key a player looks for first.
+
 ## The study of the mouse feel (2026-11-25)
 
 The owner asked for many candidate settings to be made, to be scored by playing, and the scores to be analysed ("not just a

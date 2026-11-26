@@ -832,7 +832,9 @@ const keymap = mountKeymap($<HTMLElement>('keymap'), {
 function renderLegend(): void {
   $<HTMLElement>('layoutName').textContent = `· ${profile.game.name}`;
   const list = $<HTMLElement>('layoutList');
+  const guide = $<HTMLElement>('keyGuideList');
   list.textContent = '';
+  guide.textContent = '';
   for (const item of describeLayout(profile)) {
     const row = document.createElement('div');
     const dt = document.createElement('dt');
@@ -841,6 +843,15 @@ function renderLegend(): void {
     dd.textContent = item.keys;
     row.append(dt, dd);
     list.append(row);
+    // The same list as a row of chips under the picture (above it in full screen): what the keys do, in sight while playing.
+    const chip = document.createElement('span');
+    chip.className = 'kg-item';
+    const label = document.createElement('b');
+    label.textContent = item.label;
+    const keys = document.createElement('span');
+    keys.textContent = item.keys;
+    chip.append(label, keys);
+    guide.append(chip);
   }
 }
 // The names of the keys and the buttons are words (describeLayout): a change of language draws them again.
@@ -1892,11 +1903,25 @@ async function runE2e(): Promise<void> {
     check('M mutes when the game does not have the mouse', soundToggle.checked !== soundBefore);
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyM', bubbles: true, cancelable: true }));
     check('and unmutes', soundToggle.checked === soundBefore);
+    // The key guide: under the picture, and what goes over the picture keeps off it.
+    const box = (id: string): DOMRect => $<HTMLElement>(id).getBoundingClientRect();
+    await sleep(100);
+    check('the key guide is under the picture and names the keys', box('keyGuide').height > 20 && box('keyGuide').top >= box('game').bottom - 1 && /Space/.test($<HTMLElement>('keyGuideList').textContent ?? '') && /W A S D/.test($<HTMLElement>('keyGuideList').textContent ?? ''), `${box('keyGuide').top} vs ${box('game').bottom}: ${$<HTMLElement>('keyGuideList').textContent}`);
+    check('the key for getting into a car is in it', [...$<HTMLElement>('keyGuideList').querySelectorAll('.kg-item')].some((c) => c.querySelector('b')?.textContent === '△' && c.querySelector('span')?.textContent === 'F'), $<HTMLElement>('keyGuideList').textContent ?? '');
+    check('the bar over the picture stops where the guide begins', box('hud').bottom <= box('keyGuide').top + 2, `${box('hud').bottom} vs ${box('keyGuide').top}`);
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB', bubbles: true, cancelable: true }));
+    check('B hides the key guide, gives its room back, and remembers it', $<HTMLElement>('keyGuide').hidden && box('hud').height > 0 && localStorage.getItem('gtp.keyGuide') === '0' && getComputedStyle($<HTMLElement>('ps5Stage')).getPropertyValue('--kg-h').trim() === '0px', getComputedStyle($<HTMLElement>('ps5Stage')).getPropertyValue('--kg-h'));
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB', bubbles: true, cancelable: true }));
+    await sleep(100);
+    check('and B shows it again', !$<HTMLElement>('keyGuide').hidden && box('keyGuide').height > 20 && localStorage.getItem('gtp.keyGuide') === '1');
     click('hudFull');
     await sleep(400);
     // A headless browser has no person to have asked, so the real full screen may be refused: then the player covers the window.
     const covered = document.fullscreenElement !== null || document.body.classList.contains('stage-full');
     check('the full screen button puts the player over the whole screen', covered && $<HTMLButtonElement>('hudFull').getAttribute('aria-pressed') === 'true', document.fullscreenElement ? 'browser full screen' : 'covering the window');
+    // In full screen the guide is a bar on top, the picture below it is a little smaller, and the bar over the picture starts under the guide.
+    check('in full screen the key guide is a bar above the picture, which is made a little smaller', box('keyGuide').top <= 2 && box('game').top >= box('keyGuide').bottom - 1 && box('game').bottom <= innerHeight + 1 && box('game').height < innerHeight - 20 && box('keyGuide').height < innerHeight / 4, `guide ${box('keyGuide').top}-${box('keyGuide').bottom}, picture ${box('game').top}-${box('game').bottom} of ${innerHeight}`);
+    check('and what goes over the picture starts under the guide', box('hud').top >= box('keyGuide').bottom - 2 && box('hud').top <= box('keyGuide').bottom + 2, `${box('hud').top} vs ${box('keyGuide').bottom}`);
     click('hudFull');
     await sleep(400);
     check('and the same button brings the page back', document.fullscreenElement === null && !document.body.classList.contains('stage-full') && $<HTMLButtonElement>('hudFull').getAttribute('aria-pressed') === 'false');
@@ -1913,6 +1938,7 @@ async function runE2e(): Promise<void> {
     check('the page is in English by default', getLang() === 'en' && document.documentElement.lang === 'en' && navLab() === 'Practice range', navLab());
     click('langBtn');
     check('the language button turns the page Korean: words, attributes and the language of the page', getLang() === 'ko' && document.documentElement.lang === 'ko' && navLab() === translate('ko', 'Practice range') && localStorage.getItem('gtp.lang') === 'ko' && $<HTMLElement>('hudStudy').title === translate('ko', 'Mouse feel study: try settings and score them (L)'), `${navLab()} ${$<HTMLElement>('hudStudy').title}`);
+    check('the key guide follows the language too', ($<HTMLElement>('keyGuideList').textContent ?? '').includes(translate('ko', 'Move')) && $<HTMLElement>('keyGuideHide').title === translate('ko', 'Hide the key guide (B)'), $<HTMLElement>('keyGuideList').textContent ?? '');
     check('the button now offers the other language', $<HTMLElement>('langBtn').textContent === 'English' && document.querySelector('[data-lang-choice="ko"]')?.getAttribute('aria-pressed') === 'true');
     for (const id of ['hudStats', 'hudKeys', 'hudFeel', 'hudOpts']) {
       click(id);
