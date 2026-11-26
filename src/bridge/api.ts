@@ -166,7 +166,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, opts:
 
   try {
     if (req.method === 'GET' && url.pathname === '/api/consoles') {
-      json(res, 200, { consoles: store.list().map(withProfiles), accountIdSaved: store.accountId !== undefined, accountHint: accountHint(store.accountId) });
+      json(res, 200, { consoles: store.list().map(withProfiles), accountIdSaved: store.accountId !== undefined, accountHint: accountHint(store.accountId), owner: isOwner });
     } else if (req.method === 'POST' && url.pathname === '/api/consoles/profile') {
       // Which PSN account somebody plays as. Anyone sets their own; the owner also sets it for the others.
       const body = (await readBody(req)) as { mac?: unknown; profile?: unknown; user?: unknown };

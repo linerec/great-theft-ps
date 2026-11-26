@@ -38,6 +38,13 @@ store.merge({
     {
       mac: '0123456789ab', nickname: 'Living room PS5', target: 'ps5-1', host: '192.168.1.20', registeredAt: new Date().toISOString(),
       rpKey: '00112233445566778899aabbccddeeff', registKey: '61626364656667680000000000000000',
+      accountId: 'AgEAAAAAAAA=', accountLabel: 'Dad',
+    },
+    // The same console registered for a second PSN account, so that the "Play as" choice shows.
+    {
+      mac: '0123456789ab', nickname: 'Living room PS5', target: 'ps5-1', host: '192.168.1.20', registeredAt: new Date().toISOString(),
+      rpKey: '00112233445566778899aabbccddeeff', registKey: '62626262626262620000000000000000',
+      accountId: 'Fc1bBwAAAAA=',
     },
   ],
 });

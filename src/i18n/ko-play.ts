@@ -123,7 +123,7 @@ export const KO_PLAY: Record<string, string> = {
   '(no name)': '(이름 없음)',
   'Delete': '삭제',
   'None yet.': '아직 없습니다.',
-  '(Using the saved value. Enter a new one to change it)': '(저장된 값을 사용합니다. 바꾸려면 새로 입력)',
+  '(Using the saved account ending in {hint}. Enter another ID to register another account)': '(저장된 계정(끝자리 {hint})을 사용합니다. 다른 계정을 등록하려면 그 계정의 ID를 입력)',
   '(Digits or Base64. Needed only the first time)': '(숫자 또는 Base64. 처음 한 번만 필요)',
   '{name} ({address}) · {state} · {registered}': '{name} ({address}) · {state} · {registered}',
   'Powered on': '켜짐',

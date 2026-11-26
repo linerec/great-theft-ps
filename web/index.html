@@ -612,6 +612,10 @@
     <label><span data-i18n>PSN account ID</span> <span class="muted small" id="regAccountNote" data-i18n>(number or Base64. Needed only the first time)</span>
       <input id="regAccount" type="password" spellcheck="false" autocomplete="off" data-i18n-attr="aria-label" aria-label="PSN account ID">
     </label>
+    <label><span data-i18n>Name for this PSN account <span class="muted small">(optional, for example “Dad”)</span></span>
+      <input id="regLabel" type="text" maxlength="40" spellcheck="false" autocomplete="off" data-i18n-attr="aria-label" aria-label="Name for this PSN account">
+    </label>
+    <p class="muted small" data-i18n>A console is registered once for each PSN account. To add <b>another account of the same console</b>: switch to that user on the PS5, open Link Device there, put that account's ID above (or get it with the Sony login as that account), and register. It is added next to the first, and each person picks theirs under “Play as”.</p>
     <div class="row"><button id="regGo" class="btn primary" type="button" data-i18n>Register</button><button id="addClose2" class="btn ghost" type="button" data-i18n>Close</button></div>
     <p id="regMsg" class="callout" role="status"></p>
   </dialog>

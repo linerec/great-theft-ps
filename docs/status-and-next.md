@@ -242,6 +242,12 @@ Built and tested here (unit tests and a real browser against the simulator, 1060
   HttpOnly SameSite=Strict cookie, slowed-down guessing, owner-only API (register, forget, tuning, people). A stream is
   counted while the picture runs and ended at zero.
 - **Finding the console again** when the router gives it another address (`locate.ts`): by its id, as the registration is.
+- **More than one PSN account on a console** (`src/console/store.ts`, `api.ts`, `web/ps5.ts`): a console logs a session in
+  as the account its registration was made for, so the store keeps one registration per account. Registering another
+  account adds it (it used to replace the first); each person who logs in here picks theirs under "Play as" (the owner
+  can set it for the others through `POST /api/consoles/profile`), and who has not chosen plays as the first. The
+  account ids stay on the server: the page sees a short hash and the last four digits. **Tested against stubs only:**
+  not yet seen on the real PS5 that two registrations of one console work side by side.
 - **A real controller** (`web/gamepad.ts`): standard layout, analog triggers, round dead zone; joins keyboard and mouse.
 - **A server that keeps itself current** (`tools/supervise.mjs`, `deploy/compose.yaml`): a new commit on `main` is
   started on the side and taken only if it answers and nobody is playing; a commit that fails is not retried. Seen

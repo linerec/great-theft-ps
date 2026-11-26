@@ -24,6 +24,15 @@ interface ConsoleInfo {
   host: string;
   registeredAt: string;
   verifiedAt?: string;
+  /** The PSN accounts this console is registered for (the bridge keeps one registration per account). */
+  profiles?: PsnProfile[];
+  /** The one this person plays as. */
+  profile?: string;
+}
+interface PsnProfile {
+  id: string;
+  label: string;
+  hint: string;
 }
 type Presence = 'checking' | 'ready' | 'standby' | 'absent';
 interface ApiReply {
@@ -48,6 +57,10 @@ const S = {
   consoles: [] as ConsoleInfo[],
   presence: {} as Record<string, Presence>,
   selected: '',
+  /** May this person name the PSN accounts (the owner, or anyone on a bridge without logins)? */
+  owner: false,
+  /** The PSN account being renamed: `mac/profile`, or '' when none is. */
+  renaming: '',
   interfaces: [] as Array<{ address: string; netmask: string }>,
   link: { state: 'idle', detail: '', name: '' },
   busy: false,
@@ -76,6 +89,7 @@ async function load(): Promise<void> {
   S.apiOk = !!r?.ok;
   S.lastApi = r;
   S.consoles = (r?.data.consoles ?? []) as ConsoleInfo[];
+  S.owner = r?.data.owner === true;
   if (!S.consoles.some((c) => c.mac === S.selected)) S.selected = S.consoles[0]?.mac ?? '';
   const n = await api('GET', '/api/network').catch(() => null);
   S.interfaces = (n?.data.interfaces ?? []) as Array<{ address: string; netmask: string }>;
@@ -176,7 +190,94 @@ function renderConsoles(): void {
       render();
     });
     box.append(b);
+    if (c.mac === (selectedConsole()?.mac ?? '')) {
+      const row = profileRow(c);
+      if (row) box.append(row);
+    }
   }
+}
+
+const profileName = (p: PsnProfile): string => p.label || (p.hint ? t('Account ending in {hint}', { hint: p.hint }) : t('Unnamed account'));
+
+/**
+ * Which PSN account this person plays as on the console, when it is registered for more than one. The bridge logs in
+ * as that one at the next connection; a stream that is running stays as it is.
+ */
+function profileRow(c: ConsoleInfo): HTMLElement | null {
+  const profiles = c.profiles ?? [];
+  if (profiles.length < 2) return null;
+  const current = profiles.find((p) => p.id === c.profile) ?? profiles[0]!;
+  const row = el('div', 'console-profile');
+  const renaming = S.renaming === `${c.mac}/${current.id}`;
+  if (renaming) {
+    const input = el('input');
+    input.type = 'text';
+    input.maxLength = 40;
+    input.value = current.label;
+    input.setAttribute('aria-label', t('Name of this PSN account'));
+    const saveName = async (): Promise<void> => {
+      const r = await api('POST', '/api/consoles/profile-label', { mac: c.mac, profile: current.id, label: input.value }).catch(() => null);
+      S.renaming = '';
+      if (r?.ok) {
+        c.profiles = r.data.profiles as PsnProfile[];
+        S.message = '';
+      } else {
+        S.message = t('The name could not be saved.');
+        S.messageKind = 'err';
+      }
+      render();
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') void saveName();
+      if (e.key === 'Escape') {
+        S.renaming = '';
+        render();
+      }
+    });
+    const ok = el('button', 'btn small', t('Save'));
+    ok.type = 'button';
+    ok.addEventListener('click', () => void saveName());
+    row.append(input, ok);
+    queueMicrotask(() => input.focus());
+    return row;
+  }
+  const label = el('label', 'inline');
+  const select = el('select');
+  for (const p of profiles) {
+    const o = el('option', '', profileName(p));
+    o.value = p.id;
+    o.selected = p.id === current.id;
+    select.append(o);
+  }
+  // The account is fixed when a connection starts, so it is not offered while one is running.
+  select.disabled = S.link.state === 'ready' || S.link.state === 'connecting';
+  select.addEventListener('change', async () => {
+    const wanted = profiles.find((p) => p.id === select.value);
+    if (!wanted) return;
+    const r = await api('POST', '/api/consoles/profile', { mac: c.mac, profile: wanted.id }).catch(() => null);
+    if (r?.ok) {
+      c.profile = wanted.id;
+      const name = profileName(wanted);
+      S.message = t('You now play as {name}. It applies from the next connection.', { name });
+      S.messageKind = 'ok';
+    } else {
+      S.message = t('The PSN account could not be changed.');
+      S.messageKind = 'err';
+    }
+    render();
+  });
+  label.append(el('span', '', t('Play as')), select);
+  row.append(label);
+  if (S.owner) {
+    const rename = el('button', 'btn ghost small', t('Rename'));
+    rename.type = 'button';
+    rename.addEventListener('click', () => {
+      S.renaming = `${c.mac}/${current.id}`;
+      render();
+    });
+    row.append(rename);
+  }
+  return row;
 }
 
 type StepState = 'done' | 'now' | 'todo' | 'dev';

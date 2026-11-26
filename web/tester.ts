@@ -393,7 +393,8 @@ async function refreshRegistered(): Promise<void> {
     li.textContent = t('None yet.');
     list.append(li);
   }
-  $<HTMLElement>('regAccountNote').textContent = r.data.accountIdSaved ? t('(Using the saved value. Enter a new one to change it)') : t('(Digits or Base64. Needed only the first time)');
+  const hint = String(r.data.accountHint ?? '');
+  $<HTMLElement>('regAccountNote').textContent = r.data.accountIdSaved ? t('(Using the saved account ending in {hint}. Enter another ID to register another account)', { hint }) : t('(Digits or Base64. Needed only the first time)');
   document.dispatchEvent(new CustomEvent('gtp:consoles'));
 }
 // The list is drawn from what the bridge says, so it is asked again to be drawn in the new language.
@@ -504,6 +505,8 @@ $<HTMLButtonElement>('regGo').addEventListener('click', async () => {
   const body: Record<string, string> = { host: address, pin };
   pinInput.value = ''; // a PIN is single use: off the page as soon as it is sent
   if (accountInput.value.trim()) body.accountId = accountInput.value.trim();
+  const labelInput = $<HTMLInputElement>('regLabel');
+  if (labelInput.value.trim()) body.label = labelInput.value.trim();
   const button = $<HTMLButtonElement>('regGo');
   button.disabled = true;
   say(() => t('Registering… Do not close the device-linking screen on the console.'));
@@ -513,6 +516,7 @@ $<HTMLButtonElement>('regGo').addEventListener('click', async () => {
       const name = String(r.data.console?.nickname || address);
       say(() => t('Registered: {name}', { name }), 'ok');
       accountInput.value = '';
+      labelInput.value = '';
       await refreshRegistered();
     } else {
       const reason = REG_HINT[String(r.data.error ?? '')] ?? N_('Could not register.');
