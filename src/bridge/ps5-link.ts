@@ -20,7 +20,7 @@ import { Ctrl, CtrlError } from '../console/ctrl.ts';
 import { APPLICATION_REASON } from '../console/regist.ts';
 import { isPs5Target } from '../console/rpcrypt.ts';
 import { requestSession, SessionError, type SessionGrant, type SessionRequestOptions } from '../console/session.ts';
-import type { ConsoleStore } from '../console/store.ts';
+import { profileIdOf, type ConsoleStore } from '../console/store.ts';
 import { DEFAULT_TUNING, StreamConnection, StreamError, type StreamFrame, type StreamTransport, type StreamTuning, type StreamVideoRequest } from '../console/streamconnection.ts';
 import { StreamStats } from '../console/streamstats.ts';
 import { takionTransport } from '../console/takion-transport.ts';
@@ -290,7 +290,7 @@ export class Ps5Link implements ConsoleLink {
     const list = store.list();
     const chosen = options.mac ? list.find((c) => c.mac === options.mac) : list[0];
     if (!chosen) throw new Error(list.length === 0 ? translate(lang, 'No PS5 is registered. Register a console first.') : translate(lang, 'The registration of the chosen console is not on this computer.'));
-    const record = store.get(chosen.mac);
+    const record = options.user !== undefined ? store.getFor(chosen.mac, options.user) : store.get(chosen.mac);
     if (!record) throw new Error(translate(lang, 'The registration could not be read.'));
     const name = chosen.nickname || 'PS5';
     const registKey = Buffer.from(record.registKey, 'hex');
@@ -388,7 +388,7 @@ export class Ps5Link implements ConsoleLink {
         }
       }
       if (this.#stopped) return;
-      store.markVerified(record.mac, record.host);
+      store.markVerified(record.mac, record.host, profileIdOf(record.accountId));
       stats.stage('session');
 
       step(translate(lang, '{name} accepted the session request. Opening the control connection', { name }));

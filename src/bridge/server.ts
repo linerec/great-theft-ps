@@ -321,7 +321,7 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
             },
           },
           quality,
-          { ...(typeof msg.console === 'string' && /^[0-9a-f]{12}$/i.test(msg.console) ? { mac: msg.console.toLowerCase() } : {}), locked: msg.lock === true, lang },
+          { ...(typeof msg.console === 'string' && /^[0-9a-f]{12}$/i.test(msg.console) ? { mac: msg.console.toLowerCase() } : {}), locked: msg.lock === true, lang, user: accounts ? (player?.name ?? 'owner') : 'local' },
         );
       } catch (e) {
         sendJson({ type: 'error', code: 'link', message: String((e as Error).message ?? e) });

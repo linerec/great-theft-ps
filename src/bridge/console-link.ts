@@ -41,6 +41,11 @@ export interface LinkHandlers {
 export interface LinkStartOptions {
   /** Which registered console to connect to (12 lower case hex digits). The first one when absent. */
   mac?: string;
+  /**
+   * Who is playing (the login name; "owner" for a tool with the token; "local" without logins). A console is registered
+   * once per PSN account, and each person chooses theirs: the link logs in as that one. The first when absent.
+   */
+  user?: string;
   /** Do not let go when another of this project's clients asks for the console (see handover.ts). */
   locked?: boolean;
   /**

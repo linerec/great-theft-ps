@@ -13,6 +13,9 @@ import { fileURLToPath } from 'node:url';
 import { FakeLink } from './support/fake-link.ts';
 import { AccountStore } from '../src/bridge/accounts.ts';
 import { startBridge, type Bridge } from '../src/bridge/server.ts';
+import type { ConsoleLink, LinkStartOptions } from '../src/bridge/console-link.ts';
+import { Ps5Link } from '../src/bridge/ps5-link.ts';
+import { DEFAULT_QUALITY } from '../src/bridge/quality.ts';
 import type { RegisteredConsole } from '../src/console/regist.ts';
 import type { SessionRequestOptions } from '../src/console/session.ts';
 import { accountHint, cleanLabel, ConsoleStore, profileIdOf, UNKNOWN_PROFILE } from '../src/console/store.ts';
@@ -259,5 +262,68 @@ describe('/api/ with more than one PSN account', () => {
     assert.equal((await call('POST', '/api/consoles/profile', { mac: MAC, profile: profileIdOf(A), user: 'kid' }, owner)).status, 200);
     assert.equal(store.chosen('kid', MAC), profileIdOf(A));
     assert.equal((await call('POST', '/api/consoles/profile', { mac: MAC, profile: b, user: 'nobody' }, owner)).status, 404);
+  });
+});
+
+// ------------------------------------------------------------------ the connection
+
+describe('connecting as the chosen PSN account', () => {
+  /** The link up to its session request: which registration it asked the console with. */
+  async function askedWith(store: ConsoleStore, options: LinkStartOptions): Promise<string> {
+    let key = '';
+    const link = new Ps5Link({
+      store, wake: false,
+      session: async (s) => {
+        key = Buffer.from(s.registKey).toString('hex');
+        throw new Error('far enough');
+      },
+    });
+    await link.start({ onVideo: () => {}, onStatus: () => {} }, DEFAULT_QUALITY, options).catch(() => {});
+    await link.stop();
+    return key;
+  }
+
+  it('asks the console with the registration of the account the person chose', async () => {
+    const store = two();
+    store.choose('kid', MAC, profileIdOf(B));
+    assert.equal(await askedWith(store, { user: 'kid' }), KEY_B);
+    assert.equal(await askedWith(store, { user: 'owner' }), KEY_A, 'who has not chosen plays as the first');
+    assert.equal(await askedWith(store, {}), KEY_A);
+  });
+
+  it('the bridge tells the link who is playing: the login name, or "local" without logins', async () => {
+    const seen: LinkStartOptions[] = [];
+    const recording = (): ConsoleLink => {
+      const link = new FakeLink();
+      const start = link.start.bind(link);
+      link.start = (h, q, o) => (seen.push(o ?? {}), start(h, q, o));
+      return link;
+    };
+    const play = async (port: number, cookie?: string): Promise<void> => {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, cookie ? ({ headers: { Cookie: `gtp_session=${cookie}` } } as never) : undefined);
+      const n = seen.length;
+      await new Promise<void>((resolve, reject) => {
+        ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', client: 'test' }));
+        ws.onerror = () => reject(new Error('websocket error'));
+        const timer = setInterval(() => seen.length > n && (clearInterval(timer), resolve()), 20);
+      });
+      const closed = new Promise((r) => (ws.onclose = r));
+      ws.close();
+      await closed;
+    };
+
+    const dir = tmp();
+    const plain = await startBridge({ host: '127.0.0.1', port: 0, root, store: new ConsoleStore(path.join(dir, 'a.json')), createLink: recording });
+    bridges.push(plain);
+    await play(plain.port);
+    assert.equal(seen.at(-1)!.user, 'local');
+
+    const accounts = new AccountStore({ dir: path.join(dir, 'accounts'), scryptCost: { n: 1024, r: 8, p: 1 } });
+    await accounts.acceptInvite(accounts.invite('owner', { role: 'owner' }).code, 'owner-password');
+    await accounts.acceptInvite(accounts.invite('kid', { dailyMinutes: 60 }).code, 'kid-password-1');
+    const withLogins = await startBridge({ host: '127.0.0.1', port: 0, root, accounts, store: new ConsoleStore(path.join(dir, 'b.json')), createLink: recording });
+    bridges.push(withLogins);
+    await play(withLogins.port, (await accounts.login('kid', 'kid-password-1'))!.session);
+    assert.equal(seen.at(-1)!.user, 'kid');
   });
 });
